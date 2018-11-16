@@ -16,7 +16,30 @@ def swap(x, i, j):
     else:
         return x
 
+def set_idx(sorted_tabs):
+    for idx, tab in sorted_tabs:
+        tab.set_idx(idx)
+
+def get_minus_partition(partition, idx):
+    '''
+    Return the partition that would result if you subtract 1 from
+    the given index.
+    Precondition: the input is valid
+    Ex:
+        (4, 2, 1), 0 --> (3, 2, 1)
+        (4, 1, 1), 1 --> (4, 1)
+        (4, 2, 1), 2 --> (4, 2)
+    '''
+    res = []
+    for _idx, i in enumerate(partition):
+        if idx == _idx and i > 1:
+            res.append(i - 1)
+        elif idx != _idx:
+            res.append(i)
+    return tuple(res)
+
 class FerrersDiagram:
+    TABLEAUX_CACHE = {}
     def __init__(self, partition):
         '''
         partition: tuple of ints
@@ -24,27 +47,69 @@ class FerrersDiagram:
         self.partition = partition
         self.size = sum(partition)
 
+        if partition not in FerrersDiagram.TABLEAUX_CACHE:
+            self.tableaux = self.gen_tableaux() # list of sorted young tableaux
+        else:
+            self.tableaux = FerrersDiagram.TABLEAUX_CACHE[partition]
+
+
     def branch_up(self):
         pass
 
     def branch_down(self):
-        pass
+        '''
+        Return a list of FerrersDiagrams of all the partitions
+        you'd get if you removed a corner node
+        '''
+        if sum(self.partition) == 1:
+            return []
+
+        branches = []
+        for idx in range(len(self.partition)):
+            # can branch if partition[idx] - 1 >= partition[idx + 1]
+            next_row_len = 0
+            if idx != len(self.partition) - 1:
+                next_row_len = self.partition[idx + 1]
+            if self.partition[idx] - 1 >= next_row_len:
+                # valid
+                new_partition = get_minus_partition(self.partition, idx)
+                branches.append(FerrersDiagram(new_partition))
+
+        return branches
+
+    def __repr__(self):
+        rep_str = ''
+        for idx, size in enumerate(self.partition):
+            rep_str += '[ ]' *size
+            if idx != len(self.partition) - 1:
+                rep_str += '\n'
+        return rep_str
 
     def gen_tableaux(self, perms=None):
         '''
-        Returns: list of the filled in
+        Returns: sorted list of the YoungTableau of the given shape/partition.
         '''
         tabs = []
 
         # 1 is always the top left corner so no need to do this
         #for p in itertools.permutations(range(2, self.size+1)):
         if perms is None:
-            perms = ((1, ) + p for p in itertools.permutations(range(2, self.size+1)))
+            perms = [(1, ) + p for p in itertools.permutations(range(2, self.size+1))]
 
         for p in perms:
-            if YoungTableau.valid_static(self.partition, p):
-                yt = make_young_tableau(self.partition, p)
-                tabs.append(yt)
+            try:
+                if YoungTableau.valid_static(self.partition, p):
+                    yt = make_young_tableau(self.partition, p)
+                    tabs.append(yt)
+            except:
+                pdb.set_trace()
+        tabs.sort()
+
+        # set the index which is necessary for computing YOR matrices
+        for idx, tab in enumerate(tabs):
+            tab.set_idx(idx)
+
+        FerrersDiagram.TABLEAUX_CACHE[self.partition] = tabs
         return tabs
 
 def make_young_tableau(shape, vals):
@@ -80,6 +145,14 @@ class YoungTableau:
         self.contents = contents
         self.size = sum(self.partition)
         self.vals = vals
+        self.idx = None
+
+        self._row = {}
+        self._col = {}
+        for idx, row in enumerate(contents):
+            for ri, x in enumerate(row):
+                self._row[x] = idx + 1
+                self._col[x] = ri + 1
 
         if self.partition not in YoungTableau.CACHE:
             YoungTableau.CACHE[self.partition] = {}
@@ -99,6 +172,14 @@ class YoungTableau:
                 return False
             # otherwise they're in the same row and you proceed
         return False
+
+    def set_idx(self, idx):
+        '''
+        Can only know the index of tableaux if you get it
+        from the sorted tableaux, which you'll only ever get
+        via FerrersDiagram.gen_tableaux.
+        '''
+        self.idx = idx
 
     # this should be a static/class function
     @staticmethod
@@ -150,18 +231,10 @@ class YoungTableau:
                     return False
         return True
 
-    '''
-    def get_row_col(self, val):
-        idx = self.contents.index(val)
-        # see where this index lines up
-        cnt = 0
-        for row_idx, row_len in enumerate(self.partition):
-            if idx < cnt + row_len
-                row_idx = 
-            cnt += row_len
-    '''
-
     def get_row(self, val):
+        return self._row[val]
+
+    def get_row2(self, val):
         '''
         Return the row number (1-indexed) of val
         If val is not in the tableaux (bigger than size or less than 1), return None
@@ -172,6 +245,9 @@ class YoungTableau:
         return None
 
     def get_col(self, val):
+        return self._col[val]
+
+    def get_col2(self, val):
         '''
         Return the row number (1-indexed) of val
         If val is not in the tableaux (bigger than size or less than 1), return None
@@ -202,66 +278,19 @@ class YoungTableau:
         i, j = transposition
         swapped = tuple(swap(k, i, j) for k in self.vals)
         return YoungTableau.CACHE[self.partition].get(swapped, None)
+    def ax_dist(self, i, j):
+        i_x = self.get_row(i)
+        i_y = self.get_col(i)
+        j_x = self.get_row(j)
+        j_y = self.get_col(j)
+        return abs(i_x - j_x) + abs(i_y - j_y)
 
-def benchmark():
-    '''
-    Benchmark time/memory usage for generating all YoungTableau for S_8
-    '''
-    shapes = [
-        (8,),
-        (7, 1),
-        (6, 2),
-        (6, 1, 1),
-        (5, 3),
-        (5, 2, 1),
-        (5, 1, 1, 1),
-        (4, 4),
-        (4, 3, 1),
-        (4, 2, 2),
-        (4, 2, 1, 1),
-        (4, 1, 1, 1, 1),
-        (3, 3, 2),
-        (3, 3, 1, 1),
-        (3, 2, 2, 1),
-        (3, 2, 1, 1, 1),
-        (3, 1, 1, 1, 1, 1),
-        (2, 2, 2, 2),
-        (2, 2, 2, 1, 1),
-        (2, 2, 1, 1, 1, 1),
-        (2, 1, 1, 1, 1, 1, 1),
-        (1, 1, 1, 1, 1, 1, 1, 1),
-    ]
-    total_tabs = 0
-    tstart = time.time()
-    perms = list(((1, ) + p for p in itertools.permutations(range(2, 8+1))))
-    for shape in shapes:
-        start = time.time()
-        f = FerrersDiagram(shape)
-        tabs = f.gen_tableaux(perms)
-        total_tabs += len(tabs)
-        done = time.time() - start
-        #print('Time to create {:5} tableaux for partition {:25} : {:.3f}'.format(len(tabs), str(shape), done))
-        #print('-' * 80)
-    print('Total tabs for partitions of 8: {}'.format(total_tabs))
-    tend = time.time() - tstart
-    print('Total time to find all tableaux: {:3f}'.format(tend))
+def test_ferrer():
+    f = FerrersDiagram((4, 2,2,1))
+    print(f)
+    for p in f.branch_down():
+        print('---------')
+        print(p)
 
-    cache_size = 0
-    mats = {}
-    for k, v in YoungTableau.CACHE.items():
-        cache_size += len(v)
-        mats[k] = np.random.random((len(v), len(v)))
-    print('Cache size: {}'.format(cache_size))
-    #check_memory()
-
-    v1 = (1, 2,3,4,5,6,7,8)
-    v2 = (1, 2,3,4,5,6,8,7)
-    shape = (7, 1)
-    cache = YoungTableau.CACHE
-    yt1 = cache[shape][v1]
-    yt2 = cache[shape][v2]
-    print(id(yt1.transpose((7,8))) == id(yt2))
-    print(id(yt2.transpose((7,8))) == id(yt1))
-    pdb.set_trace()
 if __name__ == '__main__':
-    benchmark()
+    test_ferrer()

@@ -1,5 +1,7 @@
 import unittest
 from young_tableau import FerrersDiagram, YoungTableau
+from yor import *
+from utils import sn
 import pdb
 
 class TestYoungTableau(unittest.TestCase):
@@ -42,6 +44,23 @@ class TestYoungTableau(unittest.TestCase):
             f = FerrersDiagram(partition)
             tableaux = f.gen_tableaux()
             self.assertEqual(len(tableaux), num_parts)
+
+    def test_yor(self):
+        ferr = FerrersDiagram((2, 1))
+        s3 = sn(3)
+        pe = np.array([[1, 0], [0, 1]])
+        p12 = np.array([[-1, 0], [0, 1]])
+        p13 = np.array([[1, 0], [0, -1]])
+        p23 = np.array([[1./2., 3./4.], [1., -1./2.]])
+        p123 = np.array([[-1./2., -3./4.], [1., -1./2.]])
+        p132 = np.array([[1./2., 3./4.], [-1., 1./2.]])
+        self.assertTrue(np.allclose(pe, yor(ferr, [(1,)])))
+        self.assertTrue(np.allclose(p12, yor(ferr, [(1,2)])))
+        self.assertTrue(np.allclose(p13, yor(ferr, [(1,3)])))
+        self.assertTrue(np.allclose(p23, yor(ferr, [(2,3)])))
+        self.assertTrue(np.allclose(p123, yor(ferr, [(1,2,3)])))
+        self.assertTrue(np.allclose(p132, yor(ferr, [(1,3,2)])))
+
 
 if __name__ == '__main__':
     unittest.main()
