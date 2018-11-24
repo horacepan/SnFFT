@@ -1,4 +1,3 @@
-from termcolor import colored
 import pdb
 import math
 import itertools
@@ -212,19 +211,5 @@ def print_tableaux(f):
         print(ta)
         print('======')
 
-def test_yor():
-    partition = (3, 1)
-    f = FerrersDiagram(partition)
-    #print_tableaux(f)
-
-    for t in [(1, 2), (2, 3), (3, 4)]:
-        pt = yor(f, [t])
-        py = yor(f, [t])
-        print('Same: ', end='')
-        if np.allclose(pt, py):
-            print(colored('True', 'green', attrs=['reverse']))
-        else:
-            print(colored('False', 'red', attrs=['reverse']))
-
 if __name__ == '__main__':
-    test_yor()
+    pass
