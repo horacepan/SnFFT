@@ -278,12 +278,36 @@ class YoungTableau:
         i, j = transposition
         swapped = tuple(swap(k, i, j) for k in self.vals)
         return YoungTableau.CACHE[self.partition].get(swapped, None)
+
     def ax_dist(self, i, j):
-        i_x = self.get_row(i)
-        i_y = self.get_col(i)
-        j_x = self.get_row(j)
-        j_y = self.get_col(j)
-        return abs(i_x - j_x) + abs(i_y - j_y)
+        '''
+        Compute the Rockmore/Diaconis' axial distance for the transposition (i, j)
+        in this tableaux
+
+        i: int, element of the young tableaux
+        j: int, element of the young tableaux
+        '''
+        row_i = self.get_row(i)
+        col_i = self.get_col(i)
+        row_j = self.get_row(j)
+        col_j = self.get_col(j)
+
+        return (col_j - col_i) + (row_i - row_j)
+
+    def rockmore_dist(self, i, j):
+        return self.get_col(i) - self.get_col(j) + self.get_row(j) - self.get_row(i)
+
+    def dist(self, i, j):
+        return self.content(j) - self.content(i)
+
+    def content(self, x):
+        '''
+        x: int, element of the tableaux
+        This is column index minus row index of x
+        '''
+        col_x = self.get_col(x)
+        row_x = self.get_row(x)
+        return col_x - row_x
 
 def test_ferrer():
     f = FerrersDiagram((4, 2,2,1))

@@ -1,3 +1,4 @@
+from termcolor import colored
 import pdb
 import math
 import itertools
@@ -6,42 +7,114 @@ from utils import check_memory
 import numpy as np
 from young_tableau import YoungTableau, FerrersDiagram
 
-def cycle_to_transpositions(cyc):
+def cycle_to_adj_transpositions(cyc, n):
     '''
-    cyc: iterable of ints
-    Return: list of 2-tuples
+    cyc: tuple of ints, the permutation cycle
+    n: size of the S_n group that this permutation lives in
+    Given a cycle: a -> b -> c
+    Generate perm = [cyc(i) for i in range(1, n+1)]
+    TODO: can we do this without creating the mapping list
     '''
-    try:
-        if len(cyc) == 2:
-            return [cyc[:]]
-    except:
-        pdb.set_trace()
+    # do bubble sort to turn this into a product of adjacent transpositions
+    cyc_map = lambda x: x if x not in cyc else cyc[(cyc.index(x) + 1) % len(cyc)]
+    perm = [ cyc_map(i) for i in range(1, n+1)]
+    factors = []
+    for i in range(n):
+        for j in range(n-1, i, -1):
+            if perm[j] < perm[j-1]:
+                perm[j], perm[j-1] = perm[j-1], perm[j]
+                factors.append((j, j+1))
 
-    return [(cyc[i], cyc[(i+1)]) for i in range(len(cyc) - 1)]
+    return list(reversed(factors))
 
 def yor(ferrers, permutation):
     '''
+    Compute the irreps of a given shape using Young's Orthogonal Representation (YOR)
+
+    ferrers: FerrersDiagram
+    permutation: list of tuples for the permutation in disjoint
+                 cycle notation
+    Returns: an irrep matrix of size d x d, where d is the number of standard tableaux of the
+    given FerrersDiagram shape
+    '''
+    if len(permutation[0]) <= 1:
+        # TODO: make a static/class function for this
+        n = len(FerrersDiagram.TABLEAUX_CACHE[ferrers.partition])
+        return np.eye(n)
+
+    res = None
+    for cycle in permutation:
+        for t in cycle_to_adj_transpositions(cycle, ferrers.size):
+            y = yor_trans(ferrers, t)
+            if res is None:
+                res = y
+            else:
+                res = res.dot(y)
+    return res
+
+def yor_trans(ferrers, transposition):
+    '''
+    Young's seminormal form for adjacent transposition permutations.
+    EG: permutations of the form (k, k+1)
+    ferrers: a FerrersDiagram object
+    transposition: a 2-tuple of ints
+
+    Returns: an irrep matrix of size d x d, where d is the number of standard tableaux of the
+    given FerrersDiagram shape
+    '''
+    assert transposition[0] < transposition[1]
+    tabs = ferrers.tableaux
+    rep = np.zeros((len(tabs), len(tabs)))
+    for tab in tabs:
+        other = tab.transpose(transposition)
+        dist = tab.dist(*transposition)
+        i = tab.idx
+        rep[i, i] = 1. / dist
+
+        if other is not None:
+            j = other.idx
+            rep[i, j] = np.sqrt(1 - (1. / dist) ** 2)
+            rep[j, i] = rep[i, j]
+            rep[j, j] = 1. / other.dist(*transposition)
+    return rep
+
+def ysemi(ferrers, permutation):
+    '''
+    Compute the irreps of the given shape using Young's Seminormal Form
+
     ferrers: FerrersDiagram
     partition: tuple of ints
     permutation: list of tuples in standard cycle notation. Order doesnt matter
                  since the cycles are disjoint in standard notation
-    Identity permutation is given as?
+    Returns: an irrep matrix of size d x d, where d is the number of standard tableaux of the
+    given FerrersDiagram shape
     '''
+    # TODO: This is a hacky way of passing in the identity permutation
     if len(permutation[0]) <= 1:
         return np.eye(len(FerrersDiagram.TABLEAUX_CACHE[ferrers.partition]) )
 
     res = None
     for cycle in permutation:
-        for t in reversed(cycle_to_transpositions(cycle)):
+        # rewrite the cycle in terms of the adjacent transpositions group generators
+        for t in reversed(cycle_to_adj_transpositions(cycle, ferrers.size)):
+            if t[0] > t[1]:
+                # keep transpositions in standard notation
+                t = (t[1], t[0])
+            y = ysemi_t(ferrers, t)
             if res is None:
-                res = yor_t(ferrers, t)
+                res = y
             else:
-                res = yor_t(ferrers, t).dot(res)
+                y = ysemi_t(ferrers, t)
+                #res = ysemi_t(ferrers, t).dot(res)
+                res = y.dot(res)
 
     return res
 
-def yor_t(f, transposition):
+def ysemi_t(f, transposition):
     '''
+    Young's seminormal form for adjacent transposition permutations.
+    EG: permutations of the form (k, k+1)
+
     f: ferrers diagram
     Returns a matrix of size = n_p x n_p, where
     n_p = the number of young tableau of the given partition
@@ -72,23 +145,11 @@ def yor_t(f, transposition):
 
     return rep
 
-def test():
-    partitions = [(4, ), (3, 1), (2, 2), (2, 1, 1), (1, 1, 1, 1)]
-    for p in partitions:
-        f = FerrersDiagram(p)
-        tabs = f.tableaux
-
-        for trans in [(1,2), (2, 3), (3,4)]:
-            print('Transposition: {}'.format(trans))
-            print(yor_t(p, trans))
-            print('-'*10)
-        print('-'*80)
-
+# TODO: Benchmarking function should go elsewhere
 def benchmark():
     '''
     Benchmark time/memory usage for generating all YoungTableau for S_8
     '''
-    # TODO: function to do the partitions
     partitions = [
         (8,),
         (7, 1),
@@ -146,15 +207,24 @@ def benchmark():
     print('Cache size: {}'.format(cache_size))
     check_memory()
 
+def print_tableaux(f):
+    for ta in f.tableaux:
+        print(ta)
+        print('======')
+
 def test_yor():
     partition = (3, 1)
     f = FerrersDiagram(partition)
-    py = yor(f, [(1,2)])
-    pt = yor_t(f, (1,2))
-    print(py)
-    print('=?')
-    print(pt)
-    print(np.allclose(py, pt))
+    #print_tableaux(f)
+
+    for t in [(1, 2), (2, 3), (3, 4)]:
+        pt = yor(f, [t])
+        py = yor(f, [t])
+        print('Same: ', end='')
+        if np.allclose(pt, py):
+            print(colored('True', 'green', attrs=['reverse']))
+        else:
+            print(colored('False', 'red', attrs=['reverse']))
 
 if __name__ == '__main__':
     test_yor()
