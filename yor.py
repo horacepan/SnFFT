@@ -5,6 +5,7 @@ import time
 from utils import check_memory
 import numpy as np
 from young_tableau import YoungTableau, FerrersDiagram
+from perm import Perm
 
 def cycle_to_adj_transpositions(cyc, n):
     '''
@@ -18,6 +19,7 @@ def cycle_to_adj_transpositions(cyc, n):
     cyc_map = lambda x: x if x not in cyc else cyc[(cyc.index(x) + 1) % len(cyc)]
     perm = [ cyc_map(i) for i in range(1, n+1)]
     factors = []
+
     for i in range(n):
         for j in range(n-1, i, -1):
             if perm[j] < perm[j-1]:
@@ -26,29 +28,47 @@ def cycle_to_adj_transpositions(cyc, n):
 
     return list(reversed(factors))
 
+def perm_to_adj_transpositions(perm, n):
+    '''
+    perm: a permutation of S_n list of tuple of ints. perm is given in its canonical cycle decomposition
+    format
+    n: integer, size of the permutation group that perm is a member of
+    '''
+    all_trans = []
+    for cyc in perm:
+        all_trans.extend(cycle_to_adj_transpositions(cyc, n))
+
+    return all_trans
+
 def yor(ferrers, permutation):
     '''
     Compute the irreps of a given shape using Young's Orthogonal Representation (YOR)
 
     ferrers: FerrersDiagram
+    permutation: Perm object
     permutation: list of tuples for the permutation in disjoint
                  cycle notation
     Returns: an irrep matrix of size d x d, where d is the number of standard tableaux of the
     given FerrersDiagram shape
     '''
-    if len(permutation[0]) <= 1:
+    if len(permutation.decomp) <= 1 or all(map(lambda x: len(x) <= 1, permutation.decomp)):
         # TODO: make a static/class function for this
         n = len(FerrersDiagram.TABLEAUX_CACHE[ferrers.partition])
         return np.eye(n)
 
     res = None
-    for cycle in permutation:
+    for cycle in permutation.decomp:
+        ts = []
+        print('permutation: {}'.format(permutation))
         for t in cycle_to_adj_transpositions(cycle, ferrers.size):
+            print('     transposition {}'.format(t))
             y = yor_trans(ferrers, t)
+            ts.append(t)
             if res is None:
                 res = y
             else:
                 res = res.dot(y)
+
     return res
 
 def yor_trans(ferrers, transposition):
@@ -75,6 +95,7 @@ def yor_trans(ferrers, transposition):
             rep[i, j] = np.sqrt(1 - (1. / dist) ** 2)
             rep[j, i] = rep[i, j]
             rep[j, j] = 1. / other.dist(*transposition)
+
     return rep
 
 def ysemi(ferrers, permutation):
@@ -89,11 +110,11 @@ def ysemi(ferrers, permutation):
     given FerrersDiagram shape
     '''
     # TODO: This is a hacky way of passing in the identity permutation
-    if len(permutation[0]) <= 1:
+    if len(permutation.decomp[0]) <= 1:
         return np.eye(len(FerrersDiagram.TABLEAUX_CACHE[ferrers.partition]) )
 
     res = None
-    for cycle in permutation:
+    for cycle in permutation.decomp:
         # rewrite the cycle in terms of the adjacent transpositions group generators
         for t in reversed(cycle_to_adj_transpositions(cycle, ferrers.size)):
             if t[0] > t[1]:
@@ -103,8 +124,6 @@ def ysemi(ferrers, permutation):
             if res is None:
                 res = y
             else:
-                y = ysemi_t(ferrers, t)
-                #res = ysemi_t(ferrers, t).dot(res)
                 res = y.dot(res)
 
     return res
@@ -206,10 +225,6 @@ def benchmark():
     print('Cache size: {}'.format(cache_size))
     check_memory()
 
-def print_tableaux(f):
-    for ta in f.tableaux:
-        print(ta)
-        print('======')
-
 if __name__ == '__main__':
+    yor(f, )
     pass

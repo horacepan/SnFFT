@@ -85,6 +85,12 @@ class FerrersDiagram:
                 rep_str += '\n'
         return rep_str
 
+    def pp_tableaux(self):
+        '''Pretty printer for all tableaux'''
+        for ta in f.tableaux:
+            print(ta)
+            print('======')
+
     def gen_tableaux(self, perms=None):
         '''
         Returns: sorted list of the YoungTableau of the given shape/partition.
@@ -293,9 +299,6 @@ class YoungTableau:
         col_j = self.get_col(j)
 
         return (col_j - col_i) + (row_i - row_j)
-
-    def rockmore_dist(self, i, j):
-        return self.get_col(i) - self.get_col(j) + self.get_row(j) - self.get_row(i)
 
     def dist(self, i, j):
         return self.content(j) - self.content(i)

@@ -50,9 +50,14 @@ class TestYoungTableau(unittest.TestCase):
         p12 = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]])
         p23 = np.array([[0.5, 0.75, 0], [1, -0.5, 0], [0, 0, 1]])
         p34 = np.array([[1, 0, 0], [0, 1./3., 8./9.], [0, 1, -1./3.]])
-        self.assertTrue(np.allclose(p12, ysemi(ferr, [(1,2)])))
-        self.assertTrue(np.allclose(p23, ysemi(ferr, [(2,3)])))
-        self.assertTrue(np.allclose(p34, ysemi(ferr, [(3,4)])))
+        self.assertTrue(np.allclose(p12, ysemi(ferr, Perm([(1,2)]))))
+        try:
+            self.assertTrue(np.allclose(p23, ysemi(ferr, Perm([(2,3)]))))
+        except:
+            print(p23)
+            print('Below: ysemi')
+            print(ysemi(ferr, Perm([(2, 3)])))
+        self.assertTrue(np.allclose(p34, ysemi(ferr, Perm([(3,4)]))))
 
 if __name__ == '__main__':
     unittest.main()

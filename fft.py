@@ -1,30 +1,12 @@
-from permutation import Permutation
 import pdb
 import numpy as np
 from yor import yor, ysemi
 from young_tableau import FerrersDiagram
 from utils import sn
+from perm import Perm
 
 
 irrep = yor
-
-def compose(p1, p2):
-    '''
-    Multiply permutations p1 and p2
-    p1: list of tuple of ints
-    p2: list of tuple of ints
-    '''
-    def perm_size(p):
-        _max = 0
-        for cyc in p:
-            _max = max(cyc)
-        return _max
-
-    n = max(perm_size(p1), perm_size(p2))
-    for i in range(1, n+1):
-        # evaluate p1(p2(i))
-        pass
-
 def fft(f, ferrers):
     '''
     Compute Clausen's FFT:
@@ -33,12 +15,12 @@ def fft(f, ferrers):
     http://www.ams.org/journals/mcom/1993-61-204/S0025-5718-1993-1192969-X/S0025-5718-1993-1192969-X.pdf
 
     f: function from S_n to \mathbb{R}
-    partition: a tuple of ints
+    ferrers: a FerrersDiagram object (indicates which irrep to compute the transform over)
     Returns a matrix of size d x d, where d is the number of standard tableaux of the FerrersDiagram shape
     '''
     # iterate over cosets
     if ferrers.size == 1:
-        return np.eye(1) * f(Permutation(1, ))
+        return np.eye(1) * f(Perm([(1, )]))
 
 
     n = ferrers.size
@@ -48,21 +30,18 @@ def fft(f, ferrers):
     d_lambda = len(tabs)
     f_hat = np.zeros((d_lambda, d_lambda))
     for i in range(1, n+1):
-        #cyc = Permutation([j for j in range(i, n+1)])
-        cyc = [j for j in range(i, n+1)] # what happens when we do (n, n), aka the identity coset rep
-        # TODO: actually compose the permutations. only okay right now b/c test just uses identity func
-        #f_i = lambda pi: f(compose(cyc, pi))
-        f_i = lambda pi: f(cyc)
-        rho_i = irrep(ferrers, [cyc])
+        cyc = Perm([tuple(j for j in range(i, n+1))])
+        f_i = lambda pi: f(cyc * pi) # assume that the input function is a function on Perm objects
+
+        # irrep function (aka yor) requires the 2nd argument to be a list of tuples
+        rho_i = irrep(ferrers, cyc)
         idx = 0 # used to figure out where the direct sum should add things
         res = np.zeros(f_hat.shape)
 
         for lambda_minus in d_branches:
             #fft_fi = fft(f_i, lambda_minus)
             fft_fi = ft(f_i, lambda_minus)
-            # now figure out where to slot it in
             d = fft_fi.shape[0]
-            #res[idx: idx+d, idx: idx+d] += rho_i[idx: idx+d, idx: idx+d].dot(fft_fi)
             res[idx: idx+d, idx: idx+d] += fft_fi
             idx += d
 
@@ -81,23 +60,30 @@ def ft(f, ferrers):
     permutations = sn(sum(ferrers.partition))
     res = None
     for p in permutations:
+        perm = Perm(p)
         if res is None:
-            yp = irrep(ferrers, p)
-            res = f(p) * irrep(ferrers, p)
+            res = f(perm) * irrep(ferrers, perm)
         else:
-            yp = irrep(ferrers, p)
-            res += f(p) * irrep(ferrers, p)
+            res += f(perm) * irrep(ferrers, perm)
 
     return res
 
 def test_fft():
     f = lambda x: 1
+    #for partition in [(4,), (3,1), (2,2),  (2,1,1), (1,1,1,1)]:
     for partition in [(3,), (2,1), (1,1,1)]:
+    #for partition in [(2,1)]:
         ferrers = FerrersDiagram(partition)
-        fft_result = fft(f, ferrers)
+        fft_result = fft(f, ferrers) # which irrep
         full_transform = ft(f, ferrers)
         fft_sum = np.sum(fft_result)
-        print('Equal: {} | sum: {}'.format(np.allclose(fft_result, full_transform), np.sum(fft_result)))
+        print('Equal: {:5} | fft sum: {:.2f} | ft sum: {}'.format(np.allclose(fft_result, full_transform),
+                                           np.sum(fft_result),
+                                           np.sum(full_transform)))
 
+        print('fft:')
+        print(fft_result)
+        print('full transform')
+        print(full_transform)
 if __name__ == '__main__':
     test_fft()
