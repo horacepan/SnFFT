@@ -52,10 +52,6 @@ class FerrersDiagram:
         else:
             self.tableaux = FerrersDiagram.TABLEAUX_CACHE[partition]
 
-
-    def branch_up(self):
-        pass
-
     def branch_down(self):
         '''
         Return a list of FerrersDiagrams of all the partitions

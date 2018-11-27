@@ -62,7 +62,8 @@ class TestYoungTableau(unittest.TestCase):
         self.assertTrue(np.allclose(p34, ysemi(ferr, Perm([(3,4)]))))
 
     def test_fft(self):
-        f = lambda x: 1
+        # any random function
+        f = lambda p: 1 if p[1] == 2 else 0
         for partition in [(4,), (3,1), (2,2),  (2,1,1), (1,1,1,1)]:
             ferrers = FerrersDiagram(partition)
             fft_result = fft(f, ferrers) # which irrep

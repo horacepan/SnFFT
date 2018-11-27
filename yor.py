@@ -224,5 +224,4 @@ def benchmark():
     check_memory()
 
 if __name__ == '__main__':
-    yor(f, )
     pass

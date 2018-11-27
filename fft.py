@@ -1,3 +1,4 @@
+import time
 import pdb
 import numpy as np
 from yor import yor, ysemi
@@ -6,6 +7,7 @@ from utils import sn
 from perm import Perm
 
 
+# can use ysemi or yor
 irrep = yor
 def fft(f, ferrers):
     '''
@@ -67,3 +69,7 @@ def fourier_transform(f, ferrers):
             res += f(perm) * irrep(ferrers, perm)
 
     return res
+
+if __name__ == '__main__':
+    test()
+
