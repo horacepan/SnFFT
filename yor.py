@@ -51,17 +51,15 @@ def yor(ferrers, permutation):
     Returns: an irrep matrix of size d x d, where d is the number of standard tableaux of the
     given FerrersDiagram shape
     '''
-    if len(permutation.decomp) <= 1 or all(map(lambda x: len(x) <= 1, permutation.decomp)):
+    if all(map(lambda x: len(x) <= 1, permutation.cycle_decomposition)):
         # TODO: make a static/class function for this
         n = len(FerrersDiagram.TABLEAUX_CACHE[ferrers.partition])
         return np.eye(n)
 
     res = None
-    for cycle in permutation.decomp:
+    for cycle in permutation.cycle_decomposition:
         ts = []
-        print('permutation: {}'.format(permutation))
         for t in cycle_to_adj_transpositions(cycle, ferrers.size):
-            print('     transposition {}'.format(t))
             y = yor_trans(ferrers, t)
             ts.append(t)
             if res is None:
@@ -110,11 +108,11 @@ def ysemi(ferrers, permutation):
     given FerrersDiagram shape
     '''
     # TODO: This is a hacky way of passing in the identity permutation
-    if len(permutation.decomp[0]) <= 1:
+    if all(map(lambda x: len(x) <= 1, permutation.cycle_decomposition)):
         return np.eye(len(FerrersDiagram.TABLEAUX_CACHE[ferrers.partition]) )
 
     res = None
-    for cycle in permutation.decomp:
+    for cycle in permutation.cycle_decomposition:
         # rewrite the cycle in terms of the adjacent transpositions group generators
         for t in reversed(cycle_to_adj_transpositions(cycle, ferrers.size)):
             if t[0] > t[1]:

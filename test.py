@@ -3,6 +3,8 @@ from young_tableau import FerrersDiagram, YoungTableau
 from yor import *
 from utils import sn
 import pdb
+from fft import fft, fourier_transform
+import numpy as np
 
 class TestYoungTableau(unittest.TestCase):
     def test_get_rowcols(self):
@@ -58,6 +60,15 @@ class TestYoungTableau(unittest.TestCase):
             print('Below: ysemi')
             print(ysemi(ferr, Perm([(2, 3)])))
         self.assertTrue(np.allclose(p34, ysemi(ferr, Perm([(3,4)]))))
+
+    def test_fft(self):
+        f = lambda x: 1
+        for partition in [(4,), (3,1), (2,2),  (2,1,1), (1,1,1,1)]:
+            ferrers = FerrersDiagram(partition)
+            fft_result = fft(f, ferrers) # which irrep
+            full_transform = fourier_transform(f, ferrers)
+            fft_sum = np.sum(fft_result)
+            self.assertTrue(np.allclose(fft_result, full_transform))
 
 if __name__ == '__main__':
     unittest.main()

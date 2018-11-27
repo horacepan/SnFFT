@@ -39,8 +39,8 @@ def fft(f, ferrers):
         res = np.zeros(f_hat.shape)
 
         for lambda_minus in d_branches:
-            #fft_fi = fft(f_i, lambda_minus)
-            fft_fi = ft(f_i, lambda_minus)
+            fft_fi = fft(f_i, lambda_minus)
+            #fft_fi = ft(f_i, lambda_minus)
             d = fft_fi.shape[0]
             res[idx: idx+d, idx: idx+d] += fft_fi
             idx += d
@@ -48,7 +48,7 @@ def fft(f, ferrers):
         f_hat += rho_i.dot(res)
     return f_hat
 
-def ft(f, ferrers):
+def fourier_transform(f, ferrers):
     '''
     Compute the full fourier transform
     f: function from S_n -> \mathbb{R}
@@ -67,23 +67,3 @@ def ft(f, ferrers):
             res += f(perm) * irrep(ferrers, perm)
 
     return res
-
-def test_fft():
-    f = lambda x: 1
-    #for partition in [(4,), (3,1), (2,2),  (2,1,1), (1,1,1,1)]:
-    for partition in [(3,), (2,1), (1,1,1)]:
-    #for partition in [(2,1)]:
-        ferrers = FerrersDiagram(partition)
-        fft_result = fft(f, ferrers) # which irrep
-        full_transform = ft(f, ferrers)
-        fft_sum = np.sum(fft_result)
-        print('Equal: {:5} | fft sum: {:.2f} | ft sum: {}'.format(np.allclose(fft_result, full_transform),
-                                           np.sum(fft_result),
-                                           np.sum(full_transform)))
-
-        print('fft:')
-        print(fft_result)
-        print('full transform')
-        print(full_transform)
-if __name__ == '__main__':
-    test_fft()
