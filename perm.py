@@ -1,4 +1,5 @@
 from utils import canonicalize, lcm
+import numpy as np
 import pdb
 
 class Perm:
@@ -107,7 +108,19 @@ class Perm:
         cycle_lengths = [len(x) for x in self.cycle_decomposition]
         return lcm(*cycle_lengths)
 
+    def matrix(self, n=None):
+        if n is None:
+            n = self._max
+        p_matrix = np.zeros((n, n))
+
+        # j->i   ===> p[i, j] = 1
+        for j, i in self._map.items():
+            # elements are 1-indexed
+            p_matrix[i-1, j-1] = 1
+
+        return p_matrix
+
 if __name__ == '__main__':
-    p = Perm([(1,2,3)])
-    q = Perm([(1,2,3)])
-    print(p * q)
+    p = Perm([(1,2,3), (5, 6)])
+    print(p._map)
+    print(p.matrix())

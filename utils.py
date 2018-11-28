@@ -1,6 +1,6 @@
+import pdb
 import os
 from functools import reduce
-import psutil
 import resource
 
 # TODO: algorithm to generate these instead of hardcoding
@@ -64,10 +64,47 @@ def sn(n):
     func = eval(fname) # TODO: hack city lol
     return func()
 
+def partitions(n, start=1):
+    '''
+    Generate all the partitions of n
+    n: integer
+    start: integer
+    Returns a list of int tuples
+    '''
+    parts = [(n, )]
+    for i in range(start, n // 2 + 1):
+        for p in partitions(n-i, i):
+            parts.append(p + (i, ))
+
+    return parts
+
+def weak_partitions(n, k):
+    '''
+    Returns a list of the weak partitions of n into k parts.
+    n: integer
+    k: integer
+
+    Returns a list of k-tuples of ints. Each index of the k-tuple is
+    a nonnegative integer.
+    Ex:
+        weak_partitions(3, 2): [(3,0), (0,3), (2,1), (1,2)]
+    '''
+    if n < 0 or k == 0:
+        return []
+    if k == 1:
+        return [(n,)]
+
+    lst = []
+    for l in range(n+1):
+        # we can use 0, 1, ..., n pieces of n in the first index
+        others = weak_partitions(n-l, k-1)
+        for part in others:
+            lst.append((l,) + part)
+
+    return lst
+
 def check_memory():
     res_ = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    process = psutil.Process(os.getpid())
-    resp = process.memory_info().rss
     print("Consumed {:.2f}mb memory".format(res_/(1024**2)))
 
 def gcd(a, b):
@@ -110,5 +147,4 @@ def test_canonicalize():
     print(canonicalize(x), x)
 
 if __name__ == '__main__':
-    for p in s3():
-        print(Perm(p))
+    print(list(partitions(5)))

@@ -3,12 +3,28 @@ import pdb
 import numpy as np
 from yor import yor, ysemi
 from young_tableau import FerrersDiagram
-from utils import sn
+from utils import sn, partitions
 from perm import Perm
 
 
 # can use ysemi or yor
 irrep = yor
+
+def fft_full(f, n):
+    '''
+    f: a function from S_n -> \mathbb{R}
+    n: integer
+    Returns: a dictionary mapping FerrersDiagrams(which index your irreps) to irrep matrices
+    '''
+    fourier_parts = {}
+    parts = partitions(n)
+
+    for p in parts:
+        ferrers = FerrersDiagram(p)
+        fourier_parts[ferrers] = fft(f, ferrers)
+
+    return fourier_parts
+
 def fft(f, ferrers):
     '''
     Compute Clausen's FFT:
@@ -19,6 +35,8 @@ def fft(f, ferrers):
     f: function from S_n to \mathbb{R}
     ferrers: a FerrersDiagram object (indicates which irrep to compute the transform over)
     Returns a matrix of size d x d, where d is the number of standard tableaux of the FerrersDiagram shape
+
+    Note that the specific permutation group S_n is given by the size of the ferrers diagram
     '''
     # iterate over cosets
     if ferrers.size == 1:
@@ -71,5 +89,4 @@ def fourier_transform(f, ferrers):
     return res
 
 if __name__ == '__main__':
-    test()
-
+    pass
