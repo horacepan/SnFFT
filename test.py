@@ -1,10 +1,11 @@
 import unittest
 from young_tableau import FerrersDiagram, YoungTableau
 from yor import *
-from utils import sn
+from utils import partitions
 import pdb
 from fft import fft, fourier_transform
 import numpy as np
+from perm import Perm
 
 class TestYoungTableau(unittest.TestCase):
     def test_get_rowcols(self):
@@ -53,18 +54,13 @@ class TestYoungTableau(unittest.TestCase):
         p23 = np.array([[0.5, 0.75, 0], [1, -0.5, 0], [0, 0, 1]])
         p34 = np.array([[1, 0, 0], [0, 1./3., 8./9.], [0, 1, -1./3.]])
         self.assertTrue(np.allclose(p12, ysemi(ferr, Perm([(1,2)]))))
-        try:
-            self.assertTrue(np.allclose(p23, ysemi(ferr, Perm([(2,3)]))))
-        except:
-            print(p23)
-            print('Below: ysemi')
-            print(ysemi(ferr, Perm([(2, 3)])))
+        self.assertTrue(np.allclose(p23, ysemi(ferr, Perm([(2,3)]))))
         self.assertTrue(np.allclose(p34, ysemi(ferr, Perm([(3,4)]))))
 
     def test_fft(self):
         # any random function
-        f = lambda p: 1 if p[1] == 2 else 0
-        for partition in [(4,), (3,1), (2,2),  (2,1,1), (1,1,1,1)]:
+        f = lambda p: 1 if p[1] == 2 else 3.23
+        for partition in partitions(5):
             ferrers = FerrersDiagram(partition)
             fft_result = fft(f, ferrers) # which irrep
             full_transform = fourier_transform(f, ferrers)

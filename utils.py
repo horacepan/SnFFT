@@ -3,67 +3,6 @@ import os
 from functools import reduce
 import resource
 
-# TODO: algorithm to generate these instead of hardcoding
-def s1():
-    permutations = [ [(1,)] ]
-    return permutations
-
-def s2():
-    permutations = [
-        [(1,)],
-        [(1,2)],
-    ]
-    return permutations
-
-def s3():
-    permutations = [
-        [(1,)],
-        [(1, 2)],
-        [(1, 3)],
-        [(2, 3)],
-        [(1, 2, 3)],
-        [(1, 3, 2)],
-    ]
-    return permutations
-
-def s4():
-    permutations = [
-        [(1,)],
-        [(1, 2)],
-        [(1, 3)],
-        [(1, 4)],
-        [(2, 3)],
-        [(2, 4)],
-        [(3, 4)],
-        [(1, 2), (3, 4)],
-        [(1, 3), (2, 4)],
-        [(1, 4), (2, 3)],
-        [(1, 2, 3)],
-        [(1, 2, 4)],
-        [(1, 3, 2)],
-        [(1, 3, 4)],
-        [(1, 4, 2)],
-        [(1, 4, 3)],
-        [(2, 3, 4)],
-        [(2, 4, 3)],
-        [(1, 2, 3, 4)],
-        [(1, 2, 4, 3)],
-        [(1, 3, 2, 4)],
-        [(1, 3, 4, 2)],
-        [(1, 4, 2, 3)],
-        [(1, 4, 3, 2)],
-    ]
-    return permutations
-
-def sn(n):
-    '''
-    Return the permutations (in cycle notation) for n = 1, 2, 3, 4
-    Returns a list of list of tuples
-    '''
-    fname = 's{}'.format(n)
-    func = eval(fname) # TODO: hack city lol
-    return func()
-
 def partitions(n, start=1):
     '''
     Generate all the partitions of n

@@ -3,8 +3,8 @@ import pdb
 import numpy as np
 from yor import yor, ysemi
 from young_tableau import FerrersDiagram
-from utils import sn, partitions
-from perm import Perm
+from utils import partitions
+from perm import Perm, sn
 
 
 # can use ysemi or yor
@@ -60,7 +60,7 @@ def fft(f, ferrers):
 
         for lambda_minus in d_branches:
             fft_fi = fft(f_i, lambda_minus)
-            #fft_fi = ft(f_i, lambda_minus)
+
             d = fft_fi.shape[0]
             res[idx: idx+d, idx: idx+d] += fft_fi
             idx += d
@@ -79,8 +79,7 @@ def fourier_transform(f, ferrers):
     '''
     permutations = sn(sum(ferrers.partition))
     res = None
-    for p in permutations:
-        perm = Perm(p)
+    for perm in permutations:
         if res is None:
             res = f(perm) * irrep(ferrers, perm)
         else:
@@ -88,5 +87,18 @@ def fourier_transform(f, ferrers):
 
     return res
 
+def benchmark():
+    start = time.time()
+    f = lambda x: 1.2 if x[1] > 1 else 3
+    parts = partitions(5)
+    for p in parts:
+        p_start = time.time()
+        ferrers = FerrersDiagram(p)
+        fft_res = fourier_transform(f, ferrers)
+        p_end = time.time()
+        print('Partition: {:20} | Dim: {:10} | Time: {:.2f}'.format(str(p), str(fft_res.shape), p_end-p_start))
+    end = time.time()
+    print('elapsed: {:.2f}'.format(end - start))
+
 if __name__ == '__main__':
-    pass
+    benchmark()

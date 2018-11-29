@@ -5,7 +5,6 @@ import time
 from utils import check_memory
 import numpy as np
 from young_tableau import YoungTableau, FerrersDiagram
-from perm import Perm
 
 def cycle_to_adj_transpositions(cyc, n):
     '''
@@ -45,7 +44,7 @@ def yor(ferrers, permutation):
     Compute the irreps of a given shape using Young's Orthogonal Representation (YOR)
 
     ferrers: FerrersDiagram
-    permutation: Perm object
+    permutation: perm.Perm object
     permutation: list of tuples for the permutation in disjoint
                  cycle notation
     Returns: an irrep matrix of size d x d, where d is the number of standard tableaux of the

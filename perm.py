@@ -1,7 +1,11 @@
+import sys
 from utils import canonicalize, lcm
+from itertools import permutations
 import numpy as np
 import pdb
+from collections import deque
 
+SN_CACHE = {}
 class Perm:
     '''
     Assume the cycle decomposition given is in canonical form(no repeated things).
@@ -9,9 +13,47 @@ class Perm:
     '''
     def __init__(self, cyc_decomp):
         self._str = None
-        self._max = max(map(lambda z: max(z), cyc_decomp)) # might not be accurate
+        try:
+            self._max = max(map(lambda z: max(z), cyc_decomp)) # might not be accurate
+        except:
+            pdb.set_trace()
         self._map = self._init_map(cyc_decomp)
         self.decomp = self.canonical_cycle_decomp(cyc_decomp)
+
+    # TODO: this is really janky
+    @staticmethod
+    def from_dict(_dict):
+        cyc_decomp = []
+        curr_cyc = []
+        curr = None
+        seen = set()
+        to_visit = deque([1])
+        all_nodes = set(range(1, len(_dict) + 1))
+
+        while len(seen) < len(_dict) or len(curr_cyc) > 0:
+            if to_visit:
+                curr = to_visit.popleft()
+            else:
+                curr = min(all_nodes)
+
+            if curr in seen:
+                cyc_decomp.append(tuple(curr_cyc))
+                curr_cyc = []
+            else:
+                curr_cyc.append(curr)
+                if curr in _dict:
+                    to_visit.append(_dict[curr])
+
+            seen.add(curr)
+            if curr in all_nodes:
+                all_nodes.remove(curr)
+
+        return Perm(cyc_decomp)
+
+    @staticmethod
+    def from_lst(lst):
+        _dict = {idx+1: val for idx, val in enumerate(lst)}
+        return Perm.from_dict(_dict)
 
     @property
     def cycle_decomposition(self):
@@ -65,6 +107,8 @@ class Perm:
             while to_visit:
                 current_cycle.append(curr)
                 to_visit.remove(curr)
+                #if curr in to_visit:
+                #    to_visit.remove(curr)
                 nxt = self.__getitem__(curr)
                 if nxt == fst:
                     break
@@ -82,6 +126,7 @@ class Perm:
         return Perm(inv)
 
     def __mul__(self, other):
+        # rely on canonicalization to reduce the concatenation of the cycles
         prod = Perm(self.cycle_decomposition + other.cycle_decomposition)
         return prod
 
@@ -98,6 +143,7 @@ class Perm:
 
             self._str = repr_str
 
+        # TODO: identity permutation gets rendered as (). Might not be ideal.
         if len(self._str) == 0:
             return '()'
 
@@ -120,7 +166,16 @@ class Perm:
 
         return p_matrix
 
+def sn(n):
+    if n in SN_CACHE:
+        return SN_CACHE[n]
+    perm_lsts = permutations(range(1, n+1))
+    perms = [Perm.from_lst(lst) for lst in perm_lsts]
+    SN_CACHE[n] = perms
+    return perms
+
 if __name__ == '__main__':
-    p = Perm([(1,2,3), (5, 6)])
-    print(p._map)
-    print(p.matrix())
+    group = sn(int(sys.argv[1]))
+    print(len(group))
+    for p in group:
+        print(p)
