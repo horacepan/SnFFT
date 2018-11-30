@@ -3,9 +3,11 @@ from young_tableau import FerrersDiagram, YoungTableau
 from yor import *
 from utils import partitions
 import pdb
-from fft import fft, fourier_transform
+from fft import fft, fourier_transform, fourier_transform2, fft2
 import numpy as np
 from perm import Perm
+from perm2 import Perm2
+
 
 class TestYoungTableau(unittest.TestCase):
     def test_get_rowcols(self):
@@ -53,18 +55,31 @@ class TestYoungTableau(unittest.TestCase):
         p12 = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]])
         p23 = np.array([[0.5, 0.75, 0], [1, -0.5, 0], [0, 0, 1]])
         p34 = np.array([[1, 0, 0], [0, 1./3., 8./9.], [0, 1, -1./3.]])
-        self.assertTrue(np.allclose(p12, ysemi(ferr, Perm([(1,2)]))))
-        self.assertTrue(np.allclose(p23, ysemi(ferr, Perm([(2,3)]))))
-        self.assertTrue(np.allclose(p34, ysemi(ferr, Perm([(3,4)]))))
+        #self.assertTrue(np.allclose(p12, ysemi(ferr, Perm([(1,2)]))))
+        #self.assertTrue(np.allclose(p23, ysemi(ferr, Perm([(2,3)]))))
+        #self.assertTrue(np.allclose(p34, ysemi(ferr, Perm([(3,4)]))))
+
+        self.assertTrue(np.allclose(p12, ysemi(ferr, Perm2({1:2, 2:1}, 4))))
+        self.assertTrue(np.allclose(p23, ysemi(ferr, Perm2({2:3, 3:2}, 4))))
+        self.assertTrue(np.allclose(p34, ysemi(ferr, Perm2({3:4, 4:3}, 4))))
+
+    def test_yor(self):
+        ferr = FerrersDiagram((3, 1))
+        p12 = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        p23 = np.array([[0.5, np.sqrt(3)/2., 0], [np.sqrt(3)/2., -0.5, 0], [0, 0, 1]])
+        p34 = np.array([[1, 0, 0], [0, 1./3., np.sqrt(8)/3], [0, np.sqrt(8)/3, -1./3.]])
+
+        self.assertTrue(np.allclose(p12, yor(ferr, Perm2({1:2, 2:1}, 4))))
+        self.assertTrue(np.allclose(p23, yor(ferr, Perm2({2:3, 3:2}, 4))))
+        self.assertTrue(np.allclose(p34, yor(ferr, Perm2({3:4, 4:3}, 4))))
 
     def test_fft(self):
         # any random function
-        f = lambda p: 1 if p[1] == 2 else 3.23
-        for partition in partitions(5):
+        f = lambda p: 1 if p[1] == 2 else 1.5
+        for idx, partition in enumerate(partitions(7)):
             ferrers = FerrersDiagram(partition)
-            fft_result = fft(f, ferrers) # which irrep
-            full_transform = fourier_transform(f, ferrers)
-            fft_sum = np.sum(fft_result)
+            fft_result = fft2(f, ferrers)
+            full_transform = fourier_transform2(f, ferrers)
             self.assertTrue(np.allclose(fft_result, full_transform))
 
 if __name__ == '__main__':

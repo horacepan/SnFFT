@@ -1,5 +1,4 @@
 import os
-import psutil
 import resource
 import pdb
 import time

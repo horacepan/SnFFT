@@ -5,6 +5,8 @@ import numpy as np
 import pdb
 from collections import deque
 
+# Currently this just stores the entirety of S_n as values of the dict
+# alternative is to store n -> dict mapping {partition -> Permutation object}
 SN_CACHE = {}
 class Perm:
     '''

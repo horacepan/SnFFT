@@ -5,6 +5,8 @@ from yor import yor, ysemi
 from young_tableau import FerrersDiagram
 from utils import partitions
 from perm import Perm, sn
+from perm2 import Perm2
+from perm2 import sn as sn2
 
 
 # can use ysemi or yor
@@ -24,6 +26,40 @@ def fft_full(f, n):
         fourier_parts[ferrers] = fft(f, ferrers)
 
     return fourier_parts
+
+def fft2(f, ferrers):
+    if ferrers.size == 1:
+        #return np.eye(1) * f(Perm([(1, )]))
+        return np.eye(1) * f(Perm2({}, ferrers.size))
+
+
+    n = ferrers.size
+    d_branches = ferrers.branch_down()
+    tabs = ferrers.tableaux
+
+    d_lambda = len(tabs)
+    f_hat = np.zeros((d_lambda, d_lambda))
+    for i in range(1, n+1):
+        #cyc = Perm([tuple(j for j in range(i, n+1))])
+        cyc_dict = {j:j+1 for j in range(i, n)}
+        cyc_dict[n] = i
+        cyc = Perm2(cyc_dict, n)
+        f_i = lambda pi: f(cyc * pi) # assume that the input function is a function on Perm objects
+
+        # irrep function (aka yor) requires the 2nd argument to be a list of tuples
+        rho_i = irrep(ferrers, cyc)
+        idx = 0 # used to figure out where the direct sum should add things
+        res = np.zeros(f_hat.shape)
+
+        for lambda_minus in d_branches:
+            fft_fi = fft2(f_i, lambda_minus)
+
+            d = fft_fi.shape[0]
+            res[idx: idx+d, idx: idx+d] += fft_fi
+            idx += d
+
+        f_hat += rho_i.dot(res)
+    return f_hat
 
 def fft(f, ferrers):
     '''
@@ -87,6 +123,25 @@ def fourier_transform(f, ferrers):
 
     return res
 
+def fourier_transform2(f, ferrers):
+    '''
+    Compute the full fourier transform
+    f: function from S_n -> \mathbb{R}
+    ferrers: FerrersDiagram
+
+    Returns a matrix of dimension d x d, where d is the number of standard young tableaux
+    of the given FerrersDiagram shape
+    '''
+    permutations = sn2(sum(ferrers.partition))
+    res = None
+    for perm in permutations:
+        if res is None:
+            res = f(perm) * irrep(ferrers, perm)
+        else:
+            res += f(perm) * irrep(ferrers, perm)
+
+    return res
+
 def benchmark():
     start = time.time()
     f = lambda x: 1.2 if x[1] > 1 else 3
@@ -101,4 +156,4 @@ def benchmark():
     print('elapsed: {:.2f}'.format(end - start))
 
 if __name__ == '__main__':
-    benchmark()
+    pass
