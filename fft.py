@@ -1,7 +1,7 @@
 import time
 import pdb
 import numpy as np
-from yor import yor, ysemi
+from yor import yor, ysemi, CACHE
 from young_tableau import FerrersDiagram
 from utils import partitions
 from perm import Perm, sn
@@ -145,15 +145,16 @@ def fourier_transform2(f, ferrers):
 def benchmark():
     start = time.time()
     f = lambda x: 1.2 if x[1] > 1 else 3
-    parts = partitions(5)
+    parts = partitions(6)
     for p in parts:
         p_start = time.time()
         ferrers = FerrersDiagram(p)
-        fft_res = fourier_transform(f, ferrers)
+        fft_res = fft2(f, ferrers)
         p_end = time.time()
         print('Partition: {:20} | Dim: {:10} | Time: {:.2f}'.format(str(p), str(fft_res.shape), p_end-p_start))
     end = time.time()
     print('elapsed: {:.2f}'.format(end - start))
+    print('yor cache hits: {}'.format(CACHE['hit']))
 
 if __name__ == '__main__':
-    pass
+    benchmark()

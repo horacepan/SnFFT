@@ -2,10 +2,13 @@ import pdb
 import math
 import itertools
 import time
-from utils import check_memory
+from utils import check_memory, partitions
 import numpy as np
 from young_tableau import YoungTableau, FerrersDiagram
 
+YOR_CACHE = {}
+YOR_T_CACHE = {}
+CACHE = {'hit': 0}
 def cycle_to_adj_transpositions(cyc, n):
     '''
     cyc: tuple of ints, the permutation cycle
@@ -50,10 +53,15 @@ def yor(ferrers, permutation):
     Returns: an irrep matrix of size d x d, where d is the number of standard tableaux of the
     given FerrersDiagram shape
     '''
+    if (ferrers, permutation) in YOR_CACHE:
+        CACHE['hit'] += 1
+        return YOR_CACHE[(ferrers, permutation)]
+
     if all(map(lambda x: len(x) <= 1, permutation.cycle_decomposition)):
         # TODO: make a static/class function for this
         n = len(FerrersDiagram.TABLEAUX_CACHE[ferrers.partition])
-        return np.eye(n)
+        YOR_CACHE[(ferrers, permutation)] = np.eye(n)
+        return YOR_CACHE[(ferrers, permutation)]
 
     res = None
     for cycle in permutation.cycle_decomposition:
@@ -66,6 +74,7 @@ def yor(ferrers, permutation):
             else:
                 res = res.dot(y)
 
+    YOR_CACHE[(ferrers, permutation)] = res
     return res
 
 def yor_trans(ferrers, transposition):
@@ -79,6 +88,10 @@ def yor_trans(ferrers, transposition):
     given FerrersDiagram shape
     '''
     assert transposition[0] < transposition[1]
+    if (ferrers, transposition) in YOR_T_CACHE:
+        CACHE['hit'] += 1
+        return YOR_T_CACHE[(ferrers, transposition)]
+
     tabs = ferrers.tableaux
     rep = np.zeros((len(tabs), len(tabs)))
     for tab in tabs:
@@ -93,6 +106,7 @@ def yor_trans(ferrers, transposition):
             rep[j, i] = rep[i, j]
             rep[j, j] = 1. / other.dist(*transposition)
 
+    YOR_T_CACHE[(ferrers, transposition)] = rep
     return rep
 
 def ysemi(ferrers, permutation):
@@ -165,46 +179,18 @@ def benchmark():
     '''
     Benchmark time/memory usage for generating all YoungTableau for S_8
     '''
-    partitions = [
-        (8,),
-        (7, 1),
-        (6, 2),
-        (6, 1, 1),
-        (5, 3),
-        (5, 2, 1),
-        (5, 1, 1, 1),
-        (4, 4),
-        (4, 3, 1),
-        (4, 2, 2),
-        (4, 2, 1, 1),
-        (4, 1, 1, 1, 1),
-        (3, 3, 2),
-        (3, 3, 1, 1),
-        (3, 2, 2, 1),
-        (3, 2, 1, 1, 1),
-        (3, 1, 1, 1, 1, 1),
-        (2, 2, 2, 2),
-        (2, 2, 2, 1, 1),
-        (2, 2, 1, 1, 1, 1),
-        (2, 1, 1, 1, 1, 1, 1),
-        (1, 1, 1, 1, 1, 1, 1, 1),
-    ]
+    _partitions = partitions(8)
     total_tabs = 0
     tstart = time.time()
     perms = list(((1, ) + p for p in itertools.permutations(range(2, 8+1))))
     transpositions = [(i, i+1) for i in range(1, 8)]
     dims = []
-    for p in partitions:
+    for p in _partitions:
         start = time.time()
         f = FerrersDiagram(p)
         tabs = f.tableaux
         total_tabs += len(tabs)
 
-        #for idx, trans in enumerate(transpositions):
-        #    yt = yor_t(p, trans)
-        #    if idx == 0:
-        #        dim = yt.shape[0]
-        #        dims.append(dim)
         done = time.time() - start
         #print('Time to create {:5} tableaux for partition {:25} : {:.3f}'.format(len(tabs), str(p), done))
         #print('-' * 80)

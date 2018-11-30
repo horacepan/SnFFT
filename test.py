@@ -76,11 +76,11 @@ class TestYoungTableau(unittest.TestCase):
     def test_fft(self):
         # any random function
         f = lambda p: 1 if p[1] == 2 else 1.5
-        for idx, partition in enumerate(partitions(7)):
+        for idx, partition in enumerate(partitions(6)):
             ferrers = FerrersDiagram(partition)
             fft_result = fft2(f, ferrers)
             full_transform = fourier_transform2(f, ferrers)
             self.assertTrue(np.allclose(fft_result, full_transform))
-
+        print(CACHE_H)
 if __name__ == '__main__':
     unittest.main()
