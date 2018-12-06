@@ -1,3 +1,5 @@
+import sys
+from scipy.sparse import csr_matrix, coo_matrix
 import pdb
 import math
 import itertools
@@ -5,10 +7,12 @@ import time
 from utils import check_memory, partitions
 import numpy as np
 from young_tableau import YoungTableau, FerrersDiagram
+from perm2 import sn
 
 YOR_CACHE = {}
 YOR_T_CACHE = {}
-CACHE = {'hit': 0}
+CACHE = {'hit': 0, 'sparse_hit': 0}
+
 def cycle_to_adj_transpositions(cyc, n):
     '''
     cyc: tuple of ints, the permutation cycle
@@ -175,38 +179,27 @@ def ysemi_t(f, transposition):
     return rep
 
 # TODO: Benchmarking function should go elsewhere
-def benchmark():
+def benchmark(n):
     '''
     Benchmark time/memory usage for generating all YoungTableau for S_8
     '''
-    _partitions = partitions(8)
-    total_tabs = 0
     tstart = time.time()
-    perms = list(((1, ) + p for p in itertools.permutations(range(2, 8+1))))
-    transpositions = [(i, i+1) for i in range(1, 8)]
-    dims = []
+    _partitions = partitions(n)
+    s_n = sn(n)
+ 
     for p in _partitions:
         start = time.time()
         f = FerrersDiagram(p)
-        tabs = f.tableaux
-        total_tabs += len(tabs)
 
+        for perm in s_n:
+            y = yor(f, perm)
         done = time.time() - start
-        #print('Time to create {:5} tableaux for partition {:25} : {:.3f}'.format(len(tabs), str(p), done))
-        #print('-' * 80)
-    print('Dimensions: {}'.format(dims))
-    print('Sq dims: {} | 8!: {}'.format(sum(x * x for x in dims), math.factorial(8)))
-    print('Total tabs for partitions of 8: {}'.format(total_tabs))
-    tend = time.time() - tstart
-    print('Total time to find all tableaux: {:3f}'.format(tend))
+        print('-' * 80)
 
-    cache_size = 0
-    mats = {}
-    for k, v in YoungTableau.CACHE.items():
-        cache_size += len(v)
-        mats[k] = np.random.random((len(v), len(v)))
-    print('Cache size: {}'.format(cache_size))
-    check_memory()
+    tend = time.time() - tstart
+    print('Total time compute yor matrices for S_{}: {:3f}'.format(n, tend))
+    print(CACHE)
 
 if __name__ == '__main__':
-    pass
+    n = int(sys.argv[1])
+    benchmark(n)

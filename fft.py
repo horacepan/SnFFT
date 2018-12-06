@@ -1,3 +1,4 @@
+import sys
 import time
 import pdb
 import numpy as np
@@ -12,10 +13,13 @@ from perm2 import sn as sn2
 # can use ysemi or yor
 irrep = yor
 
-def fft_full(f, n):
+def ft_full(f, n, algo='fft'):
     '''
+    Computes the fourier transform using either the fft or the slow fourier transform.
     f: a function from S_n -> \mathbb{R}
     n: integer
+    algo: string
+
     Returns: a dictionary mapping FerrersDiagrams(which index your irreps) to irrep matrices
     '''
     fourier_parts = {}
@@ -23,7 +27,10 @@ def fft_full(f, n):
 
     for p in parts:
         ferrers = FerrersDiagram(p)
-        fourier_parts[ferrers] = fft(f, ferrers)
+        if algo == 'fft':
+            fourier_parts[ferrers] = fft2(f, ferrers)
+        else:
+            fourier_parts[ferrers] = fourier_transform2(f, ferrers)
 
     return fourier_parts
 
@@ -157,4 +164,4 @@ def benchmark():
     print('yor cache hits: {}'.format(CACHE['hit']))
 
 if __name__ == '__main__':
-    benchmark()
+    pass

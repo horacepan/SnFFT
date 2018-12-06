@@ -65,6 +65,9 @@ class Perm2:
 
         return cyc_decomp
 
+    def to_tup(self):
+        return tuple(self._map[i] for i in range(1, self.size+1))
+
 def sn(n):
     if n in SN_CACHE:
         return SN_CACHE[n]
@@ -75,6 +78,7 @@ def sn(n):
 
 def test():
     for n in range(2,11):
+        print('n = {}'.format(n))
         f = lambda x, y: x*y
         start = time.time()
         for i in range(10000):
