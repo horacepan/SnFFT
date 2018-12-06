@@ -1,6 +1,9 @@
+from cube import Cube
+import pdb
 '''
 The contains a barebones implementation of manipulating a 2x2 Rubiks Cube.
 '''
+
 FACES = ['u', 'd', 'l', 'r', 'f', 'b']
 COLORS = ['G', 'B', 'R', 'M', 'W', 'Y']
 def init_2cube():
@@ -31,6 +34,28 @@ def cycle_cc(s):
 
 def make_cube_str(u, d, l, r, f, b):
     return '{}{}{}{}{}{}'.format(u,d,l,r,f,b)
+
+def neighbors(cube_str):
+    nbrs = [
+        rot_u(cube_str),
+        rot_d(cube_str),
+        rot_l(cube_str),
+        rot_r(cube_str),
+        rot_f(cube_str),
+        rot_b(cube_str),
+        rot_iu(cube_str),
+        rot_id(cube_str),
+        rot_il(cube_str),
+        rot_ir(cube_str),
+        rot_if(cube_str),
+        rot_ib(cube_str)
+    ]
+    return nbrs
+
+def render(cube_str):
+    # TODO: refactor the cube render function
+    cube = Cube.from_str(cube_str)
+    cube.render()
 
 # TODO: this is hardcoded for 2x2. Should make it generic for nxn
 def rot_u(cube_str):
@@ -294,3 +319,7 @@ def rot_ib(cube_str):
         b_face
     )
 
+if __name__ == '__main__':
+    cube = init_2cube()
+    c2 = rot_d(rot_u(cube))
+    render(cube)

@@ -434,6 +434,5 @@ if __name__ == '__main__':
     #test_str_init()
     #test_onehot_init()
     cube = Cube(2)
-    cube.random_step(10)
     print(cube.str_state())
     cube.render()
