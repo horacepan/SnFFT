@@ -9,3 +9,4 @@ For a thorough introduction to FFTs over the symmetric group, check out the foll
 
 ## Requirements
 * numpy
+* python3 (nothing in here absolutely requires python3 but most of the printing uses string [formatting](https://docs.python.org/3.5/library/functions.html#format) which is slightly different in 3)
