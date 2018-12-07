@@ -23,14 +23,14 @@ def test():
                 rotated_cube = Cube.from_str(rotated)
                 rotated_cube.render()
                 exit()
-             
+
             cube.random_step(1)
 
     print('All good!')
 
 def benchmark(k=1000):
     '''
-    Compare cube manipulation using Cube object versus pure string cube implementation 
+    Compare cube manipulation using Cube object versus pure string cube implementation
     '''
     cube = Cube(2)
     cube.random_step(20)
