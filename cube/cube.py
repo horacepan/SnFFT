@@ -55,8 +55,8 @@ class Cube:
         self.size = size
         self.u = np.array([['G' for _ in range(size)] for _ in range(size)])
         self.d = np.array([['B' for _ in range(size)] for _ in range(size)])
-        self.l = np.array([['R' for _ in range(size)] for _ in range(size)])
         self.r = np.array([['M' for _ in range(size)] for _ in range(size)])
+        self.l = np.array([['R' for _ in range(size)] for _ in range(size)])
         self.f = np.array([['W' for _ in range(size)] for _ in range(size)])
         self.b = np.array([['Y' for _ in range(size)] for _ in range(size)])
         self.move_history = []

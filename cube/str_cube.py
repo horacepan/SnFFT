@@ -4,7 +4,10 @@ import pdb
 The contains a barebones implementation of manipulating a 2x2 Rubiks Cube.
 '''
 
-FACES = ['u', 'd', 'l', 'r', 'f', 'b']
+#FACES = ['u', 'd',  'r', 'l', 'f', 'b']
+#COLORS = ['G', 'B', 'M', 'R', 'W', 'Y']
+FACES = ['u', 'd',  'l', 'r', 'f', 'b']
+NUM_MAP = {i: f for i, f in enumerate(FACES)}
 COLORS = ['G', 'B', 'R', 'M', 'W', 'Y']
 def init_2cube():
     cube = ''
@@ -65,6 +68,26 @@ def make_cube_str_dict(face_dict):
     )
 
 def neighbors(cube_str):
+    nbrs = [
+        rot_u(cube_str),
+        rot_d(cube_str),
+        rot_l(cube_str),
+        rot_r(cube_str),
+        rot_f(cube_str),
+        rot_b(cube_str),
+        rot_iu(cube_str),
+        rot_id(cube_str),
+        rot_il(cube_str),
+        rot_ir(cube_str),
+        rot_if(cube_str),
+        rot_ib(cube_str)
+    ]
+    return nbrs
+
+def neighbors_fixed_core(cube_str):
+    '''
+    This should give you 24x fewer states due to the isometries of the cube.
+    '''
     nbrs = [
         rot_u(cube_str),
         rot_d2(cube_str),
