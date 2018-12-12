@@ -1,3 +1,4 @@
+import random
 from cube import Cube
 import pdb
 '''
@@ -7,7 +8,11 @@ The contains a barebones implementation of manipulating a 2x2 Rubiks Cube.
 #FACES = ['u', 'd',  'r', 'l', 'f', 'b']
 #COLORS = ['G', 'B', 'M', 'R', 'W', 'Y']
 FACES = ['u', 'd',  'l', 'r', 'f', 'b']
-NUM_MAP = {i: f for i, f in enumerate(FACES)}
+ALL_ROTS = [
+    'u', 'd',  'l', 'r', 'f', 'b',
+    'iu', 'id',  'il', 'ir', 'if', 'ib'
+]
+FACE_INDEX = {f: idx for idx, f in enumerate(FACES)}
 COLORS = ['G', 'B', 'R', 'M', 'W', 'Y']
 def init_2cube():
     cube = ''
@@ -17,15 +22,15 @@ def init_2cube():
 
 def get_face(cube_str, f):
     assert f in FACES
-    f_index = FACES.index(f)
-    return cube_str[f_index * 4: f_index*4 + 4]
+    f_idx = FACE_INDEX[f]
+    return cube_str[f_idx * 4: f_idx * 4 + 4]
 
 def rotate(str_cube, f):
     rot_func = eval('rot_{}'.format(f))
     rot_func(str_cube)
     return rot_func(str_cube)
 
-def swap_faces(cube_str, *face_cycles):
+def swap_faces(cube_str, face_cycles):
     '''
     cube_str: string representing a cube
     face_cycles: list of tuples of faces (letters in FACES)
@@ -45,13 +50,38 @@ def swap_faces(cube_str, *face_cycles):
     return make_cube_str_dict(new_cube)
 
 def cycle(s):
+    '''
+    s: length 4 string representing the face of a 2x2 cube
+        s[0]s[1]
+        s[2]s[3]
+    Returns: A string representing a 90 degree clockwise rotation of the input face
+    '''
     return '{}{}{}{}'.format(
         s[2], s[0], s[3], s[1]
     )
 
 def cycle_cc(s):
+    '''
+    s: length 4 string representing the face of a 2x2 cube
+        s[0]s[1]
+        s[2]s[3]
+    Returns: A string representing a 90 degree clockwise rotation of the input face
+    '''
+
     return '{}{}{}{}'.format(
         s[1], s[3], s[0], s[2]
+    )
+
+def cycle_180(s):
+    '''
+    s: length 4 string representing the face of a 2x2 cube
+    Given a face:    s[0]s[1]
+                     s[2]s[3]
+    Return the face: s[3][s2] which is represented as a 1-d string: s[3]s[2]s[1]s[0]
+                     s[1]s[0]
+    '''
+    return '{}{}{}{}'.format(
+        s[3], s[2], s[1], s[0]
     )
 
 def make_cube_str(u, d, l, r, f, b):
@@ -395,6 +425,26 @@ def rot_b2(cube_str):
 def rot_ib2(cube_str):
     return rot_if(cube_str)
 
+def rot_z(cube_str, times=1):
+    '''Rotate entire cube clockwise about the z axis'''
+    for _ in range(times):
+        cube_str = rot_u(rot_d(cube_str))
+    return cube_str
+
+def rot_x(cube_str, times=1):
+    '''Rotate entire cube clockwise about the x axis(through the left/right faces'''
+    for _ in range(times):
+        cube_str = rot_l(rot_r(cube_str))
+    return cube_str
+
+def rot_y(cube_str, times=1):
+    '''Rotate entire cube clockwise about the y axis(through the f/b faces)
+    (front face on top)
+    '''
+    for _ in range(times):
+        cube_str = rot_f(rot_ib(cube_str))
+    return cube_str
+
 def check_same():
     # Check that rotating the cube doesnt do anything
     cube = init_2cube()
@@ -416,10 +466,18 @@ def check_same():
     assert cube == rot_b2(rot_if(cube))
     print('f/b okay')
 
+def scramble(cube, n=1):
+    '''
+    Performs n random moves to the input cube
+    cube: a string representing the cube state
+    n: int, number of random moves to make
+
+    Returns a cube string.
+    '''
+    for _ in range(n):
+        f = random.choice(ALL_ROTS)
+        cube = rotate(cube, f)
+    return cube
 
 if __name__ == '__main__':
-    check_same()
-    #cube = init_2cube()
-    #for n in neighbors(cube):
-    #    render(n)
-    #    print('===')
+    pass
