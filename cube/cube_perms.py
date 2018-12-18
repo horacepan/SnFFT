@@ -57,6 +57,22 @@ def rot_permutations(cube):
     perm_strs.extend(diag_rots)
     return perm_strs
 
+def str_to_wreath(cube_str):
+    cubie_map = {
+        'f': ['fru', 'frd', 'fld', 'flu'],
+        'b': ['blu', 'bld', 'brd', 'bru'],
+        'r': ['rbu', 'rbd', 'rfd', 'rfu'],
+        'l': ['lfu', 'lfd', 'lbd', 'lbu'],
+        'u': ['urb', 'urf', 'ulf', 'ulb'],
+        'd': ['drf', 'drb', 'dlb', 'dlf'],
+    }
+
+    # need to map the cubies to orientations.
+    # fru -> 0, fur -> 1, etc
+    color_map: {
+
+    }
+
 def test_permutations():
     cube = init_2cube()
     perms = rot_permutations(cube)

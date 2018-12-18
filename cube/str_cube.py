@@ -1,3 +1,4 @@
+import time
 import random
 from cube import Cube
 import pdb
@@ -7,13 +8,46 @@ The contains a barebones implementation of manipulating a 2x2 Rubiks Cube.
 
 #FACES = ['u', 'd',  'r', 'l', 'f', 'b']
 #COLORS = ['G', 'B', 'M', 'R', 'W', 'Y']
+FACE_COLOR_MAP = {
+    'u': 'G',
+    'd': 'B',
+    'r': 'M',
+    'l': 'R',
+    'f': 'W',
+    'b': 'Y',
+}
 FACES = ['u', 'd',  'l', 'r', 'f', 'b']
+FACE_START_IDX = {f: 4 * idx for idx, f in enumerate(FACES)}
 ALL_ROTS = [
     'u', 'd',  'l', 'r', 'f', 'b',
     'iu', 'id',  'il', 'ir', 'if', 'ib'
 ]
 FACE_INDEX = {f: idx for idx, f in enumerate(FACES)}
 COLORS = ['G', 'B', 'R', 'M', 'W', 'Y']
+IDX_MAP = {
+    0: lambda s: s[0] + s[1] + s[2],
+    1: lambda s: s[0] + s[1] + s[2],
+    2: lambda s: s[0] + s[1] + s[2],
+    3: lambda s: s[0] + s[1] + s[2],
+    4: lambda s: s[0] + s[1] + s[2],
+    5: lambda s: s[0] + s[1] + s[2],
+    6: lambda s: s[0] + s[1] + s[2],
+    7: lambda s: s[0] + s[1] + s[2],
+}
+# MAP from cubie(3 letter string rep to orientation
+CUBIES = ['urf', 'drf', 'dlf', 'ulf', 'ulb', 'dlb', 'drb', 'urb']
+COLORED_CUBIES = [''.join([FACE_COLOR_MAP[f] for f in c]) for c in CUBIES]
+COLORED_CUBIE_ORS = {}
+CUBIE_ORS = {}
+for c, _c in zip(COLORED_CUBIES, CUBIE_ORS):
+    COLORED_CUBIE_ORS[c] = 0
+    COLORED_CUBIE_ORS[c[1] + c[0] + c[2]] = 1 
+    COLORED_CUBIE_ORS[c[1] + c[2] + c[0]] = 2
+
+    CUBIE_ORS[_c] = 0
+    CUBIE_ORS[_c[1] + _c[0] + _c[2]] = 1 
+    CUBIE_ORS[_c[1] + _c[2] + _c[0]] = 2
+
 def init_2cube():
     cube = ''
     for c, f in zip(COLORS, FACES):
@@ -24,6 +58,22 @@ def get_face(cube_str, f):
     assert f in FACES
     f_idx = FACE_INDEX[f]
     return cube_str[f_idx * 4: f_idx * 4 + 4]
+
+def get_facet(cube_str, f, idx):
+    '''
+    cube_str: string representation of the cube
+    f: char of the face, an element of the global var FACES
+    idx: index of the cubie
+
+    Returns the length 3 string of the 3 colors of the given cubie
+    '''
+    return cube_str[FACE_START_IDX[f] + idx]
+
+def get_facet_slow(cube_str, f, idx):
+    '''
+    See get_facet
+    '''
+    return get_face(cube_str, f)[idx]
 
 def rotate(str_cube, f):
     rot_func = eval('rot_{}'.format(f))
@@ -479,5 +529,85 @@ def scramble(cube, n=1):
         cube = rotate(cube, f)
     return cube
 
+def get_cubie(c, cube_idx):
+    '''
+    string: 
+    '''
+    # do i want to just have a lambda function that gets accessed via a dict?
+    if cube_idx == 0: # urf
+        return get_facet(c,'u', 3) + get_facet(c,'r', 0) + get_facet(c,'f', 1)
+    elif cube_idx == 1: # drf
+        return get_facet(c,'d', 1) + get_facet(c,'r', 2) + get_facet(c,'f', 3)
+    elif cube_idx == 2: # dlf
+        return get_facet(c,'d', 0) + get_facet(c,'l', 3) + get_facet(c,'f', 2)
+    elif cube_idx == 3: # ulf
+        return get_facet(c,'u', 2) + get_facet(c,'l', 1) + get_facet(c,'f', 0)
+    elif cube_idx == 4: # ulb
+        return get_facet(c,'u', 0) + get_facet(c,'l', 0) + get_facet(c,'b', 1)
+    elif cube_idx == 5: # dlb
+        return get_facet(c,'d', 2) + get_facet(c,'l', 2) + get_facet(c,'b', 3)
+    elif cube_idx == 6: # drb
+        return get_facet(c,'d', 3) + get_facet(c,'r', 3) + get_facet(c,'b', 2)
+    elif cube_idx == 7: # urb
+        return get_facet(c,'u', 1) + get_facet(c,'r', 1) + get_facet(c,'b', 0)
+    else:
+        raise ValueError('Invalid cube index {}'.format(cube_idx))
+
+def cubie_orientation(cube_str, cube_idx):
+    '''
+    cube_str: string representing a cube
+    cube_idx: int in [0, ..., 7]
+    '''
+    cubie = get_cubie(cube_str, cube_idx)
+    #colored_cubie = ''.join([FACE_COLOR_MAP[f] for f in cubie])
+    #if cubie not in COLORED_CUBIE_ORS:
+    #    pdb.set_trace()
+    if 'G' in cubie:
+        return cubie.index('G')
+
+    if 'B' in cubie:
+        return cubie.index('B')
+    pdb.set_trace()
+    return COLORED_CUBIE_ORS.get(cubie, None)
+
+def orientation(cube_str):
+    '''
+    cube_str: string representing a cube
+    Returns an 8-tuple of the cube orientation
+    '''
+    return tuple(cubie_orientation(cube_str, cube_idx) for cube_idx in range(8))
+
+def benchmark_face_idx(n):
+    cubes = [scramble(init_2cube(), n=30) for _ in range(n)]
+    faces = [random.choice(FACES) for _ in range(n)]
+    idx = [random.choice(range(4)) for _ in range(n)]
+
+    zipped = zip(cubes, faces, idx)
+    slow_start = time.time()
+    slow_res = [get_face_cubie_slow(c, f, idx) for (c, f, idx) in zipped]
+    slow_elapsed = time.time() - slow_start
+
+    zipped = zip(cubes, faces, idx)
+    start = time.time()
+    fast_res  = [get_face_cubie(c, f, idx) for (c, f, idx) in zipped]
+    elapsed = time.time() - start
+
+    print('Slow time: {:.4f}'.format(slow_elapsed))
+    print('Fast time: {:.4f}'.format(elapsed))
+
+    for a, b in zip(slow_res, fast_res):
+        if a != b:
+            print('DIFFERENT!')
+            break
+    print('All good!')
+
+def delta(c, c2):
+    return tuple(a-b for a, b in zip(c, c2))
+
 if __name__ == '__main__':
-    pass
+    c = init_2cube()
+    print(orientation(c))
+    for f in FACES:
+        c2 = rotate(c, f)
+        or2 = orientation(c2)
+        print('Rotate {} | {}'.format(f, or2))
