@@ -6,10 +6,17 @@ from perm import Perm
 
 SN_CACHE = {}
 class Perm2:
-    def __init__(self, p_map, n):
+    def __init__(self, p_map, n, tup_rep=None):
         self._map = p_map
         self.size = n
         self.cycle_decomposition = self._cycle_decomposition()
+        self.tup_rep = self.get_tup_rep() if tup_rep is None else tup_rep
+
+    def get_tup_rep(self):
+        lst = []
+        for i in range(1, len(self._map) + 1):
+            lst.append(self._map.get(i, i))
+        return tuple(lst)
 
     @staticmethod
     def from_lst(lst):
@@ -23,11 +30,8 @@ class Perm2:
         return self._map.get(x, x)
 
     def __repr__(self):
-        # make the cycle decomposition
-        lst = []
-        for i in range(1, len(self._map) + 1):
-            lst.append(self._map.get(i, i))
-        return str(lst)
+        # mostly for debugging so dont care about recomputing this conversion
+        return str(self.tup_rep)
 
     def __mul__(self, other):
         new_dict = {}

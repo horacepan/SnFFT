@@ -1,3 +1,4 @@
+import pickle
 import sys
 from scipy.sparse import csr_matrix, coo_matrix
 import pdb
@@ -57,15 +58,15 @@ def yor(ferrers, permutation):
     Returns: an irrep matrix of size d x d, where d is the number of standard tableaux of the
     given FerrersDiagram shape
     '''
-    if (ferrers, permutation) in YOR_CACHE:
+    if (ferrers, permutation.tup_rep) in YOR_CACHE:
         CACHE['hit'] += 1
-        return YOR_CACHE[(ferrers, permutation)]
+        return YOR_CACHE[(ferrers.partition, permutation.tup_rep)]
 
     if all(map(lambda x: len(x) <= 1, permutation.cycle_decomposition)):
         # TODO: make a static/class function for this
         n = len(FerrersDiagram.TABLEAUX_CACHE[ferrers.partition])
-        YOR_CACHE[(ferrers, permutation)] = np.eye(n)
-        return YOR_CACHE[(ferrers, permutation)]
+        YOR_CACHE[(ferrers.partition, permutation.tup_rep)] = np.eye(n)
+        return YOR_CACHE[(ferrers.partition, permutation.tup_rep)]
 
     res = None
     for cycle in permutation.cycle_decomposition:
@@ -78,7 +79,7 @@ def yor(ferrers, permutation):
             else:
                 res = res.dot(y)
 
-    YOR_CACHE[(ferrers, permutation)] = res
+    YOR_CACHE[(ferrers.partition, permutation.tup_rep)] = res
     return res
 
 def yor_trans(ferrers, transposition):
@@ -193,6 +194,7 @@ def benchmark(n):
 
         for perm in s_n:
             y = yor(f, perm)
+            pdb.set_trace()
         done = time.time() - start
         print('-' * 80)
 
@@ -200,6 +202,20 @@ def benchmark(n):
     print('Total time compute yor matrices for S_{}: {:3f}'.format(n, tend))
     print(CACHE)
 
+def load_yor(fname, partition):
+    with open(fname, 'rb') as f:
+        yor_dict = pickle.load(f)
+        # mapping form permutation in list form to numpy array
+        for perm, mat in yor_dict.items():
+            YOR_CACHE[(partition, perm)] = mat
+
+        return yor_dict
+
 if __name__ == '__main__':
-    n = int(sys.argv[1])
-    benchmark(n)
+    #n = int(sys.argv[1])
+    #benchmark(n)
+    fname = '/local/hopan/irreps/s_8/4_4.pkl'
+    partition = (4,4)
+    yor_dict = load_yor(fname, partition)
+    f = FerrersDiagram((4,4))
+    pdb.set_trace()
