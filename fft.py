@@ -29,7 +29,9 @@ def ft_full(f, n, algo='fft'):
         ferrers = FerrersDiagram(p)
         if algo == 'fft':
             fourier_parts[ferrers] = fft2(f, ferrers)
-        else:
+        elif algo == 'ft1':
+            fourier_parts[ferrers] = fourier_transform(f, ferrers)
+        elif algo == 'ft2':
             fourier_parts[ferrers] = fourier_transform2(f, ferrers)
 
     return fourier_parts
@@ -149,19 +151,28 @@ def fourier_transform2(f, ferrers):
 
     return res
 
-def benchmark():
-    start = time.time()
-    f = lambda x: 1.2 if x[1] > 1 else 3
-    parts = partitions(6)
-    for p in parts:
-        p_start = time.time()
-        ferrers = FerrersDiagram(p)
-        fft_res = fft2(f, ferrers)
-        p_end = time.time()
-        print('Partition: {:20} | Dim: {:10} | Time: {:.2f}'.format(str(p), str(fft_res.shape), p_end-p_start))
-    end = time.time()
-    print('elapsed: {:.2f}'.format(end - start))
-    print('yor cache hits: {}'.format(CACHE['hit']))
+def benchmark(n):
+    id_f = lambda x: 1
+    sn(n)
+    sn2(n)
+
+    start_1 = time.time()
+    full_transform_2 = ft_full(id_f, n, 'ft1')
+    end_1 = time.time()
+
+    start_2 = time.time()
+    full_transform2 = ft_full(id_f, n, 'ft2')
+    end_2 = time.time()
+
+    #for p in parts:
+    #    p_start = time.time()
+    #    ferrers = FerrersDiagram(p)
+    #    fft_res = fft2(f, ferrers)
+    #    p_end = time.time()
+    #    print('Partition: {:20} | Dim: {:10} | Time: {:.2f}'.format(str(p), str(fft_res.shape), p_end-p_start))
+    print('Full transform 1 | Elapsed: {:.2f}'.format(end_1 - start_1))
+    print('Full transform 2 | Elapsed: {:.2f}'.format(end_2 - start_2))
+    #pdb.set_trace()
 
 if __name__ == '__main__':
-    pass
+    benchmark(7)

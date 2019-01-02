@@ -27,7 +27,7 @@ def bfs(root):
     while to_visit:
         curr, dist = to_visit.popleft()
 
-        for nbr in neighbors(curr):
+        for nbr in neighbors_fixed_core(curr):
             if nbr not in dist_dict:
                 to_visit.append((nbr, dist + 1))
                 dist_dict[nbr] = dist + 1

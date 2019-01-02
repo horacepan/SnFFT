@@ -161,6 +161,7 @@ def make_cube_str_dict(face_dict):
         face_dict['b']
     )
 
+'''
 def neighbors(cube_str):
     nbrs = [
         rot_u(cube_str),
@@ -177,6 +178,7 @@ def neighbors(cube_str):
         rot_ib(cube_str)
     ]
     return nbrs
+'''
 
 def neighbors_fixed_core(cube_str):
     '''
@@ -492,7 +494,7 @@ def rot_ib2(cube_str):
 def rot_z(cube_str, times=1):
     '''Rotate entire cube clockwise about the z axis'''
     for _ in range(times):
-        cube_str = rot_u(rot_d(cube_str))
+        cube_str = rot_u(rot_d2(cube_str))
     return cube_str
 
 def rot_x(cube_str, times=1):
@@ -529,6 +531,22 @@ def check_same():
     assert cube == rot_if(rot_b2(cube))
     assert cube == rot_b2(rot_if(cube))
     print('f/b okay')
+
+def scramble2(cube, n):
+    '''
+    Scrambles the cube randomly and returns the cube string and the list of moves applied
+    cube: string of cube
+    n: int, num moves to apply
+    Returns: tuple of the cube string and a list of moves applied
+    '''
+    moves = []
+
+    for _ in range(n):
+        f = random.choice(ALL_ROTS)
+        cube = rotate(cube, f)
+        moves.append(f)
+
+    return cube, moves
 
 def scramble(cube, n=1):
     '''

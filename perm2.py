@@ -23,6 +23,11 @@ class Perm2:
         _dict = {idx+1: val for idx, val in enumerate(lst)}
         return Perm2(_dict, len(lst))
 
+    @staticmethod
+    def from_tup(tup):
+        _dict = {idx+1: val for idx, val in enumerate(tup)}
+        return Perm2(_dict, len(tup), tup)
+
     def __call__(self, x):
         return self._map.get(x, x)
 
@@ -44,7 +49,7 @@ class Perm2:
         return Perm2(new_dict, self.size)
 
     def __len__(self):
-        return len(self._map)
+        return self.size
 
     def _cycle_decomposition(self):
         cyc_decomp = []

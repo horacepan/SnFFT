@@ -57,6 +57,7 @@ def rot_permutations(cube):
     perm_strs.extend(diag_rots)
     return perm_strs
 
+
 def str_to_wreath(cube_str):
     cubie_map = {
         'f': ['fru', 'frd', 'fld', 'flu'],
@@ -93,7 +94,15 @@ def time_perms(n):
     end = time.time()
     print('n = {:7s} | Isometry computation time {:.2f}'.format(str(n), end-start))
 
+def test_2():
+    c = init_2cube()
+    for idx in range(100):
+        c2 = scramble(c, idx)
+        for cr in rot_permutations(c2):
+            p = get_s8(cr)
+            ori = orientation(c2)
+
+    print('All good')
+
 if __name__ == '__main__':
-    for n in [10, 100, 1000, 10000, 100000]:
-        time_perms(n)
-    test_permutations()
+    test_2()

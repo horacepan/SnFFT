@@ -21,6 +21,13 @@ class Perm:
             pdb.set_trace()
         self._map = self._init_map(cyc_decomp)
         self.decomp = self.canonical_cycle_decomp(cyc_decomp)
+        self.tup_rep = self.get_tup_rep()
+
+    def get_tup_rep(self):
+        lst = []
+        for i in range(1, len(self._map) + 1):
+            lst.append(self._map.get(i, i))
+        return tuple(lst)
 
     # TODO: this is really janky
     @staticmethod
