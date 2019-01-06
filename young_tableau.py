@@ -91,6 +91,8 @@ class FerrersDiagram:
         Returns: sorted list of the YoungTableau of the given shape/partition.
         '''
         tabs = []
+        if sum(self.partition) == 0:
+            return tabs
 
         # 1 is always the top left corner so no need to do this
         #for p in itertools.permutations(range(2, self.size+1)):
