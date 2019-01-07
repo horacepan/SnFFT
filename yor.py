@@ -10,6 +10,7 @@ import numpy as np
 from young_tableau import YoungTableau, FerrersDiagram
 from perm2 import sn
 
+# TODO: make this a tiered dict?
 YOR_CACHE = {}
 YOR_T_CACHE = {}
 CACHE = {'hit': 0, 'sparse_hit': 0}
@@ -194,7 +195,6 @@ def benchmark(n):
 
         for perm in s_n:
             y = yor(f, perm)
-            pdb.set_trace()
         done = time.time() - start
         print('-' * 80)
 
@@ -203,6 +203,7 @@ def benchmark(n):
     print(CACHE)
 
 def load_yor(fname, partition):
+    print('loading yor from: {}'.format(fname))
     with open(fname, 'rb') as f:
         yor_dict = pickle.load(f)
         # mapping form permutation in list form to numpy array
@@ -214,8 +215,3 @@ def load_yor(fname, partition):
 if __name__ == '__main__':
     #n = int(sys.argv[1])
     #benchmark(n)
-    fname = '/local/hopan/irreps/s_8/4_4.pkl'
-    partition = (4,4)
-    yor_dict = load_yor(fname, partition)
-    f = FerrersDiagram((4,4))
-    pdb.set_trace()

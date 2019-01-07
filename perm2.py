@@ -5,6 +5,21 @@ import time
 from perm import Perm
 
 SN_CACHE = {}
+class ProdPerm:
+    def __init__(self, *perms):
+        self.perms = perms
+        self.tup_rep = self.get_tup_rep()
+
+    def __mul__(self, other):
+        res = [a*b for a,b in zip(self.perms, other.perms)]
+        return ProdPerm(*res)
+
+    def get_tup_rep(self):
+        return tuple(p.tup_rep for p in self.perms)
+
+    def __repr__(self):
+        return str(self.tup_rep)
+
 class Perm2:
     def __init__(self, p_map, n, tup_rep=None):
         self._map = p_map
@@ -42,7 +57,7 @@ class Perm2:
         new_dict = {}
         # should take the max of the keys
         n = max(self.size, other.size)
-        for k in range(1, n):
+        for k in range(1, n+1):
             l = other._map.get(k, k)
             new_dict[k] = self._map.get(l, l)
 

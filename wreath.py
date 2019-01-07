@@ -1,16 +1,11 @@
 import itertools
-import matplotlib.pyplot as plt
 import pdb
 from young_tableau import FerrersDiagram
 from yor import yor, load_yor
 import numpy as np
 from utils import partitions, weak_partitions
-from perm2 import sn as sn
+import perm2
 
-class EmptyGroup:
-    def __next__(self):
-        return None
- 
 class WreathIrrep:
     def __init__(self, alpha, alpha_parts):
         '''
@@ -30,10 +25,7 @@ class WreathIrrep:
         self.irreps = self._gen_irreps()
 
     def _gen_irreps(self):
-        irrep_dict = {}
-        for cyc_irrep, part in self.alpha_parts.items():
-            ferrers = FerrersDiagram(part)
-            irrep_dict[cyc_irrep] = yor(ferrers)
+        pass
 
 def wreath_irrep(n, cyclic_order, weak_partition, partitions):
     '''
@@ -103,20 +95,30 @@ def load_partition(partition):
     fname = '/local/hopan/irreps/s_{}/{}.pkl'.format(n, '_'.join(map(str, partition)))
     return load_yor(fname, partition)
 
-def get_mat(yor_dict, perm):
-    return yor_dict[perm]
-
 def young_subgroup(weak_partition):
     '''
+    weak_partition: tuple of ints
 
+    Let alpha be the weak partition
+    Returns the generator for the product group S_alpha_0 x S_alpha_1 x ... x S_alpha_k
     '''
-    #sym_subgroups = [sn(p) for p in weak_partition if p > 0]
+    #sym_subgroups = [perm2.sn(p) for p in weak_partition if p > 0]
     sym_subgroups = [itertools.permutations(range(1, p+1)) for p in weak_partition if p > 0]
     return itertools.product(*sym_subgroups)
 
 def young_subgroup_yor(alpha, _parts):
     '''
-    Compute the wreath product group irreps of S_alpha]
+    Compute the wreath product group for the irreps indexed by the weak partition alpha
+    with partition components given by _parts
+    alpha: tuple of ints, where each part is nonnegative
+    _parts: list of partitions of the ints in alpha
+
+    Ex usage:
+        alpha = (4, 4)
+        parts = [(2,2), (3,1)]
+
+        alpha = (2, 3, 0)
+        parts = [(2,0), (2,1), ()]
     '''
     assert len(alpha) == 3, 'alpha must be length 3'
     assert sum(alpha) == 8, 'alpha must be a partition of 8'
@@ -129,7 +131,7 @@ def young_subgroup_yor(alpha, _parts):
     # iterate over s_alpha subgroup and compute tensor stuff
     for g in young_subgroup(alpha):
         # length of g should be length of nonzero_parts
-        ms = [get_mat(yd, perm) for yd, perm in zip(nonzero_parts, g)]
+        ms = [yd[perm] for yd, perm in zip(nonzero_parts, g)]
         wreath_dict[g] = np.kron(*ms)
 
     return wreath_dict
@@ -164,14 +166,13 @@ def compute_dims():
     print('Largest dim irrep: {}'.format(_max))
     print('Max irrep: {}'.format(max_irrep))
     print('Num irreps: {}'.format(len(all_dims)))
-    #plt.hist(all_dims, bins=20)
-    #plt.show()
+
+    '''
     srted_dict.sort(reverse=True)
     with open('dims.txt', 'w') as f:
         for d, ps in srted_dict:
             f.write('{:2} | {}, {}, {}\n'.format(str(d), str(ps[0]), str(ps[1]), str(ps[2])))
-    pdb.set_trace()
+    '''
 
 if __name__ == '__main__':
-    d = young_subgroup_yor((0, 4, 4), [(), (2, 2), (3, 1)])
-    print(len(d))
+    compute_dims()

@@ -81,6 +81,6 @@ class TestYoungTableau(unittest.TestCase):
             fft_result = fft2(f, ferrers)
             full_transform = fourier_transform2(f, ferrers)
             self.assertTrue(np.allclose(fft_result, full_transform))
-        print(CACHE)
+
 if __name__ == '__main__':
     unittest.main()
