@@ -17,6 +17,14 @@ def intersect(p1, p2):
     p2_tups = tup_set(p2)
     return tup_set(p1_tups.intersect(p2_tups))
 
+def check_equal(g1, g2):
+    '''
+    g1: list of Perm2
+    g2: list of Perm2
+    Returns true if g1 contains the same group elements as g2
+    '''
+    return set(g1) == set(g2)
+
 def left_coset(g, H):
     return [g * h for h in H]
 
@@ -104,5 +112,9 @@ if __name__ == '__main__':
     cos = coset_reps(s4, s22)
     for p in coset_reps(s4, s22):
         print(p.cycle_decomposition)
+
+    for p in coset_reps(s4, s22):
+        print('==============')
+        print(left_coset(p, s22))
     print(len(cos))
     # save coset reps?

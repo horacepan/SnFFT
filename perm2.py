@@ -97,6 +97,12 @@ class Perm2:
     def __len__(self):
         return self.size
 
+    def __hash__(self):
+        return hash(self.tup_rep)
+
+    def __eq__(self, other):
+        return isinstance(self, type(other)) and self.tup_rep == other.tup_rep
+
     def _cycle_decomposition(self):
         cyc_decomp = []
         curr_cycle = []
