@@ -63,17 +63,7 @@ class Perm2:
     def from_tup(tup):
         _dict = {idx+1: val for idx, val in enumerate(tup)}
         return Perm2(_dict, len(tup), tup)
-    '''
-    @staticmethod
-    def from_cyc(cycle):
-        lst = []
-        for idx, val in enumerate(cycle):
-            if idx == 0:
-                prev_idx = idx - 1
-           
-            lst[idx] =  
-        return Perm2()
-    '''
+
     def __call__(self, x):
         return self._map.get(x, x)
 
@@ -86,13 +76,12 @@ class Perm2:
 
     def __mul__(self, other):
         new_dict = {}
-        # should take the max of the keys
         n = max(self.size, other.size)
         for k in range(1, n+1):
             l = other._map.get(k, k)
             new_dict[k] = self._map.get(l, l)
 
-        return Perm2(new_dict, self.size)
+        return Perm2(new_dict, n)
 
     def __len__(self):
         return self.size
@@ -168,9 +157,7 @@ def test():
     #print('Time for orginal perm 2nd time: {:.2f}'.format(end - start))
 
 if __name__ == '__main__':
-    x = Perm2({1:4, 2:3, 3:2, 4:5, 5:1}, 5)
-    x_inv = x.inv()
-    print(x)
-    print(x_inv)
-    print(x*x_inv)
-    print(x_inv*x)
+    x = Perm2({1:2, 2:1}, 2)
+    y = Perm2({3:4, 4:3}, 4)
+    print(x*y)
+    print(y*x)

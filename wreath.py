@@ -1,3 +1,5 @@
+from functools import reduce
+from collections import Counter
 import itertools
 import pdb
 from young_tableau import FerrersDiagram
@@ -6,48 +8,59 @@ import numpy as np
 from utils import partitions, weak_partitions
 import perm2
 
-class WreathIrrep:
-    def __init__(self, alpha, alpha_parts):
-        '''
-        This class is an abstraction for the wreath product group of Z/kZ wreathed with S_n
-        alpha: weak partition
-        alpha_parts: dict of int to lists/tuples. Length of alpha_parts is of length nnz of alpha
-                     The keys of this dictionary are the irreps of Z/kZ (0, 1, ..., k-1)
+def dot(perm, cyc):
+    p_inv = perm.inv()
+    new_cyc = tuple(cyc[p_inv[i] - 1] for i in range(1, len(cyc) + 1))
+    p_cyc = CyclicGroup(new_cyc, cyc.order)
+    return p_cyc
 
-        Ex:
-            alpha = (2, 0, 1)
-            alpha_parts = {0: (1,1), 2: (1,)}
-        '''
-        self.cyclic_order = len(alpha)
-        self.n = sum(alpha)
-        self.alpha = alpha
-        self.alpha_parts = alpha_parts
-        self.irreps = self._gen_irreps()
+class CyclicGroup:
+    def __init__(self, cyc, order): 
+        self.cyc = cyc
+        self.size = len(cyc)
+        self.order = order
 
-    def _gen_irreps(self):
-        pass
+    def inv(self):
+        cyc = tuple((self.order - a) % self.order for a in self.cyc)
+        return CyclicGroup(cyc, self.order)
 
-def wreath_irrep(n, cyclic_order, weak_partition, partitions):
-    '''
-    We compute an irrep of the wreath product group: Z/cZ \wreath S_n
-    Recall that the irreps of the wreath product group are indexed by
-    weak partitions and partitions of the non-zero parts of the weak partition
+    def __mul__(self, other):
+        cyc = tuple((a+b) % self.order for a, b in zip(self.cyc, other.cyc))
+        return CyclicGroup(cyc, self.order)
 
-    The cyclic order gives us the number of irreps
-    n: integer. Size of the symmetric group
-    cyclic_order: size of the cyclic group
-    weak_partition: tuple of nonnegative ints. The contents should sum to n
-    partitions: list of partitions of the non-zero parts of the weak partition
+    def __add__(self, other):
+        return self.__mul__(other)
 
-    Ex usage:
-        wreath_irrep(5, 2, (3, 2), [(2,1), (1,1)])
-        wreath_irrep(6, 3, (4, 0, 2), [(2,1,1), (1,1)])
-    '''
+    def __repr__(self):
+        return '{}/{}'.format(str(self.cyc), self.order)
 
-    cyc_irreps = []
-    for i, cnt in enumerate(weak_partition):
-        if cnt > 0:
-            cyc_irreps.append(np.exp(2j*np.pi*i) / cyc_order)
+    def __len__(self):
+        return len(self.cyc)
+
+    def __getitem__(self, i):
+        try:
+            return self.cyc[i]
+        except:
+            pdb.set_trace()
+
+class WreathCycSn:
+    def __init__(self, cyc, perm):
+        assert perm.size == len(cyc)
+        self.cyc = cyc
+        self.perm = perm
+
+    def __mul__(self, w):
+        perm = self.perm * w.perm
+        cyc = self.cyc + dot(self.perm, w.cyc)
+        return WreathCycSn(cyc, perm)
+
+    def inv(self):
+        perm = self.perm.inv()
+        cyc = dot(self.perm.inv(), self.cyc.inv())
+        return WreathCycSn(cyc, perm)
+
+    def __repr__(self):
+        return '{} | {}'.format(self.cyc, self.perm)
 
 def cyclic_irreps(weak_partition):
     '''
@@ -65,23 +78,6 @@ def cyclic_irreps(weak_partition):
             cyc_irreps.extend([np.exp(2j*np.pi*i) / cyc_order] * cnt)
 
     return cyc_irreps
-
-def wreath_yor(weak_partition, _partitions, cyc_element, permutation):
-    '''
-    weak_partition: tuple of nonnegative ints. The contents should sum to n
-    partitions: list of partitions of the non-zero parts of the weak partition
-    cyc_element: tuple of ints, where each int is in the range 0, ..., n-1
-    permutation: Perm object
-    '''
-    n = sum(weak_partition)
-    cyc_irreps = cyclic_irreps(weak_partition)
-    cyc_part = np.diag(cyc_irreps)
-    perm_matrix = permutation.matrix()
-
-    yor_parts = []
-    for part in _partitions:
-        f = FerrersDiagram(part)
-        y = yor(ferrers, permutation)
 
 def load_partition(partition):
     '''
@@ -164,7 +160,7 @@ def young_subgroup_yor(alpha, _parts):
     for g in young_subgroup(alpha):
         # length of g should be length of nonzero_parts
         ms = [yd[perm] for yd, perm in zip(nonzero_parts, g)]
-        wreath_dict[g] = np.kron(*ms)
+        wreath_dict[g] = reduce(np.kron, ms)
 
     return wreath_dict
 
@@ -210,6 +206,11 @@ def compute_dims():
     '''
 
 if __name__ == '__main__':
-    g = list(young_subgroup_canonical((3, 2)))
-    for p in g:
-        print('Cycle decomposition: {:20} | tup rep: {:20}'.format(str(perm_from_young_tuple(p)), str(p)))
+    perm = perm2.Perm2.from_tup((1,3,4,2))
+    cyc = CyclicGroup((0, 1, 0, 1), 3)
+    w = WreathCycSn(cyc, perm)
+    w_inv = w.inv()
+    print('w: {}'.format(w))
+    print('w\': {}'.format(w_inv))
+    print('I: {}'.format(w*w_inv))
+    print('I: {}'.format(w_inv*w))

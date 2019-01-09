@@ -104,17 +104,4 @@ def young_subgroup_coset(n, alpha):
     return _coset_reps
 
 if __name__ == '__main__':
-    s4 = perm2.sn(4)
-    # need to convert this into a map?
-    #s22 = [perm2.Perm2.from_tup(t) for t in young_subgroup_canonical((2, 2))]
-    #s22 = [perm2.Perm2.from_tup((1, 2, 4, 3)), perm2.Perm2.eye(4)]
-    s22 = young_subgroup_perm((2,2))
-    cos = coset_reps(s4, s22)
-    for p in coset_reps(s4, s22):
-        print(p.cycle_decomposition)
-
-    for p in coset_reps(s4, s22):
-        print('==============')
-        print(left_coset(p, s22))
-    print(len(cos))
-    # save coset reps?
+    pass
