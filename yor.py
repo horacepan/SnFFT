@@ -215,3 +215,4 @@ def load_yor(fname, partition):
 if __name__ == '__main__':
     #n = int(sys.argv[1])
     #benchmark(n)
+    pass

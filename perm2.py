@@ -5,8 +5,20 @@ import time
 from perm import Perm
 
 SN_CACHE = {}
+
+def conjugate(x, g):
+    '''
+    x: Perm2 object
+    g: Perm2 object
+    returns x conjugated by g
+    '''
+    return g.inv() * x * g
+    
 class ProdPerm:
     def __init__(self, *perms):
+        '''
+        perms: list of Perm2 objects
+        '''
         self.perms = perms
         self.tup_rep = self.get_tup_rep()
 
@@ -20,11 +32,15 @@ class ProdPerm:
     def __repr__(self):
         return str(self.tup_rep)
 
+    def inv(self):
+        res = [p.inv() for p in self.perms]
+        return ProdPerm(*res)
+
 class Perm2:
-    def __init__(self, p_map, n, tup_rep=None):
+    def __init__(self, p_map, n, tup_rep=None, cyc_decomp=None):
         self._map = p_map
         self.size = n
-        self.cycle_decomposition = self._cycle_decomposition()
+        self.cycle_decomposition = self._cycle_decomposition() if cyc_decomp is None else cyc_decomp
         self.tup_rep = self.get_tup_rep() if tup_rep is None else tup_rep
 
     def get_tup_rep(self):
@@ -32,6 +48,11 @@ class Perm2:
         for i in range(1, len(self._map) + 1):
             lst.append(self._map.get(i, i))
         return tuple(lst)
+
+    @staticmethod
+    def eye(size):
+        p_map = {i:i for i in range(1, size+1)}
+        return Perm2(p_map, size)
 
     @staticmethod
     def from_lst(lst):
@@ -42,7 +63,17 @@ class Perm2:
     def from_tup(tup):
         _dict = {idx+1: val for idx, val in enumerate(tup)}
         return Perm2(_dict, len(tup), tup)
-
+    '''
+    @staticmethod
+    def from_cyc(cycle):
+        lst = []
+        for idx, val in enumerate(cycle):
+            if idx == 0:
+                prev_idx = idx - 1
+           
+            lst[idx] =  
+        return Perm2()
+    '''
     def __call__(self, x):
         return self._map.get(x, x)
 
@@ -51,7 +82,7 @@ class Perm2:
 
     def __repr__(self):
         # mostly for debugging so dont care about recomputing this conversion
-        return str(self.tup_rep)
+        return str(self.cycle_decomposition)
 
     def __mul__(self, other):
         new_dict = {}
@@ -92,6 +123,10 @@ class Perm2:
     def to_tup(self):
         return tuple(self._map[i] for i in range(1, self.size+1))
 
+    def inv(self):
+        rev_map = {v: k for k, v in self._map.items()}
+        return Perm2(rev_map, self.size)
+ 
 def sn(n):
     if n in SN_CACHE:
         return SN_CACHE[n]
@@ -127,4 +162,9 @@ def test():
     #print('Time for orginal perm 2nd time: {:.2f}'.format(end - start))
 
 if __name__ == '__main__':
-    test()
+    x = Perm2({1:4, 2:3, 3:2, 4:5, 5:1}, 5)
+    x_inv = x.inv()
+    print(x)
+    print(x_inv)
+    print(x*x_inv)
+    print(x_inv*x)

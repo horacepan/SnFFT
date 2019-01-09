@@ -95,6 +95,17 @@ def load_partition(partition):
     fname = '/local/hopan/irreps/s_{}/{}.pkl'.format(n, '_'.join(map(str, partition)))
     return load_yor(fname, partition)
 
+def perm_from_young_tuple(cyc_tup):
+    n = sum(map(len, cyc_tup))
+    lst = [0] * n
+    idx = 0
+    for cyc in cyc_tup:
+        for x in cyc:
+            lst[idx] = x
+            idx += 1
+
+    return perm2.Perm2.from_lst(lst)
+
 def young_subgroup(weak_partition):
     '''
     weak_partition: tuple of ints
@@ -106,6 +117,27 @@ def young_subgroup(weak_partition):
     sym_subgroups = [itertools.permutations(range(1, p+1)) for p in weak_partition if p > 0]
     return itertools.product(*sym_subgroups)
 
+def young_subgroup_perm(weak_partition):
+    return [perm_from_young_tuple(t) for t in young_subgroup_canonical(weak_partition)]
+
+def young_subgroup_canonical(weak_partition):
+    '''
+    This is not quite right...
+    '''
+    subgroups = []
+    idx = 1
+    for p in weak_partition:
+        if p == 0:
+            continue
+        subgroups.append(itertools.permutations(range(idx, idx+p)))
+        idx += p
+
+    #sym_subgroups = [itertools.permutations(range(1, p+1)) for p in weak_partition if p > 0]
+    return itertools.product(*subgroups)
+
+# This young subgroups that are direct products
+# But here, the young subgroup wont be a subgroup of S_n, where n = sum(alpha)
+# S_alpha, alpha=(4,4) will just be S_{1,2,3,4} x S_{1,2,3,4}
 def young_subgroup_yor(alpha, _parts):
     '''
     Compute the wreath product group for the irreps indexed by the weak partition alpha
@@ -137,6 +169,9 @@ def young_subgroup_yor(alpha, _parts):
     return wreath_dict
 
 def compute_dims():
+    '''
+    Compute the dimension of all the irreps of Z/3Z[S_8](aka 2x2 cube group)
+    '''
     res = 1
     tot = 0
     _max = 0
@@ -175,4 +210,6 @@ def compute_dims():
     '''
 
 if __name__ == '__main__':
-    compute_dims()
+    g = list(young_subgroup_canonical((3, 2)))
+    for p in g:
+        print('Cycle decomposition: {:20} | tup rep: {:20}'.format(str(perm_from_young_tuple(p)), str(p)))
