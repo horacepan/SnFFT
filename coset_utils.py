@@ -1,7 +1,48 @@
 import pdb
 import perm2
-from wreath import young_subgroup_canonical, young_subgroup, young_subgroup_perm
+import itertools
+#from wreath import young_subgroup_canonical, young_subgroup, young_subgroup_perm
 
+def perm_from_young_tuple(cyc_tup):
+    n = sum(map(len, cyc_tup))
+    lst = [0] * n
+    idx = 0
+    for cyc in cyc_tup:
+        for x in cyc:
+            lst[idx] = x
+            idx += 1
+
+    return perm2.Perm2.from_lst(lst)
+
+def young_subgroup(weak_partition):
+    '''
+    weak_partition: tuple of ints
+
+    Let alpha be the weak partition
+    Returns the generator for the product group S_alpha_0 x S_alpha_1 x ... x S_alpha_k
+    '''
+    #sym_subgroups = [perm2.sn(p) for p in weak_partition if p > 0]
+    sym_subgroups = [itertools.permutations(range(1, p+1)) for p in weak_partition if p > 0]
+    return itertools.product(*sym_subgroups)
+
+def young_subgroup_perm(weak_partition):
+    return [perm_from_young_tuple(t) for t in young_subgroup_canonical(weak_partition)]
+
+def young_subgroup_canonical(weak_partition):
+    '''
+    This is not quite right...
+    '''
+    subgroups = []
+    idx = 1
+    for p in weak_partition:
+        if p == 0:
+            continue
+        subgroups.append(itertools.permutations(range(idx, idx+p)))
+        idx += p
+
+    #sym_subgroups = [itertools.permutations(range(1, p+1)) for p in weak_partition if p > 0]
+    return itertools.product(*subgroups)
+#================================================================================================
 
 def tup_set(perms):
     return set([p.tup_rep for p in perms])
@@ -16,6 +57,13 @@ def intersect(p1, p2):
     p1_tups = tup_set(p1)
     p2_tups = tup_set(p2)
     return tup_set(p1_tups.intersect(p2_tups))
+
+def check_coset(g1, g2, H):
+    '''
+    Check if g1 and g2 are in the same coset
+    '''
+    s = set(left_coset(g1, H))
+    return (g2 in s)
 
 def check_equal(g1, g2):
     '''
@@ -104,4 +152,13 @@ def young_subgroup_coset(n, alpha):
     return _coset_reps
 
 if __name__ == '__main__':
-    pass
+    #G = perm2.sn(5)
+    G = perm2.sn(4) 
+    subgroup = young_subgroup_perm((2, 2))
+    print(subgroup)
+    for rep in coset_reps(G, subgroup):
+        print('======')
+        for g in left_coset(rep, subgroup):
+            print(g)
+    #print("Are {} and {} in the same coset".format())
+    #print(in_coset(g1, g2, H))

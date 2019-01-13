@@ -1,3 +1,4 @@
+import time
 from functools import reduce
 from collections import Counter
 import itertools
@@ -7,6 +8,7 @@ from yor import yor, load_yor
 import numpy as np
 from utils import partitions, weak_partitions
 import perm2
+from coset_utils import coset_reps, young_subgroup_canonical, young_subgroup_perm, young_subgroup, perm_from_young_tuple, tup_set
 
 def dot(perm, cyc):
     p_inv = perm.inv()
@@ -91,45 +93,18 @@ def load_partition(partition):
     fname = '/local/hopan/irreps/s_{}/{}.pkl'.format(n, '_'.join(map(str, partition)))
     return load_yor(fname, partition)
 
-def perm_from_young_tuple(cyc_tup):
-    n = sum(map(len, cyc_tup))
-    lst = [0] * n
+def canonical_order(tup_rep):
+    new_tup_rep = []
     idx = 0
-    for cyc in cyc_tup:
-        for x in cyc:
-            lst[idx] = x
-            idx += 1
+    for lvl, tup in enumerate(tup_rep):
+        if lvl == 0:
+            new_tup_rep.append(tup)
+        else:
+            tnew = tuple(idx + i for i in tup)
+            new_tup_rep.append(tnew)
+        idx += len(tup)
 
-    return perm2.Perm2.from_lst(lst)
-
-def young_subgroup(weak_partition):
-    '''
-    weak_partition: tuple of ints
-
-    Let alpha be the weak partition
-    Returns the generator for the product group S_alpha_0 x S_alpha_1 x ... x S_alpha_k
-    '''
-    #sym_subgroups = [perm2.sn(p) for p in weak_partition if p > 0]
-    sym_subgroups = [itertools.permutations(range(1, p+1)) for p in weak_partition if p > 0]
-    return itertools.product(*sym_subgroups)
-
-def young_subgroup_perm(weak_partition):
-    return [perm_from_young_tuple(t) for t in young_subgroup_canonical(weak_partition)]
-
-def young_subgroup_canonical(weak_partition):
-    '''
-    This is not quite right...
-    '''
-    subgroups = []
-    idx = 1
-    for p in weak_partition:
-        if p == 0:
-            continue
-        subgroups.append(itertools.permutations(range(idx, idx+p)))
-        idx += p
-
-    #sym_subgroups = [itertools.permutations(range(1, p+1)) for p in weak_partition if p > 0]
-    return itertools.product(*subgroups)
+    return tuple(new_tup_rep)
 
 # This young subgroups that are direct products
 # But here, the young subgroup wont be a subgroup of S_n, where n = sum(alpha)
@@ -157,12 +132,50 @@ def young_subgroup_yor(alpha, _parts):
     nonzero_parts = [load_partition(p) for p in _parts if sum(p) > 0]
     # group elements are in iterproduct(
     # iterate over s_alpha subgroup and compute tensor stuff
+    # currently the S_alpha looks like S_{1, ..., alpha_1} x S_{1, ..., alpha_2} x ... x S_{1, ..., alpha_n}
+    # but we'd like it to look like (1...alpha_1), (alpha_1+1 .... alpha_2), .... 
+
     for g in young_subgroup(alpha):
         # length of g should be length of nonzero_parts
         ms = [yd[perm] for yd, perm in zip(nonzero_parts, g)]
-        wreath_dict[g] = reduce(np.kron, ms)
+        # convert the permutation to the corresponding perm in S_{1, ..., alpha_1} x S_{alpha_1+1, ..., alpha_1+alpha_2} x ...
+        gprime = canonical_order(g) # (1,2,3,4)(1,2) -> (1,2,3,4)(5,6)
+        tup = tuple(i for t in gprime for i in t)
+        wreath_dict[tup] = reduce(np.kron, ms)
 
     return wreath_dict
+
+def wreath_yor(alpha, _parts):
+    '''
+    alpha: weak partition of 8 into 3 parts?
+    _parts: list of partitions of each part of alpha
+    Return a dict mapping group elmeent in S_8 -> rep
+    The rep actually needs to be a dictionary of tuples (i, j) -> matrix
+    where the i, j denote the i, j block in the matrix.
+    Ex:
+        alpha = (0, 0, 0, 0, 1, 1, 1, 1)
+        _parts = [(2,2), (3,1)]
+    '''
+    n = sum(alpha)
+    _sn = perm2.sn(n)
+    young_sub = young_subgroup_perm(alpha)
+    young_sub_set = tup_set(young_sub)
+    young_yor = young_subgroup_yor(alpha, _parts)
+    reps = coset_reps(_sn, young_sub)
+    rep_dict = {}
+    print('Len coset reps: {}'.format(len(reps)))
+    print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
+
+    for g in _sn:
+        g_rep = {}
+        for i, t_i in enumerate(reps):
+            for j, t_j in enumerate(reps):
+                ti_g_tj = t_i.inv() * g * t_j
+                if ti_g_tj.tup_rep in young_sub_set:
+                    g_rep[(i, j)] = young_yor[ti_g_tj.tup_rep]
+        rep_dict[g] = g_rep 
+
+    return rep_dict
 
 def compute_dims():
     '''
@@ -204,13 +217,33 @@ def compute_dims():
         for d, ps in srted_dict:
             f.write('{:2} | {}, {}, {}\n'.format(str(d), str(ps[0]), str(ps[1]), str(ps[2])))
     '''
-
-if __name__ == '__main__':
+def test_wreath_class():
     perm = perm2.Perm2.from_tup((1,3,4,2))
-    cyc = CyclicGroup((0, 1, 0, 1), 3)
+    cyc = CyclicGroup((0, 1, 0, 2), 3)
     w = WreathCycSn(cyc, perm)
     w_inv = w.inv()
     print('w: {}'.format(w))
     print('w\': {}'.format(w_inv))
     print('I: {}'.format(w*w_inv))
     print('I: {}'.format(w_inv*w))
+
+def test_ysubgroup():
+    alpha = (4, 2, 2)
+    _parts = ((3, 1), (1,1), (1,1))
+    yd = young_subgroup_yor(alpha, _parts) 
+    ks = list(yd.keys())
+    print('One key of young subgroup yor dict: {}'.format(ks[0]))
+    pdb.set_trace()
+
+def test_wreath():
+    start = time.time()
+    #alpha = (4, 2, 2)
+    alpha = (0, 7, 1)
+    _parts = ((), (4,3), (1,))
+    yd = wreath_yor(alpha, _parts)
+    ks = list(yd.keys())
+    print('Elapsed: {:.2f}'.format(time.time() - start))
+    pdb.set_trace()
+
+if __name__ == '__main__':
+    test_wreath() 
