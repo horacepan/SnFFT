@@ -5,7 +5,7 @@ import time
 from perm import Perm
 
 SN_CACHE = {}
-
+HITS = {'hits': 0}
 def conjugate(x, g):
     '''
     x: Perm2 object
@@ -38,10 +38,24 @@ class ProdPerm:
 
 class Perm2:
     def __init__(self, p_map, n, tup_rep=None, cyc_decomp=None):
-        self._map = p_map
         self.size = n
+        self._map = self._filled_map(p_map, self.size)
         self.cycle_decomposition = self._cycle_decomposition() if cyc_decomp is None else cyc_decomp
         self.tup_rep = self.get_tup_rep() if tup_rep is None else tup_rep
+
+        # add permutation to the cache
+        if self.size in SN_CACHE:
+            if (self.tup_rep not in SN_CACHE):
+                SN_CACHE[self.size][self.tup_rep] = self
+        elif self.size not in SN_CACHE:
+            SN_CACHE[self.size] = {}
+            SN_CACHE[self.size][self.tup_rep] = self
+
+    def _filled_map(self, _map, size):
+        for i in range(1, size+1):
+            if i not in _map:
+                _map[i] = i
+        return _map
 
     def get_tup_rep(self):
         lst = []
@@ -55,14 +69,20 @@ class Perm2:
         return Perm2(p_map, size)
 
     @staticmethod
-    def from_lst(lst):
-        _dict = {idx+1: val for idx, val in enumerate(lst)}
-        return Perm2(_dict, len(lst))
-
-    @staticmethod
     def from_tup(tup):
+        if len(tup) in SN_CACHE:
+            if tup in SN_CACHE[len(tup)]:
+                HITS['hits'] += 1
+                return SN_CACHE[len(tup)][tup]
+        else:
+            SN_CACHE[len(tup)] = {}
+
         _dict = {idx+1: val for idx, val in enumerate(tup)}
-        return Perm2(_dict, len(tup), tup)
+        perm = Perm2(_dict, len(tup), tup)
+
+        # store the thing
+        SN_CACHE[len(tup)][perm.tup_rep] = perm
+        return perm
 
     def __call__(self, x):
         return self._map.get(x, x)
@@ -75,6 +95,13 @@ class Perm2:
         return str(self.cycle_decomposition)
 
     def __mul__(self, other):
+        g = self.tup_rep
+        h = other.tup_rep
+        new_tup = tuple(g[h[i] - 1] for i in range(self.size))
+        return Perm2.from_tup(new_tup)
+
+    # deprecated
+    def mul2(self, other):
         new_dict = {}
         n = max(self.size, other.size)
         for k in range(1, n+1):
@@ -119,15 +146,29 @@ class Perm2:
         return tuple(self._map[i] for i in range(1, self.size+1))
 
     def inv(self):
+        rev_lst = [0] * self.size
+        for idx, v in enumerate(self.tup_rep):
+            # idx is 0 indexed, but v is 1 indexed?
+            rev_lst[v-1] = idx + 1
+        rev_tup = tuple(rev_lst) # surely theres a better way to do this?
+
+        if rev_tup in SN_CACHE[self.size]:
+            HITS['hits'] += 1
+            return SN_CACHE[self.size][rev_tup]
+        else:
+            rev_map = {v: k for k, v in self._map.items()}
+            return Perm2(rev_map, self.size)
         rev_map = {v: k for k, v in self._map.items()}
         return Perm2(rev_map, self.size)
+
  
 def sn(n):
     if n in SN_CACHE:
-        return SN_CACHE[n]
-    perm_lsts = permutations(range(1, n+1))
-    perms = [Perm2.from_lst(lst) for lst in perm_lsts]
-    SN_CACHE[n] = perms
+        return list(SN_CACHE[n].values())
+
+    perm_tups = permutations(range(1, n+1))
+    perms = [Perm2.from_tup(t) for t in perm_tups]
+    SN_CACHE[n] = {p.tup_rep: p for p in perms}
     return perms
 
 def test():
@@ -157,7 +198,10 @@ def test():
     #print('Time for orginal perm 2nd time: {:.2f}'.format(end - start))
 
 if __name__ == '__main__':
-    x = Perm2({1:2, 2:1}, 2)
+    x = Perm2({1:2, 2:1}, 4)
     y = Perm2({3:4, 4:3}, 4)
-    print(x*y)
-    print(y*x)
+    z = x * y
+    print(z)
+    z2 = x.mul2(y)
+    print(z2)
+    print(z == z2)

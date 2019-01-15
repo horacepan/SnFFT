@@ -39,7 +39,7 @@ def ft_full(f, n, algo='fft'):
 def fft2(f, ferrers):
     if ferrers.size == 1:
         #return np.eye(1) * f(Perm([(1, )]))
-        return np.eye(1) * f(Perm2({}, ferrers.size))
+        return np.eye(1) * f(Perm2.eye(ferrers.size))
 
 
     n = ferrers.size

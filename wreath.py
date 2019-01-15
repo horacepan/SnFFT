@@ -1,3 +1,4 @@
+import random
 import time
 from functools import reduce
 from collections import Counter
@@ -124,8 +125,8 @@ def young_subgroup_yor(alpha, _parts):
         parts = [(2,0), (2,1), ()]
     '''
     assert len(alpha) == 3, 'alpha must be length 3'
-    assert sum(alpha) == 8, 'alpha must be a partition of 8'
-    assert (alpha[1] * 1 + alpha[2] * 2) % 3 == 0, 'alpha must be a valid configuration'
+    #assert sum(alpha) == 8, 'alpha must be a partition of 8'
+    #assert (alpha[1] * 1 + alpha[2] * 2) % 3 == 0, 'alpha must be a valid configuration'
 
     wreath_dict = {}
     # load the irreps for each partition
@@ -165,6 +166,7 @@ def wreath_yor(alpha, _parts):
     rep_dict = {}
     print('Len coset reps: {}'.format(len(reps)))
     print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
+    cnts = np.zeros((len(reps), len(reps)))
 
     for g in _sn:
         g_rep = {}
@@ -173,50 +175,44 @@ def wreath_yor(alpha, _parts):
                 ti_g_tj = t_i.inv() * g * t_j
                 if ti_g_tj.tup_rep in young_sub_set:
                     g_rep[(i, j)] = young_yor[ti_g_tj.tup_rep]
+                    cnts[i, j] = cnts[i, j] + 1
+
         rep_dict[g] = g_rep 
 
-    return rep_dict
+    return rep_dict, cnts
 
-def compute_dims():
+def get_mat(g, yor_dict):
     '''
-    Compute the dimension of all the irreps of Z/3Z[S_8](aka 2x2 cube group)
-    '''
-    res = 1
-    tot = 0
-    _max = 0
-    _max_irrep = None
-    all_dims = []
-    dim_dict = {}
-    srted_dict = []
-    for pk in weak_partitions(8, 3):
-        if ((pk[1] * 1 + pk[2] * 2) % 3) != 0:
-            continue
+    g: perm2.Perm2 object
+    yor_dict: dict mapping perm2.Perm2 object -> (dict of (i, j) -> numpy matrix)
 
-        for p0 in partitions(pk[0]):
-            
-            pf0 = FerrersDiagram(p0)
-            for p1 in partitions(pk[1]):
-                pf1 = FerrersDiagram(p1)
-                for p2 in partitions(pk[2]):
-                    pf2 = FerrersDiagram(p2)
-                    dim = max(1, len(pf0.tableaux)) * max(1, len(pf1.tableaux)) * max(1, len(pf2.tableaux))
-                    all_dims.append(dim)
-                    dim_dict[(p0, p1, p2)] = dim
-                    srted_dict.append((dim, (p0, p1, p2)))
-                    if dim > _max:
-                        max_irrep = (p0, p1, p2)
-                        _max = dim
-
-    print('Largest dim irrep: {}'.format(_max))
-    print('Max irrep: {}'.format(max_irrep))
-    print('Num irreps: {}'.format(len(all_dims)))
-
+    Returns matrix for this ydict
     '''
-    srted_dict.sort(reverse=True)
-    with open('dims.txt', 'w') as f:
-        for d, ps in srted_dict:
-            f.write('{:2} | {}, {}, {}\n'.format(str(d), str(ps[0]), str(ps[1]), str(ps[2])))
+    yg = yor_dict[g]
+    vs = list(yg.values())
+    block_size = vs[0].shape[0]
+    size = len(yg) * block_size
+    mat = np.zeros((size, size))
+
+    for (i, j), v in yg.items():
+        x1, x2 = (block_size*i, block_size*i+block_size)
+        y1, y2 = (block_size*j, block_size*j+block_size)
+        mat[x1:x2, y1:y2] = v
+
+    return mat
+
+def mult(g, h, yd):
     '''
+    g: perm2.Perm2
+    h: perm2.Perm2
+    yd: dictionary mapping Perm2 objects -> (dicts of (i, j) int tuples -> numpy matrices)
+            which represent the wreath product matrices
+    Returns a numpy matrix
+    '''
+    mat_g = get_mat(g, yd)
+    mat_h = get_mat(h, yd)
+    return mat_g.dot(mat_h)
+
 def test_wreath_class():
     perm = perm2.Perm2.from_tup((1,3,4,2))
     cyc = CyclicGroup((0, 1, 0, 2), 3)
@@ -227,23 +223,14 @@ def test_wreath_class():
     print('I: {}'.format(w*w_inv))
     print('I: {}'.format(w_inv*w))
 
-def test_ysubgroup():
-    alpha = (4, 2, 2)
-    _parts = ((3, 1), (1,1), (1,1))
-    yd = young_subgroup_yor(alpha, _parts) 
-    ks = list(yd.keys())
-    print('One key of young subgroup yor dict: {}'.format(ks[0]))
-    pdb.set_trace()
-
 def test_wreath():
     start = time.time()
-    #alpha = (4, 2, 2)
-    alpha = (0, 7, 1)
-    _parts = ((), (4,3), (1,))
-    yd = wreath_yor(alpha, _parts)
-    ks = list(yd.keys())
+    alpha = (0, 3, 3)
+    _parts = ((), (2,1), (2,1))
+    print('alpha: {} | parts: {}'.format(alpha, _parts))
+    wreath_yor(alpha, _parts)
     print('Elapsed: {:.2f}'.format(time.time() - start))
-    pdb.set_trace()
+    print('perm2 cache hits: {}'.format(perm2.HITS['hits']))
 
 if __name__ == '__main__':
     test_wreath() 

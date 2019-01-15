@@ -12,7 +12,7 @@ def perm_from_young_tuple(cyc_tup):
             lst[idx] = x
             idx += 1
 
-    return perm2.Perm2.from_lst(lst)
+    return perm2.Perm2.from_tup(tuple(lst))
 
 def young_subgroup(weak_partition):
     '''
