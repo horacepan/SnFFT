@@ -1,3 +1,5 @@
+import numpy as np
+import sys
 import pdb
 from functools import reduce
 from itertools import permutations
@@ -5,7 +7,10 @@ import time
 from perm import Perm
 
 SN_CACHE = {}
+SN_IDMAP = {}
 HITS = {'hits': 0}
+SN_TABLE = {} # n -> numpy array
+SN_INV = {}
 def conjugate(x, g):
     '''
     x: Perm2 object
@@ -42,6 +47,7 @@ class Perm2:
         self._map = self._filled_map(p_map, self.size)
         self.cycle_decomposition = self._cycle_decomposition() if cyc_decomp is None else cyc_decomp
         self.tup_rep = self.get_tup_rep() if tup_rep is None else tup_rep
+        self._id = None
 
         # add permutation to the cache
         if self.size in SN_CACHE:
@@ -100,15 +106,10 @@ class Perm2:
         new_tup = tuple(g[h[i] - 1] for i in range(self.size))
         return Perm2.from_tup(new_tup)
 
-    # deprecated
-    def mul2(self, other):
-        new_dict = {}
-        n = max(self.size, other.size)
-        for k in range(1, n+1):
-            l = other._map.get(k, k)
-            new_dict[k] = self._map.get(l, l)
-
-        return Perm2(new_dict, n)
+    # this is actually slower than the other __mul__
+    def __mul__2(self, other):
+        prod_id = SN_TABLE[self.size][self.id, other.id] # this maps to an id
+        return SN_IDMAP[self.size][prod_id]
 
     def __len__(self):
         return self.size
@@ -146,6 +147,10 @@ class Perm2:
         return tuple(self._map[i] for i in range(1, self.size+1))
 
     def inv(self):
+        perm_id = SN_INV[self.size][self.id]
+        return SN_IDMAP[self.size][perm_id]
+
+    def inv2(self):
         rev_lst = [0] * self.size
         for idx, v in enumerate(self.tup_rep):
             # idx is 0 indexed, but v is 1 indexed?
@@ -161,14 +166,32 @@ class Perm2:
         rev_map = {v: k for k, v in self._map.items()}
         return Perm2(rev_map, self.size)
 
+    @property
+    def id(self):
+        return self._id
+
+    def set_id(self, _id):
+        self._id = _id
  
-def sn(n):
+def sn(n, prefix='/local/hopan/'):
+    # load mult table?
     if n in SN_CACHE:
         return list(SN_CACHE[n].values())
 
     perm_tups = permutations(range(1, n+1))
     perms = [Perm2.from_tup(t) for t in perm_tups]
+    SN_IDMAP[n] = {}
+    for idx, p in enumerate(perms):
+        p.set_id(idx)
+        SN_IDMAP[n][idx] = p
+
     SN_CACHE[n] = {p.tup_rep: p for p in perms}
+    #print('using mul cache')
+    #print('loading: {}'.format(prefix + 's{}_table.npy'.format(n)))
+    #SN_TABLE[n] = np.load(prefix + 's{}_table.npy'.format(n))
+    SN_INV[n] = np.load(prefix + 's{}_inv.npy'.format(n))
+    #print('done loading: {}'.format(prefix + 's{}_table.npy'.format(n)))
+
     return perms
 
 def test():
@@ -197,11 +220,26 @@ def test():
     #end = time.time()
     #print('Time for orginal perm 2nd time: {:.2f}'.format(end - start))
 
+def mult_table(n, inv_save, table_save):
+    _sn = sn(n)
+    table = np.zeros((len(_sn), len(_sn)), dtype=np.uint16)
+    inv_table = np.zeros(len(_sn), dtype=np.uint16)
+    for idx, p in enumerate(_sn):
+        p.set_id(idx)
+
+    for i, p in enumerate(_sn):
+        inv_table[i] = p.inv().id
+
+        for j, k in enumerate(_sn):
+            table[i, j] = (p * k).id
+            table[j, i] = (k * p).id
+
+    np.save(inv_save.format(n), inv_table)
+    np.save(table_save, table)
+
 if __name__ == '__main__':
-    x = Perm2({1:2, 2:1}, 4)
-    y = Perm2({3:4, 4:3}, 4)
-    z = x * y
-    print(z)
-    z2 = x.mul2(y)
-    print(z2)
-    print(z == z2)
+    n = int(sys.argv[1])
+    start = time.time()
+    mult_table(n)
+    end = time.time()
+    print('s{} | Elapsed: {:.2f}'.format(n, end - start))

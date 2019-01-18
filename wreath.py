@@ -1,3 +1,5 @@
+import os
+import sys
 import random
 import time
 from functools import reduce
@@ -7,7 +9,7 @@ import pdb
 from young_tableau import FerrersDiagram
 from yor import yor, load_yor
 import numpy as np
-from utils import partitions, weak_partitions
+from utils import partitions, weak_partitions, check_memory
 import perm2
 from coset_utils import coset_reps, young_subgroup_canonical, young_subgroup_perm, young_subgroup, perm_from_young_tuple, tup_set
 
@@ -82,7 +84,7 @@ def cyclic_irreps(weak_partition):
 
     return cyc_irreps
 
-def load_partition(partition):
+def load_partition(partition, prefix='/local/hopan/irreps/'):
     '''
     partition: tuple of ints
     Returns a dict of yor matrices mapping permutation to yor rep matrices
@@ -91,7 +93,7 @@ def load_partition(partition):
     n = sum(partition)
     if n == 0:
         return None
-    fname = '/local/hopan/irreps/s_{}/{}.pkl'.format(n, '_'.join(map(str, partition)))
+    fname = os.path.join(prefix,  's_{}/{}.pkl'.format(n, '_'.join(map(str, partition))))
     return load_yor(fname, partition)
 
 def canonical_order(tup_rep):
@@ -110,7 +112,7 @@ def canonical_order(tup_rep):
 # This young subgroups that are direct products
 # But here, the young subgroup wont be a subgroup of S_n, where n = sum(alpha)
 # S_alpha, alpha=(4,4) will just be S_{1,2,3,4} x S_{1,2,3,4}
-def young_subgroup_yor(alpha, _parts):
+def young_subgroup_yor(alpha, _parts, prefix='/local/hopan/irreps/'):
     '''
     Compute the wreath product group for the irreps indexed by the weak partition alpha
     with partition components given by _parts
@@ -130,7 +132,7 @@ def young_subgroup_yor(alpha, _parts):
 
     wreath_dict = {}
     # load the irreps for each partition
-    nonzero_parts = [load_partition(p) for p in _parts if sum(p) > 0]
+    nonzero_parts = [load_partition(p, prefix) for p in _parts if sum(p) > 0]
     # group elements are in iterproduct(
     # iterate over s_alpha subgroup and compute tensor stuff
     # currently the S_alpha looks like S_{1, ..., alpha_1} x S_{1, ..., alpha_2} x ... x S_{1, ..., alpha_n}
@@ -146,7 +148,7 @@ def young_subgroup_yor(alpha, _parts):
 
     return wreath_dict
 
-def wreath_yor(alpha, _parts):
+def wreath_yor(alpha, _parts, prefix='/local/hopan/'):
     '''
     alpha: weak partition of 8 into 3 parts?
     _parts: list of partitions of each part of alpha
@@ -158,16 +160,19 @@ def wreath_yor(alpha, _parts):
         _parts = [(2,2), (3,1)]
     '''
     n = sum(alpha)
-    _sn = perm2.sn(n)
+    _sn = perm2.sn(n, prefix)
     young_sub = young_subgroup_perm(alpha)
     young_sub_set = tup_set(young_sub)
-    young_yor = young_subgroup_yor(alpha, _parts)
+    young_yor = young_subgroup_yor(alpha, _parts, os.path.join(prefix, 'irreps'))
     reps = coset_reps(_sn, young_sub)
     rep_dict = {}
     print('Len coset reps: {}'.format(len(reps)))
     print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
     cnts = np.zeros((len(reps), len(reps)))
 
+    # loop over the group
+    # things we need are: group element inv, group element multiplication
+    # then grabbing the yor for the appropriate yor thing
     for g in _sn:
         g_rep = {}
         for i, t_i in enumerate(reps):
@@ -223,14 +228,26 @@ def test_wreath_class():
     print('I: {}'.format(w*w_inv))
     print('I: {}'.format(w_inv*w))
 
-def test_wreath():
+def test_wreath(alpha, _parts, pkl_prefix='/local/hopan/'):
+    #if len(sys.argv) > 1:
+    #    pkl_prefix = sys.argv[1]
+    #else:
+    #    pkl_prefix = '/local/hopan/irreps/'
     start = time.time()
-    alpha = (0, 3, 3)
-    _parts = ((), (2,1), (2,1))
     print('alpha: {} | parts: {}'.format(alpha, _parts))
-    wreath_yor(alpha, _parts)
+    wreath_yor(alpha, _parts, pkl_prefix)
     print('Elapsed: {:.2f}'.format(time.time() - start))
     print('perm2 cache hits: {}'.format(perm2.HITS['hits']))
 
 if __name__ == '__main__':
-    test_wreath() 
+    alpha = (0, 1, 7)
+    #alpha = (2, 6, 0)
+    _parts = ((), (1,), (5,2))
+    #_parts = ((1,1), (4,2), ())
+    if len(sys.argv) > 1:
+        print('looking in {}'.format(sys.argv[1]))
+        test_wreath(alpha, _parts, sys.argv[1])
+    else:
+        print('using default prefix')
+        test_wreath(alpha, _parts)
+    check_memory()
