@@ -1,3 +1,4 @@
+import time
 import pdb
 import os
 from functools import reduce
@@ -84,6 +85,16 @@ def test_canonicalize():
 
     x = [(2, 1, 3)]
     print(canonicalize(x), x)
+
+def tf(f, args=None):
+    if args is None:
+        args = []
+
+    start = time.time()
+    feval = f(*args)
+    end = time.time()
+    print('Running {} | time {:.2f}'.format(f.__name__, end - start))
+    return feval
 
 if __name__ == '__main__':
     print(list(partitions(5)))

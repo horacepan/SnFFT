@@ -73,16 +73,16 @@ def cyclic_irreps(weak_partition):
     given by the weak_partition, where weak_partition is a weak partition of k.
 
     weak_partition: list/tuple of nonnegative ints
+    This should return a function
     Ex:
         cyclic_irreps((1, 1)) = [exp{2i pi * 0/2}, exp{2i * pi * 1/2}]
     '''
-    cyc_irreps = []
+    def func(partition):
+        a, b, c = weak_partition
+        p1, p2, p3 = partition
+        return np.exp(2j * np.pi * a * p1 / 3.) * np.exp(2j * np.pi * b * p2 / 3.) * np.exp(2j * np.pi * c * p3 / 3.) 
 
-    for i, cnt in enumerate(weak_partition):
-        if cnt > 0:
-            cyc_irreps.extend([np.exp(2j*np.pi*i) / cyc_order] * cnt)
-
-    return cyc_irreps
+    return func
 
 def load_partition(partition, prefix='/local/hopan/irreps/'):
     '''
@@ -93,8 +93,17 @@ def load_partition(partition, prefix='/local/hopan/irreps/'):
     n = sum(partition)
     if n == 0:
         return None
-    fname = os.path.join(prefix,  's_{}/{}.pkl'.format(n, '_'.join(map(str, partition))))
-    return load_yor(fname, partition)
+
+    try:
+        prefix = '/local/hopan/irreps'
+        fname = os.path.join(prefix,  's_{}/{}.pkl'.format(n, '_'.join(map(str, partition))))
+        yd = load_yor(fname, partition)
+        return yd
+    except:
+        prefix = '/scratch/hopan/irreps'
+        fname = os.path.join(prefix,  's_{}/{}.pkl'.format(n, '_'.join(map(str, partition))))
+        yd = load_yor(fname, partition)
+        return yd
 
 def canonical_order(tup_rep):
     new_tup_rep = []
@@ -182,9 +191,10 @@ def wreath_yor(alpha, _parts, prefix='/local/hopan/'):
                     g_rep[(i, j)] = young_yor[ti_g_tj.tup_rep]
                     cnts[i, j] = cnts[i, j] + 1
 
-        rep_dict[g] = g_rep 
+        rep_dict[g.tup_rep] = g_rep 
 
-    return rep_dict, cnts
+    #return rep_dict, cnts
+    return rep_dict
 
 def get_mat(g, yor_dict):
     '''

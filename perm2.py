@@ -107,9 +107,9 @@ class Perm2:
         return Perm2.from_tup(new_tup)
 
     # this is actually slower than the other __mul__
-    def __mul__2(self, other):
-        prod_id = SN_TABLE[self.size][self.id, other.id] # this maps to an id
-        return SN_IDMAP[self.size][prod_id]
+    #def __mul__2(self, other):
+    #    prod_id = SN_TABLE[self.size][self.id, other.id] # this maps to an id
+    #    return SN_IDMAP[self.size][prod_id]
 
     def __len__(self):
         return self.size
@@ -146,11 +146,11 @@ class Perm2:
     def to_tup(self):
         return tuple(self._map[i] for i in range(1, self.size+1))
 
-    def inv(self):
-        perm_id = SN_INV[self.size][self.id]
-        return SN_IDMAP[self.size][perm_id]
+    #def inv2(self):
+    #    perm_id = SN_INV[self.size][self.id]
+    #    return SN_IDMAP[self.size][perm_id]
 
-    def inv2(self):
+    def inv(self):
         rev_lst = [0] * self.size
         for idx, v in enumerate(self.tup_rep):
             # idx is 0 indexed, but v is 1 indexed?
@@ -180,16 +180,16 @@ def sn(n, prefix='/local/hopan/'):
 
     perm_tups = permutations(range(1, n+1))
     perms = [Perm2.from_tup(t) for t in perm_tups]
-    SN_IDMAP[n] = {}
+    #SN_IDMAP[n] = {}
     for idx, p in enumerate(perms):
         p.set_id(idx)
-        SN_IDMAP[n][idx] = p
+        #SN_IDMAP[n][idx] = p
 
     SN_CACHE[n] = {p.tup_rep: p for p in perms}
     #print('using mul cache')
     #print('loading: {}'.format(prefix + 's{}_table.npy'.format(n)))
     #SN_TABLE[n] = np.load(prefix + 's{}_table.npy'.format(n))
-    SN_INV[n] = np.load(prefix + 's{}_inv.npy'.format(n))
+    #SN_INV[n] = np.load(prefix + 's{}_inv.npy'.format(n))
     #print('done loading: {}'.format(prefix + 's{}_table.npy'.format(n)))
 
     return perms
