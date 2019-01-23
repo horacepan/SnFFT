@@ -1,3 +1,4 @@
+from multiprocessing import Pool, Manager, Process
 import os
 import sys
 import random
@@ -157,6 +158,73 @@ def young_subgroup_yor(alpha, _parts, prefix='/local/hopan/irreps/'):
 
     return wreath_dict
 
+def _proc_yor(perms, young_yor, young_sub_set, reps, rep_dict):
+    '''
+    perms: list of perm objects or tuples?
+    young_yor: 
+    young_sub_set:
+    reps:
+    rep_dict: save dict
+    '''
+    for g in perms:
+        g_rep = {}
+        for i, t_i in enumerate(reps):
+            for j, t_j in enumerate(reps):
+                ti_g_tj = t_i.inv() * g * t_j
+                if ti_g_tj.tup_rep in young_sub_set:
+                    g_rep[(i, j)] = young_yor[ti_g_tj.tup_rep]
+
+        rep_dict[g.tup_rep] = g_rep 
+
+def chunk(lst, n):
+    '''
+    Split the given lit into n approximately equal chunks
+    '''
+    if len(lst) % n == 0:
+        size = len(lst) // n
+    else:
+        size = (len(lst) // n) + 1
+    return [lst[i:i + size] for i in range(0, len(lst), size)]
+
+def wreath_yor_par(alpha, _parts, prefix='/local/hopan/', par=8):
+    '''
+    alpha: weak partition of 8 into 3 parts?
+    _parts: list of partitions of each part of alpha
+    Return a dict mapping group elmeent in S_8 -> rep
+    The rep actually needs to be a dictionary of tuples (i, j) -> matrix
+    where the i, j denote the i, j block in the matrix.
+    Ex:
+        alpha = (0, 0, 0, 0, 1, 1, 1, 1)
+        _parts = [(2,2), (3,1)]
+    '''
+    print('Wreath yor with {} processes'.format(par))
+    n = sum(alpha)
+    _sn = perm2.sn(n, prefix)
+    young_sub = young_subgroup_perm(alpha)
+    young_sub_set = tup_set(young_sub)
+    young_yor = young_subgroup_yor(alpha, _parts, os.path.join(prefix, 'irreps'))
+    reps = coset_reps(_sn, young_sub)
+    print('Len coset reps: {}'.format(len(reps)))
+    print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
+    cnts = np.zeros((len(reps), len(reps)))
+    sn_chunks = chunk(_sn, par)
+    manager = Manager()
+    rep_dict = manager.dict()
+    nprocs =  []
+
+    for i in range(par):
+        perms = sn_chunks[i]
+        proc = Process(target=_proc_yor, args=[perms, young_yor, young_sub_set, reps, rep_dict])
+        nprocs.append(proc)
+
+    for p in nprocs:
+        p.start()
+    for p in nprocs:
+        p.join()
+
+    return rep_dict
+
+
 def wreath_yor(alpha, _parts, prefix='/local/hopan/'):
     '''
     alpha: weak partition of 8 into 3 parts?
@@ -179,6 +247,7 @@ def wreath_yor(alpha, _parts, prefix='/local/hopan/'):
     print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
     cnts = np.zeros((len(reps), len(reps)))
 
+    # this part can be parallelized
     # loop over the group
     # things we need are: group element inv, group element multiplication
     # then grabbing the yor for the appropriate yor thing
@@ -203,7 +272,10 @@ def get_mat(g, yor_dict):
 
     Returns matrix for this ydict
     '''
-    yg = yor_dict[g]
+    if type(g) == tuple:
+        g = perm2.Perm2.from_tup(g)
+
+    yg = yor_dict[g.tup_rep]
     vs = list(yg.values())
     block_size = vs[0].shape[0]
     size = len(yg) * block_size
@@ -224,6 +296,10 @@ def mult(g, h, yd):
             which represent the wreath product matrices
     Returns a numpy matrix
     '''
+    if type(g) == tuple:
+        g = perm2.Perm2.from_tup(g)
+    if type(h) == tuple:
+        h = perm2.Perm2.from_tup(h)
     mat_g = get_mat(g, yd)
     mat_h = get_mat(h, yd)
     return mat_g.dot(mat_h)
@@ -239,21 +315,15 @@ def test_wreath_class():
     print('I: {}'.format(w_inv*w))
 
 def test_wreath(alpha, _parts, pkl_prefix='/local/hopan/'):
-    #if len(sys.argv) > 1:
-    #    pkl_prefix = sys.argv[1]
-    #else:
-    #    pkl_prefix = '/local/hopan/irreps/'
     start = time.time()
     print('alpha: {} | parts: {}'.format(alpha, _parts))
     wreath_yor(alpha, _parts, pkl_prefix)
     print('Elapsed: {:.2f}'.format(time.time() - start))
-    print('perm2 cache hits: {}'.format(perm2.HITS['hits']))
 
 if __name__ == '__main__':
-    alpha = (0, 1, 7)
-    #alpha = (2, 6, 0)
-    _parts = ((), (1,), (5,2))
-    #_parts = ((1,1), (4,2), ())
+    alpha = (6, 1, 1)
+    _parts = ((4,2), (1,), (1,))
+
     if len(sys.argv) > 1:
         print('looking in {}'.format(sys.argv[1]))
         test_wreath(alpha, _parts, sys.argv[1])

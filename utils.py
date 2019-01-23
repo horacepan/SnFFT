@@ -1,3 +1,4 @@
+import psutil
 import time
 import pdb
 import os
@@ -43,9 +44,16 @@ def weak_partitions(n, k):
 
     return lst
 
-def check_memory():
+def check_memory2():
     res_ = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     print("Consumed {:.2f}mb memory".format(res_/(1024**2)))
+
+def check_memory():
+    # return the memory usage in MB
+    process = psutil.Process(os.getpid())
+    mem = process.memory_info()[0] / float(2 ** 20)
+    print("Consumed {:.2f}mb memory".format(mem))
+    return mem
 
 def gcd(a, b):
     while b:

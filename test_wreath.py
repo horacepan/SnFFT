@@ -11,7 +11,7 @@ class TestWreath(unittest.TestCase):
         alpha = (0, 3, 2)
         _parts = ((), (2,1), (1,1))
 
-        ydict, cnts = wreath_yor(alpha, _parts)
+        ydict = wreath_yor(alpha, _parts)
 
         ks = list(ydict.keys())
         vals = list(ydict.values())
@@ -19,13 +19,13 @@ class TestWreath(unittest.TestCase):
 
         g = random.choice(ks)
         h = random.choice(ks)
-        gh = g * h
+        gh = perm2.Perm2.from_tup(g) * perm2.Perm2.from_tup(h)
         gh_mat = mult(g, h, ydict)
         self.assertTrue(np.allclose(gh_mat, get_mat(gh, ydict)))
 
-        eye = perm2.Perm2.eye(g.size)
+        eye = perm2.Perm2.eye(len(g))
         eye_g_mat = mult(eye, g, ydict)
-        eye_mat = get_mat(eye * g, ydict)
+        eye_mat = get_mat(eye * perm2.Perm2.from_tup(g), ydict)
         self.assertTrue(np.allclose(eye_mat, eye_g_mat))
 
 if __name__ == '__main__':
