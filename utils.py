@@ -12,6 +12,9 @@ def partitions(n, start=1):
     start: integer
     Returns a list of int tuples
     '''
+    if n == 0:
+        return [()]
+
     parts = [(n, )]
     for i in range(start, n // 2 + 1):
         for p in partitions(n-i, i):

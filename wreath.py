@@ -197,15 +197,15 @@ def wreath_yor_par(alpha, _parts, prefix='/local/hopan/', par=8):
         alpha = (0, 0, 0, 0, 1, 1, 1, 1)
         _parts = [(2,2), (3,1)]
     '''
-    print('Wreath yor with {} processes'.format(par))
+    #print('Wreath yor with {} processes'.format(par))
     n = sum(alpha)
     _sn = perm2.sn(n, prefix)
     young_sub = young_subgroup_perm(alpha)
     young_sub_set = tup_set(young_sub)
     young_yor = young_subgroup_yor(alpha, _parts, os.path.join(prefix, 'irreps'))
     reps = coset_reps(_sn, young_sub)
-    print('Len coset reps: {}'.format(len(reps)))
-    print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
+    #print('Len coset reps: {}'.format(len(reps)))
+    #print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
     cnts = np.zeros((len(reps), len(reps)))
     sn_chunks = chunk(_sn, par)
     manager = Manager()
@@ -243,8 +243,8 @@ def wreath_yor(alpha, _parts, prefix='/local/hopan/'):
     young_yor = young_subgroup_yor(alpha, _parts, os.path.join(prefix, 'irreps'))
     reps = coset_reps(_sn, young_sub)
     rep_dict = {}
-    print('Len coset reps: {}'.format(len(reps)))
-    print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
+    #print('Len coset reps: {}'.format(len(reps)))
+    #print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
     cnts = np.zeros((len(reps), len(reps)))
 
     # this part can be parallelized

@@ -115,6 +115,24 @@ class FerrersDiagram:
         FerrersDiagram.TABLEAUX_CACHE[self.partition] = tabs
         return tabs
 
+    def n_tabs(self):
+        return len(self.tableaux)
+
+def n_tabs(partition):
+    fd = FerrersDiagram(partition)
+    return fd.n_tabs()
+
+def wreath_dim(parts):
+    '''
+    parts: list of parititions
+    '''
+    output = 1
+    for p in parts:
+        if len(p) == 0:
+            continue
+        output *= n_tabs(p)
+    return output
+
 def make_young_tableau(shape, vals):
     '''
     shape: tuple of row size of ferrers diagram. Sum of tuple elements is n

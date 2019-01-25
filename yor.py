@@ -203,7 +203,7 @@ def benchmark(n):
     print(CACHE)
 
 def load_yor(fname, partition):
-    print('loading yor from: {}'.format(fname))
+    #print('loading yor from: {}'.format(fname))
     with open(fname, 'rb') as f:
         yor_dict = pickle.load(f)
         # mapping form permutation in list form to numpy array
