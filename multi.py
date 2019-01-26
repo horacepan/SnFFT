@@ -37,7 +37,7 @@ def mult_yor(irrep, scalar, save_dict):
 def convert_yor_matrix(irrep_dict, block_size, cosets):
     '''
     Alternative:
-        compute block size via young_tableau(_parts)
+        compute block size via young_tableau(parts)
         compute cosets via (8!) / (alpha!)
     '''
     shape = (block_size * cosets, block_size * cosets)
@@ -60,14 +60,14 @@ def split_transform(fsplit_pkl, irrep_dict, alpha, parts):
     alpha: weak partition
     parts: list/iterable of partitions of the parts of alpha
     '''
-    print('Computing transform on split: {}'.format(fsplit_pkl))
+    print('     Computing transform on split: {}'.format(fsplit_pkl))
     save_dict = {}
     cyc_irrep_func = cyclic_irreps(alpha)
 
     with open(fsplit_pkl, 'r') as f:
         # dict of function values
         pkl_dict = load_pkl(fsplit_pkl)
-        for perm_tup, tup_dict in tqdm(pkl_dict.items()):
+        for perm_tup, tup_dict in pkl_dict.items():
             for tup, dists in tup_dict.items():
                 dist_tot = sum(dists)
                 # perm -> or_tup -> dists
@@ -75,36 +75,36 @@ def split_transform(fsplit_pkl, irrep_dict, alpha, parts):
                 perm_rep = irrep_dict[perm_tup]  # perm_rep is a dict of (i, j) -> matrix
                 mult_yor(perm_rep, dist_tot * r_alpha, save_dict)
 
+        del pkl_dict
     block_size = wreath_dim(parts)
     n_cosets = coset_size(alpha)
     mat = convert_yor_matrix(save_dict, block_size, n_cosets)
     return mat
 
 def load_pkl(fname):
-    print('loading from pkl: {}'.format(fname))
+    #print('loading from pkl: {}'.format(fname))
     with open(fname, 'rb') as f:
         res = pickle.load(f)
         return res
 
-def full_transform(args, alpha, _parts, split_fnames):
-    print('Computing full transform for alpha: {} | parts: {}'.format(alpha, _parts))
+def full_transform(args, alpha, parts, split_fnames):
+    print('Computing full transform for alpha: {} | parts: {}'.format(alpha, parts))
     irrep_dir = os.path.join(args.pkldir, args.alpha)
     all_parts = os.listdir(irrep_dir)
-    irrep_dict = load_pkl(os.path.join(args.pkldir, args.alpha, '{}.pkl'.format(_parts)))
+    irrep_dict = load_pkl(os.path.join(args.pkldir, args.alpha, '{}.pkl'.format(parts)))
 
     savedir_alpha = os.path.join(args.savedir, args.alpha)
-    savename = os.path.join(savedir_alpha, '{}'.format(_parts))
+    savename = os.path.join(savedir_alpha, '{}'.format(parts))
     print('Savename: {}'.format(savename))
 
     if not os.path.exists(savedir_alpha):
         print('Making: {}'.format(savedir_alpha))
         os.makedirs(savedir_alpha)
 
-    print('Starting processing:')
-    print('split_names: {}'.format(split_fnames))
+    #print('Starting processing:')
     #nprocs = []
     #for fsplit in split_fnames:
-    #    p = Process(target=split_transform, args=(fsplit, irrep_dict, alpha, _parts))
+    #    p = Process(target=split_transform, args=(fsplit, irrep_dict, alpha, parts))
     #    nprocs.append(p)
 
     #for idx, p in enumerate(nprocs):
@@ -114,10 +114,21 @@ def full_transform(args, alpha, _parts, split_fnames):
     #for p in nprocs:
     #    #p.join()
     #    pass
-
-    with Pool(len(split_fnames)) as p:
-        arg_tups = [(_fn, irrep_dict, alpha, _parts) for _fn in split_fnames]
-        matrices = p.starmap(split_transform, arg_tups)
+    if args.par:
+        with Pool(len(split_fnames)) as p:
+            arg_tups = [(_fn, irrep_dict, alpha, parts) for _fn in split_fnames]
+            matrices = p.starmap(split_transform, arg_tups)
+            np.save(savename, sum(matrices))
+    else:
+        print('Single thread...')
+        matrices = []
+        block_size = wreath_dim(parts)
+        n_cosets = coset_size(alpha)
+        shape = (block_size * n_cosets, block_size * n_cosets)
+        result = np.zeros(shape, dtype=np.complex128)
+        for _fn in split_fnames:
+            res = split_transform(_fn, irrep_dict, alpha, parts)
+            result += res
         np.save(savename, sum(matrices))
     print('Done!')
 
@@ -132,7 +143,7 @@ def main(args):
         os.makedirs(args.savedir)
     split_fnames = [os.path.join(args.splitdir, f) for f in os.listdir(args.splitdir) if '.pkl' in f]
     parts = ast.literal_eval(args.parts)
-    alpha = tuple(int(c) for c in args.alpha.split(','))
+    alpha = ast.literal_eval(args.alpha)
     #assert all(sum(parts[i]) == alpha[i] for i in range(len(parts))), 'Invalid partition for alpha!'
     full_transform(args, alpha, parts, split_fnames)
 
@@ -142,7 +153,7 @@ def irrep_dir(alpha, prefix):
 
 def test_partial():
     start = time.time()
-    irrep_dict = load_pkl('/local/hopan/cube/pickles/0,1,7/((), (1,), (4, 3)).pkl')
+    irrep_dict = load_pkl('/local/hopan/cube/pickles/(0, 1, 7)/((), (1,), (4, 3)).pkl')
     split_transform('/local/hopan/cube/split/xaa.pkl', irrep_dict, (0,1,7), ((), (1,), (4,3)))
     end = time.time()
     print('Elapsed: {:.2f}'.format(end - start))
@@ -153,7 +164,8 @@ if __name__ == '__main__':
     parser.add_argument('--pkldir', type=str, default='/local/hopan/cube/pickles')
     parser.add_argument('--splitdir', type=str, default='/local/hopan/cube/split')
     parser.add_argument('--savedir', type=str, default='/local/hopan/cube/fourier')
-    parser.add_argument('--alpha', type=str, default='0,4,4')
+    parser.add_argument('--alpha', type=str, default='(0, 4, 4)')
     parser.add_argument('--parts', type=str, default='((),(4,),(3,1))')
+    parser.add_argument('--par', action='store_true')
     args = parser.parse_args()
     tf(main, [args])
