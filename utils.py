@@ -4,7 +4,18 @@ import time
 import pdb
 import os
 from functools import reduce
+from itertools import product
 import resource
+
+def chunk(lst, n):
+    '''
+    Split the given lit into n approximately equal chunks
+    '''
+    if len(lst) % n == 0:
+        size = len(lst) // n
+    else:
+        size = (len(lst) // n) + 1
+    return [lst[i:i + size] for i in range(0, len(lst), size)]
 
 def partitions(n, start=1):
     '''
@@ -48,9 +59,31 @@ def weak_partitions(n, k):
 
     return lst
 
-def check_memory2():
-    res_ = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    print("Consumed {:.2f}mb memory".format(res_/(1024**2)))
+def partition_parts(partition):
+    indiv_partitions = [partitions(p) for p in partition]
+    return product(*indiv_partitions)
+
+def cube2_alphas():
+    '''
+    Returns the list of weak partitions of 8 into 3 buckets.
+    '''
+    return [
+                (2, 3, 3),
+                (4, 2, 2),
+                (3, 1, 4),
+                (3, 4, 1),
+                (1, 2, 5),
+                (1, 5, 2),
+                (0, 4, 4),
+                (5, 0, 3),
+                (5, 3, 0),
+                (6, 1, 1),
+                (2, 6, 0),
+                (2, 0, 6),
+                (0, 1, 7),
+                (0, 7, 1),
+                (8, 0, 0),
+           ]
 
 def check_memory():
     # return the memory usage in MB
@@ -99,7 +132,7 @@ def test_canonicalize():
     print(canonicalize(x), x)
 
 def load_pkl(fname, options='rb'):
-    print('loading from pkl: {}'.format(fname))
+    #print('loading from pkl: {}'.format(fname))
     with open(fname, options) as f:
         res = pickle.load(f)
         return res

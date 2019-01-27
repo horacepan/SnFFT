@@ -8,7 +8,7 @@ import time
 import pdb
 import numpy as np
 from multiprocessing import Pool, Process
-from utils import tf
+from utils import tf, chunk
 from wreath import wreath_yor, cyclic_irreps
 from young_tableau import wreath_dim
 
@@ -53,29 +53,30 @@ def coset_size(alpha):
     alpha_size = math.factorial(alpha[0]) * math.factorial(alpha[1]) * math.factorial(alpha[2])
     return int(math.factorial(8) // alpha_size)
 
-def split_transform(fsplit_pkl, irrep_dict, alpha, parts):
+def split_transform(fsplit_lst, irrep_dict, alpha, parts):
     '''
-    fsplit_pkl: a single pkl file of the distance values for a chunk of the total distance values
+    fsplit_pkl: list of pkl file names of the distance values for a chunk of the total distance values
     irrep_dict: irrep dict 
     alpha: weak partition
     parts: list/iterable of partitions of the parts of alpha
     '''
-    print('     Computing transform on split: {}'.format(fsplit_pkl))
+    print('     Computing transform on splits: {}'.format(fsplit_lst))
     save_dict = {}
     cyc_irrep_func = cyclic_irreps(alpha)
 
-    with open(fsplit_pkl, 'r') as f:
-        # dict of function values
-        pkl_dict = load_pkl(fsplit_pkl)
-        for perm_tup, tup_dict in pkl_dict.items():
-            for tup, dists in tup_dict.items():
-                dist_tot = sum(dists)
-                # perm -> or_tup -> dists
-                r_alpha = cyc_irrep_func(tup)
-                perm_rep = irrep_dict[perm_tup]  # perm_rep is a dict of (i, j) -> matrix
-                mult_yor(perm_rep, dist_tot * r_alpha, save_dict)
+    for fsplit_pkl in fsplit_lst:
+        with open(fsplit_pkl, 'r') as f:
+            # dict of function values
+            pkl_dict = load_pkl(fsplit_pkl)
+            for perm_tup, tup_dict in pkl_dict.items():
+                for tup, dists in tup_dict.items():
+                    dist_tot = sum(dists)
+                    # perm -> or_tup -> dists
+                    r_alpha = cyc_irrep_func(tup) # this needs to be fixed
+                    perm_rep = irrep_dict[perm_tup]  # perm_rep is a dict of (i, j) -> matrix
+                    mult_yor(perm_rep, dist_tot * r_alpha, save_dict)
 
-        del pkl_dict
+            del pkl_dict
     block_size = wreath_dim(parts)
     n_cosets = coset_size(alpha)
     mat = convert_yor_matrix(save_dict, block_size, n_cosets)
@@ -87,12 +88,12 @@ def load_pkl(fname):
         res = pickle.load(f)
         return res
 
-def full_transform(args, alpha, parts, split_fnames):
+def full_transform(args, alpha, parts, split_chunks):
     print('Computing full transform for alpha: {} | parts: {}'.format(alpha, parts))
     savedir_alpha = os.path.join(args.savedir, args.alpha)
     savename = os.path.join(savedir_alpha, '{}'.format(parts))
     print('Savename: {}'.format(savename))
-    if os.path.exists(savename):
+    if os.path.exists(savename + '.npy'):
         print('Skipping. Already computed fourier matrix for: {} | {}'.format(alpha, parts))
         exit()
 
@@ -103,23 +104,10 @@ def full_transform(args, alpha, parts, split_fnames):
         print('Making: {}'.format(savedir_alpha))
         os.makedirs(savedir_alpha)
 
-    #print('Starting processing:')
-    #nprocs = []
-    #for fsplit in split_fnames:
-    #    p = Process(target=split_transform, args=(fsplit, irrep_dict, alpha, parts))
-    #    nprocs.append(p)
-
-    #for idx, p in enumerate(nprocs):
-    #    print('Starting process {}'.format(idx+1))
-    #    #p.start()
-
-    #for p in nprocs:
-    #    #p.join()
-    #    pass
-    if args.par:
-        print('Par process with {} processes...'.format(len(split_fnames)))
-        with Pool(len(split_fnames)) as p:
-            arg_tups = [(_fn, irrep_dict, alpha, parts) for _fn in split_fnames]
+    if args.par > 1:
+        print('Par process with {} processes...'.format(len(split_chunks)))
+        with Pool(len(split_chunks)) as p:
+            arg_tups = [(_fn, irrep_dict, alpha, parts) for _fn in split_chunks]
             matrices = p.starmap(split_transform, arg_tups)
             np.save(savename, sum(matrices))
     else:
@@ -129,7 +117,7 @@ def full_transform(args, alpha, parts, split_fnames):
         n_cosets = coset_size(alpha)
         shape = (block_size * n_cosets, block_size * n_cosets)
         result = np.zeros(shape, dtype=np.complex128)
-        for _fn in split_fnames:
+        for _fn in split_chunks:
             res = split_transform(_fn, irrep_dict, alpha, parts)
             matrices.append(res)
             result += res
@@ -145,11 +133,12 @@ def main(args):
 
     if not os.path.exists(args.savedir):
         os.makedirs(args.savedir)
-    split_fnames = [os.path.join(args.splitdir, f) for f in os.listdir(args.splitdir) if '.pkl' in f]
+    split_files = [os.path.join(args.splitdir, f) for f in os.listdir(args.splitdir) if '.pkl' in f]
+    split_chunks = chunk(split_files, args.par)
     parts = ast.literal_eval(args.parts)
     alpha = ast.literal_eval(args.alpha)
     #assert all(sum(parts[i]) == alpha[i] for i in range(len(parts))), 'Invalid partition for alpha!'
-    full_transform(args, alpha, parts, split_fnames)
+    full_transform(args, alpha, parts, split_chunks)
 
 def irrep_dir(alpha, prefix):
     _dir = os.path.join(prefix, '{},{},{}'.format(*alpha))
@@ -166,10 +155,11 @@ if __name__ == '__main__':
     #test_partial()
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--pkldir', type=str, default='/local/hopan/cube/pickles')
-    parser.add_argument('--splitdir', type=str, default='/local/hopan/cube/split')
+    parser.add_argument('--splitdir', type=str, default='/local/hopan/cube/split_or')
     parser.add_argument('--savedir', type=str, default='/local/hopan/cube/fourier')
-    parser.add_argument('--alpha', type=str, default='(0, 4, 4)')
-    parser.add_argument('--parts', type=str, default='((),(4,),(3,1))')
-    parser.add_argument('--par', action='store_true')
+    #parser.add_argument('--alpha', type=str, default='(0, 1, 7)')
+    parser.add_argument('--alpha', type=str, default='(8, 0, 0)')
+    parser.add_argument('--parts', type=str, default='((7,1),(),())')
+    parser.add_argument('--par', type=int, default=1, help='Amount of parallelism')
     args = parser.parse_args()
     tf(main, [args])

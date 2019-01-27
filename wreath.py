@@ -10,7 +10,7 @@ import pdb
 from young_tableau import FerrersDiagram
 from yor import yor, load_yor
 import numpy as np
-from utils import partitions, weak_partitions, check_memory
+from utils import partitions, weak_partitions, check_memory, chunk
 import perm2
 from coset_utils import coset_reps, young_subgroup_canonical, young_subgroup_perm, young_subgroup, perm_from_young_tuple, tup_set
 
@@ -70,19 +70,26 @@ class WreathCycSn:
 
 def cyclic_irreps(weak_partition):
     '''
-    Return a list of the irreps of the cylic group of order k
-    given by the weak_partition, where weak_partition is a weak partition of k.
+    Returns a function that computes the cyclic irrep portion
+    of the wreath product irreps of the 2x2 cube.
+    weak_partition: a tuple of length 3
 
-    weak_partition: list/tuple of nonnegative ints
-    This should return a function
-    Ex:
-        cyclic_irreps((1, 1)) = [exp{2i pi * 0/2}, exp{2i * pi * 1/2}]
+    Returns a function that takes in an 8 tuple and returns the
+        product of the cyclic irreps (float)
     '''
-    def func(partition):
-        a, b, c = weak_partition
-        p1, p2, p3 = partition
-        return np.exp(2j * np.pi * a * p1 / 3.) * np.exp(2j * np.pi * b * p2 / 3.) * np.exp(2j * np.pi * c * p3 / 3.) 
-
+    _idx0 = weak_partition[0]
+    _idx1 = weak_partition[0] + weak_partition[1]
+    _a, _b, _c = weak_partition
+    def func(tup):
+        # first indices 0: weak_partition[0]
+        # 2nd indices weak_partition[0]: weak_partition[0] + weak_partition[1]
+        # 3rd indices weak_partition[0] + weak_partition[1]:  sum(weak_partition)
+        p1 = sum(tup[:_idx0])
+        p2 = sum(tup[_idx0: _idx1])
+        p3 = sum(tup[_idx1:])
+        return np.exp(2j * np.pi * _a * p1 / 3.) * \
+               np.exp(2j * np.pi * _b * p2 / 3.) * \
+               np.exp(2j * np.pi * _c * p3 / 3.)
     return func
 
 def load_partition(partition, prefix='/local/hopan/irreps/'):
@@ -175,16 +182,6 @@ def _proc_yor(perms, young_yor, young_sub_set, reps, rep_dict):
                     g_rep[(i, j)] = young_yor[ti_g_tj.tup_rep]
 
         rep_dict[g.tup_rep] = g_rep 
-
-def chunk(lst, n):
-    '''
-    Split the given lit into n approximately equal chunks
-    '''
-    if len(lst) % n == 0:
-        size = len(lst) // n
-    else:
-        size = (len(lst) // n) + 1
-    return [lst[i:i + size] for i in range(0, len(lst), size)]
 
 def wreath_yor_par(alpha, _parts, prefix='/local/hopan/', par=8):
     '''

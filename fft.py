@@ -4,7 +4,7 @@ import pdb
 import numpy as np
 from yor import yor, ysemi, CACHE
 from young_tableau import FerrersDiagram, wreath_dim
-from utils import partitions
+from utils import partitions, check_memory
 from perm import Perm, sn
 from perm2 import Perm2
 from perm2 import sn as sn2
@@ -166,14 +166,14 @@ def cube2_inv_fft_part(irrep_dict, fourier_mat, alpha, parts, g):
 
     Returns: a float = dimension * Trace(\rho(g inverse) * fourier_mat)
     '''
-    ginv_irrep = irrep_dict[Perm2.from_tup(g).inv().tup_rep]
+    ginv_irrep = irrep_dict[Perm2.from_tup(g.tup_rep).inv().tup_rep]
 
     # there is probably a faster way
     dim = fourier_mat.shape[0]
     irrep_mat = np.zeros(fourier_mat.shape, dtype=np.complex128)
     bs = wreath_dim(parts) # size of the irrep of S_alpha, 
     for (i, j) in ginv_irrep:
-        irrep_mat[bs * i: bs * (i+1), bs * j: bs * (j+1)] = ginv_irrep[(i, j)] 
+        irrep_mat[bs * i: bs * (i+1), bs * j: bs * (j+1)] = ginv_irrep[(i, j)]
 
     return dim * np.ravel(irrep_mat.T).dot(np.ravel(fourier_mat))
 
