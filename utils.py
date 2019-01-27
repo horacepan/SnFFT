@@ -6,6 +6,16 @@ import os
 from functools import reduce
 import resource
 
+def chunk(lst, n):
+    '''
+    Split the given lit into n approximately equal chunks
+    '''
+    if len(lst) % n == 0:
+        size = len(lst) // n
+    else:
+        size = (len(lst) // n) + 1
+    return [lst[i:i + size] for i in range(0, len(lst), size)]
+
 def partitions(n, start=1):
     '''
     Generate all the partitions of n
@@ -99,7 +109,7 @@ def test_canonicalize():
     print(canonicalize(x), x)
 
 def load_pkl(fname, options='rb'):
-    print('loading from pkl: {}'.format(fname))
+    #print('loading from pkl: {}'.format(fname))
     with open(fname, options) as f:
         res = pickle.load(f)
         return res

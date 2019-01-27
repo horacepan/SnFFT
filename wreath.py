@@ -10,7 +10,7 @@ import pdb
 from young_tableau import FerrersDiagram
 from yor import yor, load_yor
 import numpy as np
-from utils import partitions, weak_partitions, check_memory
+from utils import partitions, weak_partitions, check_memory, chunk
 import perm2
 from coset_utils import coset_reps, young_subgroup_canonical, young_subgroup_perm, young_subgroup, perm_from_young_tuple, tup_set
 
@@ -175,16 +175,6 @@ def _proc_yor(perms, young_yor, young_sub_set, reps, rep_dict):
                     g_rep[(i, j)] = young_yor[ti_g_tj.tup_rep]
 
         rep_dict[g.tup_rep] = g_rep 
-
-def chunk(lst, n):
-    '''
-    Split the given lit into n approximately equal chunks
-    '''
-    if len(lst) % n == 0:
-        size = len(lst) // n
-    else:
-        size = (len(lst) // n) + 1
-    return [lst[i:i + size] for i in range(0, len(lst), size)]
 
 def wreath_yor_par(alpha, _parts, prefix='/local/hopan/', par=8):
     '''
