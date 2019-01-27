@@ -1,3 +1,4 @@
+import pickle
 import psutil
 import time
 import pdb
@@ -96,6 +97,12 @@ def test_canonicalize():
 
     x = [(2, 1, 3)]
     print(canonicalize(x), x)
+
+def load_pkl(fname, options='rb'):
+    print('loading from pkl: {}'.format(fname))
+    with open(fname, options) as f:
+        res = pickle.load(f)
+        return res
 
 def tf(f, args=None):
     if args is None:

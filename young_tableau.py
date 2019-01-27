@@ -7,6 +7,7 @@ import numpy as np
 from functools import total_ordering
 from utils import check_memory
 
+FERRERS_CACHE = {}
 def swap(x, i, j):
     if x == i:
         return j
@@ -50,6 +51,13 @@ class FerrersDiagram:
             self.tableaux = self.gen_tableaux() # list of sorted young tableaux
         else:
             self.tableaux = FerrersDiagram.TABLEAUX_CACHE[partition]
+        FERRERS_CACHE[partition] = self
+
+    @staticmethod
+    def from_partition(partition):
+        if partition not in FERRERS_CACHE:
+            FERRERS_CACHE[partition] = FerrersDiagram(partition)
+        return FERRERS_CACHE[partition]
 
     def branch_down(self):
         '''
@@ -68,7 +76,7 @@ class FerrersDiagram:
             if self.partition[idx] - 1 >= next_row_len:
                 # valid
                 new_partition = get_minus_partition(self.partition, idx)
-                branches.append(FerrersDiagram(new_partition))
+                branches.append(FerrersDiagram.from_partition(new_partition))
 
         return branches
 
@@ -119,12 +127,14 @@ class FerrersDiagram:
         return len(self.tableaux)
 
 def n_tabs(partition):
-    fd = FerrersDiagram(partition)
+    fd = FerrersDiagram.from_partition(partition)
     return fd.n_tabs()
 
 def wreath_dim(parts):
     '''
-    parts: list of parititions
+    parts: list/tuple of length 3 of parititions
+    alpha[i] = sum(parts[i]) for i = 0, 1, 2
+    Returns the size of the irrep of S_alpha indexed by this list of partitions
     '''
     output = 1
     for p in parts:
@@ -328,7 +338,7 @@ class YoungTableau:
         return col_x - row_x
 
 def test_ferrer():
-    f = FerrersDiagram((4, 2,2,1))
+    f = FerrersDiagram.from_partition((4, 2,2,1))
     print(f)
     for p in f.branch_down():
         print('---------')
