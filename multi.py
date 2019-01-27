@@ -89,13 +89,15 @@ def load_pkl(fname):
 
 def full_transform(args, alpha, parts, split_fnames):
     print('Computing full transform for alpha: {} | parts: {}'.format(alpha, parts))
-    irrep_dir = os.path.join(args.pkldir, args.alpha)
-    all_parts = os.listdir(irrep_dir)
-    irrep_dict = load_pkl(os.path.join(args.pkldir, args.alpha, '{}.pkl'.format(parts)))
-
     savedir_alpha = os.path.join(args.savedir, args.alpha)
     savename = os.path.join(savedir_alpha, '{}'.format(parts))
     print('Savename: {}'.format(savename))
+    if os.path.exists(savename):
+        print('Skipping. Already computed fourier matrix for: {} | {}'.format(alpha, parts))
+        exit()
+
+    irrep_dir = os.path.join(args.pkldir, args.alpha)
+    irrep_dict = load_pkl(os.path.join(args.pkldir, args.alpha, '{}.pkl'.format(parts)))
 
     if not os.path.exists(savedir_alpha):
         print('Making: {}'.format(savedir_alpha))
@@ -115,6 +117,7 @@ def full_transform(args, alpha, parts, split_fnames):
     #    #p.join()
     #    pass
     if args.par:
+        print('Par process with {} processes...'.format(len(split_fnames)))
         with Pool(len(split_fnames)) as p:
             arg_tups = [(_fn, irrep_dict, alpha, parts) for _fn in split_fnames]
             matrices = p.starmap(split_transform, arg_tups)
@@ -128,6 +131,7 @@ def full_transform(args, alpha, parts, split_fnames):
         result = np.zeros(shape, dtype=np.complex128)
         for _fn in split_fnames:
             res = split_transform(_fn, irrep_dict, alpha, parts)
+            matrices.append(res)
             result += res
         np.save(savename, sum(matrices))
     print('Done!')
