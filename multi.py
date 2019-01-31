@@ -72,7 +72,7 @@ def split_transform(fsplit_lst, irrep_dict, alpha, parts):
                 for tup, dists in tup_dict.items():
                     dist_tot = sum(dists)
                     # perm -> or_tup -> dists
-                    r_alpha = cyc_irrep_func(tup) # this needs to be fixed
+                    r_alpha = cyc_irrep_func(tup)
                     perm_rep = irrep_dict[perm_tup]  # perm_rep is a dict of (i, j) -> matrix
                     mult_yor(perm_rep, dist_tot * r_alpha, save_dict)
 
@@ -117,7 +117,7 @@ def full_transform(args, alpha, parts, split_chunks):
         n_cosets = coset_size(alpha)
         shape = (block_size * n_cosets, block_size * n_cosets)
         result = np.zeros(shape, dtype=np.complex128)
-        for _fn in split_chunks:
+        for _fn in split_chunks[0]:
             res = split_transform(_fn, irrep_dict, alpha, parts)
             matrices.append(res)
             result += res
@@ -157,9 +157,8 @@ if __name__ == '__main__':
     parser.add_argument('--pkldir', type=str, default='/local/hopan/cube/pickles')
     parser.add_argument('--splitdir', type=str, default='/local/hopan/cube/split_or')
     parser.add_argument('--savedir', type=str, default='/local/hopan/cube/fourier')
-    #parser.add_argument('--alpha', type=str, default='(0, 1, 7)')
-    parser.add_argument('--alpha', type=str, default='(8, 0, 0)')
-    parser.add_argument('--parts', type=str, default='((7,1),(),())')
+    parser.add_argument('--alpha', type=str, default='(0, 1, 7)')
+    parser.add_argument('--parts', type=str, default='((),(1,),(5,2))')
     parser.add_argument('--par', type=int, default=1, help='Amount of parallelism')
     args = parser.parse_args()
     tf(main, [args])
