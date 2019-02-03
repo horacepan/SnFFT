@@ -4,7 +4,7 @@ import pdb
 import numpy as np
 from yor import yor, ysemi, CACHE
 from young_tableau import FerrersDiagram, wreath_dim
-from utils import partitions, check_memory
+from utils import partitions, check_memory, CUBE2_SIZE
 from perm import Perm, sn
 from perm2 import Perm2
 from perm2 import sn as sn2
@@ -156,17 +156,17 @@ def cube2_inv_fft_func(irrep_dict, fourier_mat, alpha, parts):
         return cube2_inv_fft_part(irrep_dict, fourier_mat, alpha, parts, g)
     return f
 
-def cube2_inv_fft_part(irrep_dict, fourier_mat, alpha, parts, g):
+def cube2_inv_fft_part(irrep_dict, fourier_mat, alpha, parts, g_tup):
     '''
     irrep_dict: map from dictionary of permutation(in tuple rep form) -> numpy matrices
     fourier_mat: numpy matrix
     alpha: tuple of ints. Weak partition of 8 into 3 parts
     parts: tuple of tuples, where each tuple is a partition of the corresponding index of alpha
-    g: perm2.Perm2 object
+    g_tup: tuple of ints, an s8 permutation in tuple format
 
     Returns: a float = dimension * Trace(\rho(g inverse) * fourier_mat)
     '''
-    ginv_irrep = irrep_dict[Perm2.from_tup(g.tup_rep).inv().tup_rep]
+    ginv_irrep = irrep_dict[Perm2.from_tup(g_tup).inv().tup_rep]
 
     # there is probably a faster way
     dim = fourier_mat.shape[0]
@@ -175,7 +175,7 @@ def cube2_inv_fft_part(irrep_dict, fourier_mat, alpha, parts, g):
     for (i, j) in ginv_irrep:
         irrep_mat[bs * i: bs * (i+1), bs * j: bs * (j+1)] = ginv_irrep[(i, j)]
 
-    return dim * np.ravel(irrep_mat.T).dot(np.ravel(fourier_mat))
+    return dim * np.ravel(irrep_mat.T).dot(np.ravel(fourier_mat)) / CUBE2_SIZE
 
 def benchmark(n):
     id_f = lambda x: 1

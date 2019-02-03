@@ -13,6 +13,8 @@ import numpy as np
 from utils import partitions, weak_partitions, check_memory, chunk
 import perm2
 from coset_utils import coset_reps, young_subgroup_canonical, young_subgroup_perm, young_subgroup, perm_from_young_tuple, tup_set
+sys.path.append('./cube')
+from str_cube import init_2cube, rotate, get_wreath
 
 def dot(perm, cyc):
     p_inv = perm.inv()
@@ -55,6 +57,10 @@ class WreathCycSn:
         self.cyc = cyc
         self.perm = perm
 
+    @staticmethod
+    def from_tup(cyc_tup, perm_tup, order):
+        return WreathCycSn(CyclicGroup(cyc_tup, order), perm2.Perm2.from_tup(perm_tup))
+
     def __mul__(self, w):
         perm = self.perm * w.perm
         cyc = self.cyc + dot(self.perm, w.cyc)
@@ -79,17 +85,26 @@ def cyclic_irreps(weak_partition):
     '''
     _idx0 = weak_partition[0]
     _idx1 = weak_partition[0] + weak_partition[1]
-    _a, _b, _c = weak_partition
-    def func(tup):
+    g_x = ((0,) * weak_partition[0]) + ((1,) * weak_partition[1]) + ((2,) * weak_partition[2])
+    def func(tup, perm):
         # first indices 0: weak_partition[0]
         # 2nd indices weak_partition[0]: weak_partition[0] + weak_partition[1]
         # 3rd indices weak_partition[0] + weak_partition[1]:  sum(weak_partition)
+        ginv_perm = perm2.Perm2.from_tup(perm).inv()
+        tot = 0
+        for i in range(1, 9):
+            gidx = ginv_perm[i]-1 # perm is 1-indexed
+            gval = g_x[gidx]
+            tot += tup[i-1] * gval
+        return np.exp(2j * np.pi * tot / 3.)
         p1 = sum(tup[:_idx0])
         p2 = sum(tup[_idx0: _idx1])
         p3 = sum(tup[_idx1:])
-        return np.exp(2j * np.pi * _a * p1 / 3.) * \
-               np.exp(2j * np.pi * _b * p2 / 3.) * \
-               np.exp(2j * np.pi * _c * p3 / 3.)
+
+        print('Evaluating on {} | {}, {}, {}'.format(tup, p1, p2, p3))
+        return np.exp(2j * np.pi * 0 * p1 / 3.) * \
+               np.exp(2j * np.pi * 1 * p2 / 3.) * \
+               np.exp(2j * np.pi * 2 * p3 / 3.)
     return func
 
 def load_partition(partition, prefix='/local/hopan/irreps/'):
@@ -285,6 +300,14 @@ def get_mat(g, yor_dict):
 
     return mat
 
+def wreath_rep(orientation, perm, yor_dict, cyc_irrep_func=None, alpha=None):
+    if (cyc_irrep_func is None) and (alpha is None):
+        raise ValueError('Need to supply either irrep func or alpha')
+    if cyc_irrep_func is None:
+        cyc_irrep_func = cyclic_irreps(alpha)
+
+    return cyc_irrep_func(orientation, perm) * get_mat(perm, yor_dict)
+
 def mult(g, h, yd):
     '''
     g: perm2.Perm2
@@ -304,12 +327,26 @@ def mult(g, h, yd):
 def test_wreath_class():
     perm = perm2.Perm2.from_tup((1,3,4,2))
     cyc = CyclicGroup((0, 1, 0, 2), 3)
-    w = WreathCycSn(cyc, perm)
-    w_inv = w.inv()
-    print('w: {}'.format(w))
-    print('w\': {}'.format(w_inv))
-    print('I: {}'.format(w*w_inv))
-    print('I: {}'.format(w_inv*w))
+    #w = WreathCycSn(cyc, perm)
+    c = init_2cube()
+    for f in ['r', 'l', 'f', 'b', 'u', 'd']:
+        cube_str = rotate(c, f)
+        o1, p1 = get_wreath(cube_str)
+        o2, pinv = get_wreath(rotate(c, 'i' + f))
+        #c1 = CyclicGroup((2, 1, 0, 0, 0, 0, 2, 1), 3)
+        c1 = CyclicGroup(o1, 3)
+        #c2 = CyclicGroup((2, 1, 0, 0, 0, 0, 2, 1), 3)
+        c2 = CyclicGroup(o2, 3)
+        #p1 = perm2.Perm2.from_tup((2, 7, 3, 4, 5, 6, 8, 1))
+        #p2 = perm2.Perm2.from_tup((8, 1, 3, 4, 5, 6, 2, 7))
+        p1 = perm2.Perm2.from_tup(p1)
+        p2 = perm2.Perm2.from_tup(pinv)
+
+        w = WreathCycSn(c1, p1)
+        winv = WreathCycSn(c2, p2)
+        prod = w * winv
+        print('Face: {} | prod should be identity wreath: {}'.format(f, prod))
+        print('===============')
 
 def test_wreath(alpha, _parts, pkl_prefix='/local/hopan/'):
     start = time.time()
@@ -318,6 +355,8 @@ def test_wreath(alpha, _parts, pkl_prefix='/local/hopan/'):
     print('Elapsed: {:.2f}'.format(time.time() - start))
 
 if __name__ == '__main__':
+    test_wreath_class()
+    exit()
     alpha = (6, 1, 1)
     _parts = ((4,2), (1,), (1,))
 

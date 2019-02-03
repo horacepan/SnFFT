@@ -7,6 +7,11 @@ from functools import reduce
 from itertools import product
 import resource
 
+CUBE2_SIZE = 88179840
+FOURIER_SUBDIR = 'fourier'
+IRREP_SUBDIR = 'pickles'
+SPLIT_SUBDIR = 'split_or'
+
 def chunk(lst, n):
     '''
     Split the given lit into n approximately equal chunks
@@ -85,11 +90,20 @@ def cube2_alphas():
                 (8, 0, 0),
            ]
 
-def check_memory():
+def cube2_irreps():
+    '''
+    Generator for all irreps of the 2x2 cube group
+    '''
+    for alpha in cube2_alphas():
+        for parts in partition_parts(alpha):
+            yield (alpha, parts)
+
+def check_memory(verbose=True):
     # return the memory usage in MB
     process = psutil.Process(os.getpid())
     mem = process.memory_info()[0] / float(2 ** 20)
-    print("Consumed {:.2f}mb memory".format(mem))
+    if verbose:
+        print("Consumed {:.2f}mb memory".format(mem))
     return mem
 
 def gcd(a, b):
@@ -136,6 +150,14 @@ def load_pkl(fname, options='rb'):
     with open(fname, options) as f:
         res = pickle.load(f)
         return res
+
+def load_irrep(prefix, alpha, parts):
+    irrep_path = os.path.join(prefix, IRREP_SUBDIR, str(alpha), '{}.pkl'.format(parts))
+    if os.path.exists(irrep_path):
+        return load_pkl(irrep_path, 'rb')
+    else:
+        print("Could not load: {}".format(irrep_path))
+        return None
 
 def tf(f, args=None):
     if args is None:

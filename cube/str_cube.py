@@ -653,6 +653,16 @@ def get_s8(cube_str):
         perm[cubie_idx] = i
     return perm
 
+def get_s8_tup(cube_str):
+    '''
+    get_s8 returns the permutation in 0-indexed tuple format. This returns it
+    in 1-indexed format.
+    '''
+    return tuple([x + 1 for x in get_s8(cube_str)])
+
+def get_wreath(cube_str):
+    return orientation(cube_str), get_s8_tup(cube_str)
+
 if __name__ == '__main__':
     c = init_2cube()
     fc = rotate(c, 'f')
