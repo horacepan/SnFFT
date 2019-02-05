@@ -18,9 +18,13 @@ def chunk(lst, n):
     '''
     if len(lst) % n == 0:
         size = len(lst) // n
+        return [lst[i:i + size] for i in range(0, len(lst), size)]
     else:
-        size = (len(lst) // n) + 1
-    return [lst[i:i + size] for i in range(0, len(lst), size)]
+        size = (len(lst) // n)
+        output = [lst[i:i + size] for i in range(0, len(lst), size)]
+        for d in range(len(lst) - (size * n)):
+                output[d].append(lst[-(d+1)])
+        return output
 
 def partitions(n, start=1):
     '''
