@@ -175,7 +175,7 @@ class Perm2:
  
 def sn(n, prefix='/local/hopan/'):
     # load mult table?
-    if n in SN_CACHE:
+    if n in SN_CACHE and len(SN_CACHE[n]) == np.math.factorial(n):
         return list(SN_CACHE[n].values())
 
     perm_tups = permutations(range(1, n+1))

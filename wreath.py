@@ -1,26 +1,53 @@
-from multiprocessing import Pool, Manager, Process
+from multiprocessing import Manager, Process
 import os
 import sys
-import random
 import time
 from functools import reduce
-from collections import Counter
-import itertools
 import pdb
-from young_tableau import FerrersDiagram
-from yor import yor, load_yor
+from yor import load_yor
 import numpy as np
-from utils import partitions, weak_partitions, check_memory, chunk
+from utils import check_memory, chunk
 import perm2
-from coset_utils import coset_reps, young_subgroup_canonical, young_subgroup_perm, young_subgroup, perm_from_young_tuple, tup_set
+from coset_utils import coset_reps, young_subgroup_perm, young_subgroup, tup_set
 sys.path.append('./cube')
 from str_cube import init_2cube, rotate, get_wreath
 
 def dot(perm, cyc):
+    '''
+    Have the permutation act on the cyclic irrep
+    perm: Perm2
+    cyc: tuple or CyclicGroup object (this works bc CyclicGroup object implemented __getitem__)
+    Returns: CyclicGroup o
+    '''
     p_inv = perm.inv()
     new_cyc = tuple(cyc[p_inv[i] - 1] for i in range(1, len(cyc) + 1))
     p_cyc = CyclicGroup(new_cyc, cyc.order)
     return p_cyc
+
+def dot_tup(perm, tup):
+    p_inv = perm.inv()
+    new_tup = tuple(tup[p_inv[i] - 1] for i in range(1, len(tup) + 1))
+    return new_tup
+
+def dot_tup_inv(perm, tup):
+    new_tup = tuple(tup[perm[i] - 1] for i in range(1, len(tup) + 1))
+    return new_tup
+
+def block_cyclic_irreps(tup, coset_reps, cyclic_irrep_func):
+    '''
+    tup: tuple
+    coset_reps: list of Perm2 objects
+    cyclic_irrep_func: function from tuple -> cyclic_irrep
+    Return a dictionary mapping coset rep index -> cyclic irrep
+    Ex:
+        coset_reps = [pi_0, pi_1, ...]
+        Returns: {0: cyclic_irrep_func(f \dot pi_0), 1: cyclic_irrep_func(f \dot pi_1), ...}
+    '''
+    scalars = {}
+    for idx, rep in enumerate(coset_reps):
+        tup_g = dot_tup_inv(rep, tup)
+        scalars[idx] = cyclic_irrep_func(tup_g)
+    return scalars
 
 class CyclicGroup:
     def __init__(self, cyc, order): 
@@ -83,28 +110,17 @@ def cyclic_irreps(weak_partition):
     Returns a function that takes in an 8 tuple and returns the
         product of the cyclic irreps (float)
     '''
-    _idx0 = weak_partition[0]
-    _idx1 = weak_partition[0] + weak_partition[1]
+    idx0 = weak_partition[0]
+    idx1 = weak_partition[0] + weak_partition[1]
     g_x = ((0,) * weak_partition[0]) + ((1,) * weak_partition[1]) + ((2,) * weak_partition[2])
-    def func(tup, perm):
-        # first indices 0: weak_partition[0]
-        # 2nd indices weak_partition[0]: weak_partition[0] + weak_partition[1]
-        # 3rd indices weak_partition[0] + weak_partition[1]:  sum(weak_partition)
-        ginv_perm = perm2.Perm2.from_tup(perm).inv()
-        tot = 0
-        for i in range(1, 9):
-            gidx = ginv_perm[i]-1 # perm is 1-indexed
-            gval = g_x[gidx]
-            tot += tup[i-1] * gval
-        return np.exp(2j * np.pi * tot / 3.)
-        p1 = sum(tup[:_idx0])
-        p2 = sum(tup[_idx0: _idx1])
-        p3 = sum(tup[_idx1:])
-
-        print('Evaluating on {} | {}, {}, {}'.format(tup, p1, p2, p3))
+    def func(tup):
+        p1 = sum(tup[:idx0])
+        p2 = sum(tup[idx0: idx1])
+        p3 = sum(tup[idx1:])
         return np.exp(2j * np.pi * 0 * p1 / 3.) * \
                np.exp(2j * np.pi * 1 * p2 / 3.) * \
                np.exp(2j * np.pi * 2 * p3 / 3.)
+
     return func
 
 def load_partition(partition, prefix='/local/hopan/irreps/'):
@@ -192,10 +208,10 @@ def _proc_yor(perms, young_yor, young_sub_set, reps, rep_dict):
         g_rep = {}
         for i, t_i in enumerate(reps):
             for j, t_j in enumerate(reps):
-                ti_g_tj = t_i.inv() * g * t_j
-                if ti_g_tj.tup_rep in young_sub_set:
-                    g_rep[(i, j)] = young_yor[ti_g_tj.tup_rep]
-
+                tiinv_g_tj = t_i.inv() * g * t_j
+                if tiinv_g_tj.tup_rep in young_sub_set:
+                    g_rep[(i, j)] = young_yor[tiinv_g_tj.tup_rep]
+                    break
         rep_dict[g.tup_rep] = g_rep 
 
 def wreath_yor_par(alpha, _parts, prefix='/local/hopan/', par=8):
@@ -216,9 +232,7 @@ def wreath_yor_par(alpha, _parts, prefix='/local/hopan/', par=8):
     young_sub_set = tup_set(young_sub)
     young_yor = young_subgroup_yor(alpha, _parts, os.path.join(prefix, 'irreps'))
     reps = coset_reps(_sn, young_sub)
-    #print('Len coset reps: {}'.format(len(reps)))
-    #print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
-    cnts = np.zeros((len(reps), len(reps)))
+
     sn_chunks = chunk(_sn, par)
     manager = Manager()
     rep_dict = manager.dict()
@@ -255,9 +269,6 @@ def wreath_yor(alpha, _parts, prefix='/local/hopan/'):
     young_yor = young_subgroup_yor(alpha, _parts, os.path.join(prefix, 'irreps'))
     reps = coset_reps(_sn, young_sub)
     rep_dict = {}
-    #print('Len coset reps: {}'.format(len(reps)))
-    #print('Total loop iters: {}'.format(len(_sn) * len(reps) * len(reps)))
-    cnts = np.zeros((len(reps), len(reps)))
 
     # this part can be parallelized
     # loop over the group
@@ -267,17 +278,16 @@ def wreath_yor(alpha, _parts, prefix='/local/hopan/'):
         g_rep = {}
         for i, t_i in enumerate(reps):
             for j, t_j in enumerate(reps):
-                ti_g_tj = t_i.inv() * g * t_j
-                if ti_g_tj.tup_rep in young_sub_set:
-                    g_rep[(i, j)] = young_yor[ti_g_tj.tup_rep]
-                    cnts[i, j] = cnts[i, j] + 1
+                tiinv_g_tj = t_i.inv() * g * t_j
+                if tiinv_g_tj.tup_rep in young_sub_set:
+                    g_rep[(i, j)] = young_yor[tiinv_g_tj.tup_rep]
+                    break
 
         rep_dict[g.tup_rep] = g_rep 
 
-    #return rep_dict, cnts
     return rep_dict
 
-def get_mat(g, yor_dict):
+def get_mat(g, yor_dict, block_scalars=None):
     '''
     g: perm2.Perm2 object
     yor_dict: dict mapping perm2.Perm2 object -> (dict of (i, j) -> numpy matrix)
@@ -291,22 +301,28 @@ def get_mat(g, yor_dict):
     vs = list(yg.values())
     block_size = vs[0].shape[0]
     size = len(yg) * block_size
-    mat = np.zeros((size, size))
+    mat = np.zeros((size, size), dtype=np.complex128)
 
     for (i, j), v in yg.items():
         x1, x2 = (block_size*i, block_size*i+block_size)
         y1, y2 = (block_size*j, block_size*j+block_size)
-        mat[x1:x2, y1:y2] = v
+        if block_scalars is not None:
+            scalar = block_scalars[i]
+        else:
+            scalar = 1
+        mat[x1:x2, y1:y2] = scalar * v
 
     return mat
 
-def wreath_rep(orientation, perm, yor_dict, cyc_irrep_func=None, alpha=None):
+def wreath_rep(orientation, perm, yor_dict, cos_reps, cyc_irrep_func=None, alpha=None):
     if (cyc_irrep_func is None) and (alpha is None):
+        pdb.set_trace()
         raise ValueError('Need to supply either irrep func or alpha')
     if cyc_irrep_func is None:
         cyc_irrep_func = cyclic_irreps(alpha)
 
-    return cyc_irrep_func(orientation, perm) * get_mat(perm, yor_dict)
+    block_scalars = block_cyclic_irreps(orientation, cos_reps, cyc_irrep_func)
+    return get_mat(perm, yor_dict, block_scalars)
 
 def mult(g, h, yd):
     '''
@@ -325,20 +341,14 @@ def mult(g, h, yd):
     return mat_g.dot(mat_h)
 
 def test_wreath_class():
-    perm = perm2.Perm2.from_tup((1,3,4,2))
-    cyc = CyclicGroup((0, 1, 0, 2), 3)
-    #w = WreathCycSn(cyc, perm)
     c = init_2cube()
     for f in ['r', 'l', 'f', 'b', 'u', 'd']:
         cube_str = rotate(c, f)
         o1, p1 = get_wreath(cube_str)
         o2, pinv = get_wreath(rotate(c, 'i' + f))
-        #c1 = CyclicGroup((2, 1, 0, 0, 0, 0, 2, 1), 3)
+
         c1 = CyclicGroup(o1, 3)
-        #c2 = CyclicGroup((2, 1, 0, 0, 0, 0, 2, 1), 3)
         c2 = CyclicGroup(o2, 3)
-        #p1 = perm2.Perm2.from_tup((2, 7, 3, 4, 5, 6, 8, 1))
-        #p2 = perm2.Perm2.from_tup((8, 1, 3, 4, 5, 6, 2, 7))
         p1 = perm2.Perm2.from_tup(p1)
         p2 = perm2.Perm2.from_tup(pinv)
 
