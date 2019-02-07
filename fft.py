@@ -1,13 +1,13 @@
-import sys
 import time
 import pdb
 import numpy as np
-from yor import yor, ysemi, CACHE
-from young_tableau import FerrersDiagram, wreath_dim
-from utils import partitions, check_memory, CUBE2_SIZE
+from yor import yor, ysemi
+from young_tableau import FerrersDiagram
+from utils import partitions
 from perm import Perm, sn
 from perm2 import Perm2
 from perm2 import sn as sn2
+from wreath import wreath_rep, WreathCycSn
 
 
 # can use ysemi or yor
@@ -151,12 +151,12 @@ def fourier_transform2(f, ferrers):
 
     return res
 
-def cube2_inv_fft_func(irrep_dict, fourier_mat, alpha, parts):
-    def f(g):
-        return cube2_inv_fft_part(irrep_dict, fourier_mat, alpha, parts, g)
+def cube2_inv_fft_func(irrep_dict, fourier_mat, coset_reps, cyclic_irrep_func):
+    def f(cyc_tup, perm):
+        return cube2_inv_fft_part(irrep_dict, fourier_mat, coset_reps, cyclic_irrep_func, cyc_tup, perm)
     return f
 
-def cube2_inv_fft_part(irrep_dict, fourier_mat, alpha, parts, g_tup):
+def cube2_inv_fft_part(irrep_dict, fourier_mat, coset_reps, cyclic_irrep_func, cyc_tup, perm_tup):
     '''
     irrep_dict: map from dictionary of permutation(in tuple rep form) -> numpy matrices
     fourier_mat: numpy matrix
@@ -166,16 +166,11 @@ def cube2_inv_fft_part(irrep_dict, fourier_mat, alpha, parts, g_tup):
 
     Returns: a float = dimension * Trace(\rho(g inverse) * fourier_mat)
     '''
-    ginv_irrep = irrep_dict[Perm2.from_tup(g_tup).inv().tup_rep]
-
-    # there is probably a faster way
+    # now actually i want the inverse of this group element
+    cinv, pinv = WreathCycSn.from_tup(cyc_tup, perm_tup, order=3).inv_tup_rep()
     dim = fourier_mat.shape[0]
-    irrep_mat = np.zeros(fourier_mat.shape, dtype=np.complex128)
-    bs = wreath_dim(parts) # size of the irrep of S_alpha, 
-    for (i, j) in ginv_irrep:
-        irrep_mat[bs * i: bs * (i+1), bs * j: bs * (j+1)] = ginv_irrep[(i, j)]
-
-    return dim * np.ravel(irrep_mat.T).dot(np.ravel(fourier_mat)) / CUBE2_SIZE
+    inv_irrep = wreath_rep(cinv, pinv, irrep_dict, coset_reps, cyclic_irrep_func)
+    return dim * np.ravel(inv_irrep.T).dot(np.ravel(fourier_mat))
 
 def benchmark(n):
     id_f = lambda x: 1

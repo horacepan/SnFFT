@@ -9,8 +9,6 @@ import numpy as np
 from utils import check_memory, chunk
 import perm2
 from coset_utils import coset_reps, young_subgroup_perm, young_subgroup, tup_set
-sys.path.append('./cube')
-from str_cube import init_2cube, rotate, get_wreath
 
 def dot(perm, cyc):
     '''
@@ -30,6 +28,11 @@ def dot_tup(perm, tup):
     return new_tup
 
 def dot_tup_inv(perm, tup):
+    '''
+    perm: Perm2 object
+    tup: tuple of ints
+    Returns: tuple of ints
+    '''
     new_tup = tuple(tup[perm[i] - 1] for i in range(1, len(tup) + 1))
     return new_tup
 
@@ -54,6 +57,10 @@ class CyclicGroup:
         self.cyc = cyc
         self.size = len(cyc)
         self.order = order
+
+    @property
+    def tup_rep(self):
+        return self.cyc
 
     def inv(self):
         cyc = tuple((self.order - a) % self.order for a in self.cyc)
@@ -84,6 +91,10 @@ class WreathCycSn:
         self.cyc = cyc
         self.perm = perm
 
+    @property
+    def tup_rep(self):
+        return self.cyc.tup_rep, self.perm.tup_rep
+
     @staticmethod
     def from_tup(cyc_tup, perm_tup, order):
         return WreathCycSn(CyclicGroup(cyc_tup, order), perm2.Perm2.from_tup(perm_tup))
@@ -97,6 +108,9 @@ class WreathCycSn:
         perm = self.perm.inv()
         cyc = dot(self.perm.inv(), self.cyc.inv())
         return WreathCycSn(cyc, perm)
+
+    def inv_tup_rep(self):
+        return self.inv().tup_rep
 
     def __repr__(self):
         return '{} | {}'.format(self.cyc, self.perm)
@@ -289,15 +303,15 @@ def wreath_yor(alpha, _parts, prefix='/local/hopan/'):
 
 def get_mat(g, yor_dict, block_scalars=None):
     '''
-    g: perm2.Perm2 object
-    yor_dict: dict mapping perm2.Perm2 object -> (dict of (i, j) -> numpy matrix)
+    g: perm2.Perm2 object or tuple representation of a permutation
+    yor_dict: dict mapping permutation tuple -> (dict of (i, j) -> numpy matrix)
 
     Returns matrix for this ydict
     '''
     if type(g) == tuple:
-        g = perm2.Perm2.from_tup(g)
-
-    yg = yor_dict[g.tup_rep]
+        yg = yor_dict[g]
+    else:
+        yg = yor_dict[g.tup_rep]
     vs = list(yg.values())
     block_size = vs[0].shape[0]
     size = len(yg) * block_size
@@ -314,14 +328,13 @@ def get_mat(g, yor_dict, block_scalars=None):
 
     return mat
 
-def wreath_rep(orientation, perm, yor_dict, cos_reps, cyc_irrep_func=None, alpha=None):
+def wreath_rep(cyc_tup, perm, yor_dict, cos_reps, cyc_irrep_func=None, alpha=None):
     if (cyc_irrep_func is None) and (alpha is None):
-        pdb.set_trace()
         raise ValueError('Need to supply either irrep func or alpha')
     if cyc_irrep_func is None:
         cyc_irrep_func = cyclic_irreps(alpha)
 
-    block_scalars = block_cyclic_irreps(orientation, cos_reps, cyc_irrep_func)
+    block_scalars = block_cyclic_irreps(cyc_tup, cos_reps, cyc_irrep_func)
     return get_mat(perm, yor_dict, block_scalars)
 
 def mult(g, h, yd):
@@ -340,40 +353,5 @@ def mult(g, h, yd):
     mat_h = get_mat(h, yd)
     return mat_g.dot(mat_h)
 
-def test_wreath_class():
-    c = init_2cube()
-    for f in ['r', 'l', 'f', 'b', 'u', 'd']:
-        cube_str = rotate(c, f)
-        o1, p1 = get_wreath(cube_str)
-        o2, pinv = get_wreath(rotate(c, 'i' + f))
-
-        c1 = CyclicGroup(o1, 3)
-        c2 = CyclicGroup(o2, 3)
-        p1 = perm2.Perm2.from_tup(p1)
-        p2 = perm2.Perm2.from_tup(pinv)
-
-        w = WreathCycSn(c1, p1)
-        winv = WreathCycSn(c2, p2)
-        prod = w * winv
-        print('Face: {} | prod should be identity wreath: {}'.format(f, prod))
-        print('===============')
-
-def test_wreath(alpha, _parts, pkl_prefix='/local/hopan/'):
-    start = time.time()
-    print('alpha: {} | parts: {}'.format(alpha, _parts))
-    wreath_yor(alpha, _parts, pkl_prefix)
-    print('Elapsed: {:.2f}'.format(time.time() - start))
-
 if __name__ == '__main__':
-    test_wreath_class()
-    exit()
-    alpha = (6, 1, 1)
-    _parts = ((4,2), (1,), (1,))
-
-    if len(sys.argv) > 1:
-        print('looking in {}'.format(sys.argv[1]))
-        test_wreath(alpha, _parts, sys.argv[1])
-    else:
-        print('using default prefix')
-        test_wreath(alpha, _parts)
-    check_memory()
+    pass
