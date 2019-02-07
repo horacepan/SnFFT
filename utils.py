@@ -21,7 +21,7 @@ def chunk(lst, n):
         return [lst[i:i + size] for i in range(0, len(lst), size)]
     else:
         size = (len(lst) // n)
-        output = [lst[i:i + size] for i in range(0, len(lst), size)]
+        output = [lst[i:i + size] for i in range(0, size * n, size)]
         for d in range(len(lst) - (size * n)):
                 output[d].append(lst[-(d+1)])
         return output

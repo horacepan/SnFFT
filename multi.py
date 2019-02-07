@@ -79,7 +79,7 @@ def split_transform(fsplit_lst, irrep_dict, alpha, parts, mem_dict=None):
         with open(fsplit_pkl, 'r') as f:
             # dict of function values
             pkl_dict = load_pkl(fsplit_pkl)
-            for perm_tup, tup_dict in tqdm(pkl_dict.items()):
+            for perm_tup, tup_dict in pkl_dict.items():
                 for tup, dists in tup_dict.items():
                     dist_tot = sum(dists)
                     perm_rep = irrep_dict[perm_tup]  # perm_rep is a dict of (i, j) -> matrix
@@ -101,7 +101,7 @@ def full_transform(args, alpha, parts, split_chunks):
     print('Savename: {}'.format(savename))
     if os.path.exists(savename + '.npy'):
         print('Skipping. Already computed fourier matrix for: {} | {}'.format(alpha, parts))
-        #exit()
+        exit()
 
     manager = Manager()
     irrep_dict = load_pkl(os.path.join(args.pkldir, args.alpha, '{}.pkl'.format(parts)))
@@ -117,7 +117,7 @@ def full_transform(args, alpha, parts, split_chunks):
         with Pool(len(split_chunks)) as p:
             arg_tups = [(_fn, irrep_dict, alpha, parts, mem_dict) for _fn in split_chunks]
             matrices = p.starmap(split_transform, arg_tups)
-            #np.save(savename, sum(matrices))
+            np.save(savename, sum(matrices))
     else:
         print('Single thread...')
         matrices = []
@@ -130,7 +130,7 @@ def full_transform(args, alpha, parts, split_chunks):
             res = split_transform(_fn, irrep_dict, alpha, parts)
             matrices.append(res)
             result += res
-        #np.save(savename, sum(matrices))
+        np.save(savename, sum(matrices))
 
     print('Post loading pickle mem usg: {:.4}mb | Final mem usg: {:.4f}mb'.format(mem_usg, check_memory(False)))
     print('Processes')
