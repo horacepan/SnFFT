@@ -22,7 +22,7 @@ def rot_permutations(cube):
         rot_z(cube, 2),
         rot_z(cube, 3),
     ]
-  
+
     # rotate the cube about the 6 midpoint connecting two diagonally opposite faces 
     midpt_rots = [
         rot_x(rot_z(rot_x(cube), 3)),
@@ -77,7 +77,7 @@ def str_to_wreath(cube_str):
 def test_permutations():
     cube = init_2cube()
     perms = rot_permutations(cube)
-    assert len(set(perms)) == 24
+    assert len(set(perms)) == 24, 'Num unique rotated perms: {}'.format(len(set(perms)))
 
     for s in perms:
         for f in FACES:
@@ -105,4 +105,4 @@ def test_2():
     print('All good')
 
 if __name__ == '__main__':
-    test_2()
+    test_permutations()

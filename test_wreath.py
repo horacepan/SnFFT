@@ -73,5 +73,24 @@ class TestWreath(unittest.TestCase):
         self.assertTrue(np.allclose(w12, wd12))
         self.assertTrue(np.allclose(w13, wd13))
 
+    '''
+    def test_cube_wreath(self):
+        c = init_2cube()
+        for f in ['r', 'l', 'f', 'b', 'u', 'd']:
+            cube_str = rotate(c, f)
+            o1, p1 = get_wreath(cube_str)
+            o2, pinv = get_wreath(rotate(c, 'i' + f))
+
+            c1 = CyclicGroup(o1, 3)
+            c2 = CyclicGroup(o2, 3)
+            p1 = perm2.Perm2.from_tup(p1)
+            p2 = perm2.Perm2.from_tup(pinv)
+
+            w = WreathCycSn(c1, p1)
+            winv = WreathCycSn(c2, p2)
+            prod = w * winv
+            print('Face: {} | prod should be identity wreath: {}'.format(f, prod))
+            print('===============')
+    '''
 if __name__ == '__main__':
     unittest.main()

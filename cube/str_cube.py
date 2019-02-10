@@ -569,7 +569,7 @@ def rot_ib2(cube_str):
 def rot_z(cube_str, times=1):
     '''Rotate entire cube clockwise about the z axis'''
     for _ in range(times):
-        cube_str = rot_u(rot_d2(cube_str))
+        cube_str = rot_u(rot_d(cube_str))
     return cube_str
 
 def rot_x(cube_str, times=1):
