@@ -333,7 +333,7 @@ def rot_d(cube_str):
     _r = get_face(cube_str, 'r')
 
     u_face = get_face(cube_str, 'u')
-    d_face = cycle(get_face(cube_str, 'd'))
+    d_face = cycle_cc(get_face(cube_str, 'd'))
     l_face =  _l[:2] + _f[2:]
     b_face =  _b[:2] + _l[2:]
     r_face =  _r[:2] + _b[2:]
@@ -354,7 +354,7 @@ def rot_id(cube_str):
     _r = get_face(cube_str, 'r')
 
     u_face = get_face(cube_str, 'u')
-    d_face = cycle_cc(get_face(cube_str, 'd'))
+    d_face = cycle(get_face(cube_str, 'd'))
     l_face =  _l[:2] + _b[2:] # b's bot becomes l's bot
     b_face =  _b[:2] + _r[2:] # r's bot becomes b's bot
     r_face =  _r[:2] + _f[2:] # f's bot becomes r's bot
@@ -724,6 +724,7 @@ def get_s8(cube_str):
         cubie_idx = CMAP.get(cubie_colors, None)
         if cubie_idx is None:
             print('Cant find {}'.format(cubie_colors))
+            return None
             pdb.set_trace()
         perm[cubie_idx] = i
     return perm
@@ -733,7 +734,12 @@ def get_s8_tup(cube_str):
     get_s8 returns the permutation in 0-indexed tuple format. This returns it
     in 1-indexed format.
     '''
-    return tuple([x + 1 for x in get_s8(cube_str)])
+    s8_res = get_s8(cube_str)
+    if s8_res is None:
+        return None
+    else:
+        return tuple([x + 1 for x in s8_res])
+        #return tuple([x + 1 for x in get_s8(cube_str)])
 
 def get_wreath(cube_str):
     return orientation(cube_str), get_s8_tup(cube_str)

@@ -1,3 +1,4 @@
+import sys
 from tqdm import tqdm
 import ast
 import math
@@ -15,12 +16,11 @@ from coset_utils import young_subgroup_perm, coset_reps
 
 TWO_CUBE_SIZE = 88179840
 def clean_line(line):
-    alpha, perm_tup, dist = line.split(',')
-    alpha = tuple(map(int, alpha))
-    perm_tup = tuple(map(int, perm_tup))
+    ostr, pstr, dist = line.split(',')
+    otup = tuple(map(int, ostr))
+    ptup = tuple(map(int, pstr))
     dist = int(dist)
-
-    return alpha, perm_tup, dist
+    return otup, ptup, dist
 
 def mult_yor(irrep, scalar, save_dict):
     '''
@@ -94,6 +94,36 @@ def split_transform(fsplit_lst, irrep_dict, alpha, parts, mem_dict=None):
     mat = convert_yor_matrix(save_dict, block_size, n_cosets)
     return mat
 
+def text_split_transform(fsplit_lst, irrep_dict, alpha, parts, mem_dict=None):
+    '''
+    fsplit_pkl: list of split file names of the distance values for a chunk of the total distance values
+    irrep_dict: irrep dict
+    alpha: weak partition
+    parts: list/iterable of partitions of the parts of alpha
+    '''
+    print('     Computing transform on splits: {}'.format(fsplit_lst))
+    cos_reps = coset_reps(sn(8), young_subgroup_perm(alpha))
+    save_dict = {}
+    cyc_irrep_func = cyclic_irreps(alpha)
+    pid = os.getpid()
+
+    for split_f in fsplit_lst:
+        with open(split_f, 'r') as f:
+            for line in tqdm(f):
+                otup, perm_tup, dist  = clean_line(line)
+                perm_rep = irrep_dict[perm_tup]  # perm_rep is a dict of (i, j) -> matrix
+                block_cyclic_rep = block_cyclic_irreps(otup, cos_reps, cyc_irrep_func)
+                mult_yor_block(perm_rep, dist, block_cyclic_rep, save_dict)
+
+        if mem_dict is not None:
+            mem_dict[pid] = max(check_memory(verbose=False), mem_dict.get(pid, 0))
+
+    block_size = wreath_dim(parts)
+    n_cosets = coset_size(alpha)
+    mat = convert_yor_matrix(save_dict, block_size, n_cosets)
+    return mat
+
+
 def full_transform(args, alpha, parts, split_chunks):
     print('Computing full transform for alpha: {} | parts: {}'.format(alpha, parts))
     savedir_alpha = os.path.join(args.savedir, args.alpha)
@@ -116,7 +146,7 @@ def full_transform(args, alpha, parts, split_chunks):
         mem_dict = manager.dict()
         with Pool(len(split_chunks)) as p:
             arg_tups = [(_fn, irrep_dict, alpha, parts, mem_dict) for _fn in split_chunks]
-            matrices = p.starmap(split_transform, arg_tups)
+            matrices = p.starmap(text_split_transform, arg_tups)
             np.save(savename, sum(matrices))
     else:
         print('Single thread...')
@@ -127,7 +157,7 @@ def full_transform(args, alpha, parts, split_chunks):
         result = np.zeros(shape, dtype=np.complex128)
         mem_dict = {}
         for _fn in split_chunks:
-            res = split_transform(_fn, irrep_dict, alpha, parts)
+            res = text_split_transform(_fn, irrep_dict, alpha, parts)
             matrices.append(res)
             result += res
         np.save(savename, sum(matrices))
@@ -147,11 +177,12 @@ def main(args):
 
     if not os.path.exists(args.savedir):
         os.makedirs(args.savedir)
-    split_files = [os.path.join(args.splitdir, f) for f in os.listdir(args.splitdir) if '.pkl' in f]
+    split_files = [os.path.join(args.splitdir, f) for f in os.listdir(args.splitdir) if args.suffix in f]
     split_chunks = chunk(split_files, args.par)
     parts = ast.literal_eval(args.parts)
     alpha = ast.literal_eval(args.alpha)
     #assert all(sum(parts[i]) == alpha[i] for i in range(len(parts))), 'Invalid partition for alpha!'
+    print('About to full transform: {}'.format(split_chunks))
     full_transform(args, alpha, parts, split_chunks)
 
 def test_partial():
@@ -165,10 +196,11 @@ if __name__ == '__main__':
     #test_partial()
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--pkldir', type=str, default='/local/hopan/cube/pickles')
-    parser.add_argument('--splitdir', type=str, default='/local/hopan/cube/split_or')
+    parser.add_argument('--splitdir', type=str, default='/local/hopan/cube/split_unmod')
     parser.add_argument('--savedir', type=str, default='/local/hopan/cube/fourier')
     parser.add_argument('--alpha', type=str, default='(8, 0, 0)')
     parser.add_argument('--parts', type=str, default='((7,1),(),())')
     parser.add_argument('--par', type=int, default=1, help='Amount of parallelism')
+    parser.add_argument('--suffix', type=str, default='split', help='special suffix for split files')
     args = parser.parse_args()
     tf(main, [args])
