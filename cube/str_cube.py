@@ -2,6 +2,8 @@ from collections import Counter
 import time
 import random
 from cube import Cube
+from itertools import permutations
+
 import pdb
 '''
 The contains a barebones implementation of manipulating a 2x2 Rubiks Cube.
@@ -67,6 +69,81 @@ def init_2cube():
     for c, f in zip(COLORS, FACES):
         cube = cube + (4 * c)
     return cube
+
+def construct_cube(face_contents):
+    return ''.join(face_contents)
+
+def get_urf(cube):
+    fs = ['u', 'r', 'f']
+    return ''.join(get_face(cube, f)[0] for f in fs)
+
+def get_fdl(cube):
+    fs = ['f', 'd', 'l']
+    return ''.join(get_face(cube, f)[0] for f in fs)
+
+def valid_cube(cube):
+    # ('G', 'B'), ('W', 'Y'), ('R', 'M')
+    valid_pairs = set(
+        [('G', 'B'), ('W', 'Y'), ('R', 'M'),
+         ('B', 'G'), ('Y', 'W'), ('M', 'R')]
+    )
+    valid_trips = set([
+        # u, r, f
+        ('G', 'M', 'W'),
+        ('W', 'G', 'M'),
+        ('M', 'W', 'G'),
+        # f, d, l
+        ('B', 'Y', 'R'),
+        ('R', 'B', 'Y'),
+        ('Y', 'R', 'B'),
+    ])
+    face_pairs = [
+        ('u', 'd'),
+        ('l', 'r'),
+        ('f', 'b'),
+    ]
+    f_map = {
+        'u': 0,
+        'd': 1,
+        'l': 2,
+        'r': 3,
+        'f': 4,
+        'b': 5
+    }
+    if get_urf(cube) not in CMAP:
+        return False
+
+    if get_fdl(cube) not in CMAP:
+        return False
+
+    for f1, f2 in face_pairs:
+        face1 = get_face(cube, f1)
+        face2 = get_face(cube, f2)
+        if (face1[0], face2[0]) not in valid_pairs:
+            print('invalid pair')
+            return False
+
+        #if get_urf(cube) not in valid_trips:
+        #    print('urf: {} is invalid'.format(get_urf(cube)))
+        #    return False
+
+        #if get_fdl(cube) not in valid_trips:
+        #    print('fdl: {} is invalid'.format(get_urf(cube)))
+        #    return False
+    return True
+
+def all_init_states():
+    cfaces = [FACE_COLOR_MAP[f]*4 for f in FACES]
+    # loop over permutations
+    # only add if G opp blue, etc
+    all_states = set()
+
+    for perm in permutations(cfaces):
+        pot_cube = ''.join(perm)
+        if valid_cube(pot_cube):
+            all_states.add(pot_cube)
+
+    return all_states
 
 def get_face(cube_str, f):
     assert f in FACES
@@ -161,7 +238,6 @@ def make_cube_str_dict(face_dict):
         face_dict['b']
     )
 
-'''
 def neighbors(cube_str):
     nbrs = [
         rot_u(cube_str),
@@ -178,7 +254,6 @@ def neighbors(cube_str):
         rot_ib(cube_str)
     ]
     return nbrs
-'''
 
 def neighbors_fixed_core(cube_str):
     '''
