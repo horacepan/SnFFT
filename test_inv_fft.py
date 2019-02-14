@@ -57,7 +57,8 @@ def main():
     parser.add_argument('--prefix', type=str, default='/local/hopan/cube/')
     parser.add_argument('--samples', type=int, default=1)
     parser.add_argument('--bandlimit', type=str, default='')
-    parser.add_argument('--maxdist', type=int)
+    parser.add_argument('--maxdist', type=int, default=15)
+    parser.add_argument('--minnorm', type=float, default=0.)
     parser.add_argument('--seed', type=int, default=1)
     args = parser.parse_args()
 
@@ -66,6 +67,8 @@ def main():
 
     start = time.time()
     peak_mem_usg = 0
+    irreps_used = 0
+    used_irreps = []
     s8 = sn(8)
     ift_dists = {}
     true_dists = {}
@@ -76,8 +79,8 @@ def main():
     for c in cube_strs:
         for cnbr in neighbors_fixed_core(c):
             wr = get_wreath(cnbr)
-            ift_dists[wr] = 0
-            true_dists[wr] = df_cubes.loc[cnbr][DIST]
+            ift_dists[cnbr] = 0
+            true_dists[cnbr] = df_cubes.loc[cnbr][DIST]
 
     if args.bandlimit:
         bl_func = eval(args.bandlimit)
@@ -97,31 +100,46 @@ def main():
             fourier_mat = load_fourier(args.prefix, alpha, parts)
             if fourier_mat is None:
                 continue
+
+            mat_sn = np.linalg.norm(fourier_mat) * fourier_mat.shape[0] / (CUBE2_SIZE * 14.)
+            if mat_sn < args.minnorm:
+                continue
+
             irreps = load_irrep(args.prefix, alpha, parts)
             if irreps is None:
                 continue
             ift = cube2_inv_fft_func(irreps, fourier_mat, cos_reps, cyc_irrep_func)
 
             peak_mem_usg = max(check_memory(False), peak_mem_usg)
-            for wreath in ift_dists.keys():
-                ift_dists[wreath] += (ift(*wreath) / CUBE2_SIZE)
+            for cube in ift_dists.keys():
+                wr = get_wreath(cube)
+                ift_dists[cube] += (ift(*wr) / CUBE2_SIZE)
 
             del irreps
             del fourier_mat
             del ift
+            irreps_used += 1
+            used_irreps.append((alpha, parts))
             elapsed = (time.time() - start) / 60.
-            print('Elapsed: {:.2f}min | Done with {} | {}'.format(elapsed, alpha, parts))
-
-    for c in cube_strs:
-        print('Neighbors of {}:'.format(c))
-        for cnbr in neighbors_fixed_core(c):
-            wr = get_wreath(cnbr)
-            print('{} | pred: {:.2f} | true: {:.2f}'.format(cnbr, ift_dists[wr].real, true_dists[wr]))
-        print('=============================================')
+            print('Elapsed: {:6.2f}min | Done with {} | {:30} | Fourier norm: {:.2f}'.format(elapsed, alpha, str(parts), mat_sn))
 
     correct_cubes = compute_correct_moves(ift_dists, true_dists, cube_strs)
+    print('Used {} irreps:'.format(irreps_used))
+    for a, p in  used_irreps:
+        print('{}, {}'.format(a, p))
     print('{} / {} correct.'.format(len(correct_cubes), len(cube_strs)))
     print('Peak memory usage: {:.2f}mb'.format(peak_mem_usg))
+
+def pp_diff(cubes, ift_dists, true_dists, result):
+    for c in cubes:
+        nbrs = neighbors_fixed_core(c)
+        nbrs.sort(key=lambda x: ift_dists[x].real)
+
+        for nbr in nbrs:
+            wr_nbr = get_wreath(nbr)
+            print('{} | pred: {:5.2f} | true: {:5.2f}'.format(nbr, ift_dists[nbr].real, true_dists[nbr]))
+        print("Neighbors of {}  | {}".format(c, result))
+        print('====================================================')
 
 def compute_correct_moves(ift_dists, true_dists, cube_states):
     '''
@@ -133,29 +151,22 @@ def compute_correct_moves(ift_dists, true_dists, cube_states):
     '''
     n_correct = 0
     correct_cubes = []
+    incorrect_cubes = []
 
     for cube in cube_states:
-        opt_nbrs = []
-        opt_dist = float('inf')
-        opt_pol_nbr = None
-        opt_pol_dst = float('inf')
+        nbrs = neighbors_fixed_core(cube)
+        nbrs.sort(key=lambda x: ift_dists[x].real)
 
-        # loop over neighbors, find best neighbor
-        for nbr in neighbors_fixed_core(cube):
-            # get the opt nbr
-            wr_nbr = get_wreath(nbr)
-            if true_dists[wr_nbr] < opt_dist:
-                opt_dist = true_dists[wr_nbr]
-                opt_nbrs.append(wr_nbr)
-
-            if ift_dists[wr_nbr].real < opt_pol_dst:
-                opt_pol_dst = ift_dists[wr_nbr].real
-                opt_pol_nbr = wr_nbr
-
+        min_dist = min([true_dists[x] for x in nbrs])
+        opt_nbrs = [x for x in nbrs if true_dists[x] == min_dist]
+        opt_pol_nbr = nbrs[0]
         if opt_pol_nbr in opt_nbrs:
             n_correct += 1
-            correct_cubes.append(opt_pol_nbr)
+            correct_cubes.append(cube)
+        else:
+            incorrect_cubes.append(cube)
 
+    pp_diff(incorrect_cubes, ift_dists, true_dists, "incorrect")
     return correct_cubes
 
 def top():
@@ -197,12 +208,19 @@ def t314():
     }
     return irreps
 
+def big():
+    alphas = [
+        (2, 3, 3), (4, 2, 2), (3, 1, 4), (3, 4, 1), (0, 4, 4), (1, 2, 5), (1, 5, 2), (6, 1, 1)
+    ]
+    irreps = { a: partition_parts(a) for a in alphas }
+    irreps[(8, 0, 0)] = [((8,), (), ())]
+    return irreps
+
 def mode():
     irreps = {
         (8, 0, 0): [((8,), (), ())]
     }
     return irreps
-
 
 if __name__ == '__main__':
     tf(main)
