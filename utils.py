@@ -1,11 +1,10 @@
 import pickle
-import psutil
+import os
 import time
 import pdb
-import os
 from functools import reduce
 from itertools import product
-import resource
+import psutil
 
 CUBE2_SIZE = 88179840
 FOURIER_SUBDIR = 'fourier'
@@ -23,7 +22,7 @@ def chunk(lst, n):
         size = (len(lst) // n)
         output = [lst[i:i + size] for i in range(0, size * n, size)]
         for d in range(len(lst) - (size * n)):
-                output[d].append(lst[-(d+1)])
+            output[d].append(lst[-(d+1)])
         return output
 
 def partitions(n, start=1):
@@ -77,22 +76,22 @@ def cube2_alphas():
     Returns the list of weak partitions of 8 into 3 buckets.
     '''
     return [
-                (2, 3, 3),
-                (4, 2, 2),
-                (3, 1, 4),
-                (3, 4, 1),
-                (1, 2, 5),
-                (1, 5, 2),
-                (0, 4, 4),
-                (5, 0, 3),
-                (5, 3, 0),
-                (6, 1, 1),
-                (2, 6, 0),
-                (2, 0, 6),
-                (0, 1, 7),
-                (0, 7, 1),
-                (8, 0, 0),
-           ]
+        (2, 3, 3),
+        (4, 2, 2),
+        (3, 1, 4),
+        (3, 4, 1),
+        (1, 2, 5),
+        (1, 5, 2),
+        (0, 4, 4),
+        (5, 0, 3),
+        (5, 3, 0),
+        (6, 1, 1),
+        (2, 6, 0),
+        (2, 0, 6),
+        (0, 1, 7),
+        (0, 7, 1),
+        (8, 0, 0),
+    ]
 
 def cube2_irreps():
     '''
@@ -143,7 +142,7 @@ def commutator(x, y):
 
 def test_canonicalize():
     print('utils.test_canonicalize')
-    x = [(1,2,3), (1,2)]
+    x = [(1, 2, 3), (1, 2)]
     print(canonicalize(x), x)
 
     x = [(2, 1, 3)]
@@ -159,9 +158,9 @@ def load_irrep(prefix, alpha, parts):
     irrep_path = os.path.join(prefix, IRREP_SUBDIR, str(alpha), '{}.pkl'.format(parts))
     if os.path.exists(irrep_path):
         return load_pkl(irrep_path, 'rb')
-    else:
-        print("Could not load: {}".format(irrep_path))
-        return None
+
+    print("Could not load: {}".format(irrep_path))
+    return None
 
 def tf(f, args=None):
     if args is None:

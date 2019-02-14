@@ -53,7 +53,7 @@ def block_cyclic_irreps(tup, coset_reps, cyclic_irrep_func):
     return scalars
 
 class CyclicGroup:
-    def __init__(self, cyc, order): 
+    def __init__(self, cyc, order):
         self.cyc = cyc
         self.size = len(cyc)
         self.order = order
@@ -141,7 +141,7 @@ def load_partition(partition, prefix='/local/hopan/irreps/'):
     '''
     partition: tuple of ints
     Returns a dict of yor matrices mapping permutation to yor rep matrices
-    If the partition is (0,): 
+    If the partition is (0,):
     '''
     n = sum(partition)
     if n == 0:
@@ -198,7 +198,7 @@ def young_subgroup_yor(alpha, _parts, prefix='/local/hopan/irreps/'):
     # group elements are in iterproduct(
     # iterate over s_alpha subgroup and compute tensor stuff
     # currently the S_alpha looks like S_{1, ..., alpha_1} x S_{1, ..., alpha_2} x ... x S_{1, ..., alpha_n}
-    # but we'd like it to look like (1...alpha_1), (alpha_1+1 .... alpha_2), .... 
+    # but we'd like it to look like (1...alpha_1), (alpha_1+1 .... alpha_2), ....
 
     for g in young_subgroup(alpha):
         # length of g should be length of nonzero_parts
@@ -226,7 +226,7 @@ def _proc_yor(perms, young_yor, young_sub_set, reps, rep_dict):
                 if tiinv_g_tj.tup_rep in young_sub_set:
                     g_rep[(i, j)] = young_yor[tiinv_g_tj.tup_rep]
                     break
-        rep_dict[g.tup_rep] = g_rep 
+        rep_dict[g.tup_rep] = g_rep
 
 def wreath_yor_par(alpha, _parts, prefix='/local/hopan/', par=8):
     '''
@@ -250,7 +250,7 @@ def wreath_yor_par(alpha, _parts, prefix='/local/hopan/', par=8):
     sn_chunks = chunk(_sn, par)
     manager = Manager()
     rep_dict = manager.dict()
-    nprocs =  []
+    nprocs = []
 
     for i in range(par):
         perms = sn_chunks[i]
@@ -345,9 +345,9 @@ def mult(g, h, yd):
             which represent the wreath product matrices
     Returns a numpy matrix
     '''
-    if type(g) == tuple:
+    if isinstance(g, tuple):
         g = perm2.Perm2.from_tup(g)
-    if type(h) == tuple:
+    if isinstance(h, tuple):
         h = perm2.Perm2.from_tup(h)
     mat_g = get_mat(g, yd)
     mat_h = get_mat(h, yd)

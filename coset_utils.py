@@ -1,7 +1,5 @@
-import pdb
-import perm2
 import itertools
-#from wreath import young_subgroup_canonical, young_subgroup, young_subgroup_perm
+import perm2
 
 def perm_from_young_tuple(cyc_tup):
     n = sum(map(len, cyc_tup))
@@ -45,18 +43,7 @@ def young_subgroup_canonical(weak_partition):
 #================================================================================================
 
 def tup_set(perms):
-    return set([p.tup_rep for p in perms])
-
-def intersect(p1, p2):
-    '''
-    p1: list of perm2 objects
-    p2: list of perm2 objects
-    Return permutation objects of the intersection of the two
-    '''
-
-    p1_tups = tup_set(p1)
-    p2_tups = tup_set(p2)
-    return tup_set(p1_tups.intersect(p2_tups))
+    return {p.tup_rep for p in perms}
 
 def check_coset(g1, g2, H):
     '''
@@ -87,7 +74,7 @@ def coset_reps(G, H):
     Returns a list of Perm2 objects
     '''
     reps = []
-    to_visit = set([g.tup_rep for g in G])
+    to_visit = {g.tup_rep for g in G}
     g_map = {g.tup_rep: g for g in G}
 
     for g_tup in g_map.keys():
@@ -96,7 +83,7 @@ def coset_reps(G, H):
         for h in H:
             g = g_map[g_tup]
             gh = g*h
-            if gh.tup_rep in to_visit:    
+            if gh.tup_rep in to_visit:
                 # then all of these are good and this is a coset rep
                 reps.append(g)
                 for _gh in left_coset(g, H):
@@ -110,55 +97,12 @@ def coset_reps(G, H):
 
     return reps
 
-def reduced_young_subgroup(alpha, idx):
-    '''
-    Returns the young subgroup that results from decreasing the index idx
-    in the partition alpha.
-
-    Ex:
-        alpha = (2, 2)
-        idx = 0
-        Returns the young subgroup for the partition (1, 2)
-
-        alpha = (2, 2)
-        idx = 1
-        Returns the young subgroup for the partition (2, 1)
-
-    '''
-    #aprime = tuple(a for i, a in enumerate(alpha) if i != idx else a-1)
-    #return young_subgroup(aprime)
-    pass
-
-def young_subgroup_coset(n, alpha):
-    # base case?
-    _coset_reps = []
-    ds = []
-    m = len(alpha)
-
-    for i in range(1, m):
-        endpt = 0
-        cyc = tuple(n - j for j in range(endpt))
-        #perm = perm2.Perm2.from_cyc(cyc)
-        perm = perm2.Perm2.from_tup(cyc)
-        ds.append((perm, i))
-
-    ds.append(Perm2.eye(n), m)
-
-    for d, idx in ds:
-        # idx is 1 indexed
-        for p in young_subgroup_coset(n, reduced_young_subgroup(alpha, idx-1)):
-            _coset_reps.append(p * d)
-
-    return _coset_reps
 
 if __name__ == '__main__':
-    #G = perm2.sn(5)
-    G = perm2.sn(4) 
+    G = perm2.sn(4)
     subgroup = young_subgroup_perm((2, 2))
     print(subgroup)
     for rep in coset_reps(G, subgroup):
         print('======')
         for g in left_coset(rep, subgroup):
             print(g)
-    #print("Are {} and {} in the same coset".format())
-    #print(in_coset(g1, g2, H))
