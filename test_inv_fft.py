@@ -73,14 +73,14 @@ def main():
     s8 = sn(8)
     ift_dists = {}
     true_dists = {}
-    cube_states = load_sym_cubes(args.prefix)
-    cube_strs, _ = random_sample(args.samples, args.maxdist, cube_states)
+    df_cubes = load_sym_cubes(args.prefix)
+    cube_strs, _ = random_sample(args.samples, args.maxdist, df_cubes)
 
     for c in cube_strs:
         for cnbr in neighbors_fixed_core(c):
             wr = get_wreath(cnbr)
             ift_dists[wr] = 0
-            true_dists[wr] = cube_states.loc[cnbr][DIST]
+            true_dists[wr] = df_cubes.loc[cnbr][DIST]
 
     if args.bandlimit:
         bl_irreps = big_irreps()
@@ -119,7 +119,7 @@ def main():
         d_true = true_dists[cube]
         print('{} | pred dist: {:.2f} | true dist: {:.2f}'.format(cube, d_pred, d_true))
 
-    correct_cubes = compute_correct_moves(ift_dists, true_dists, cube_states)
+    correct_cubes = compute_correct_moves(ift_dists, true_dists, cube_strs)
     print('{} / {} correct.'.format(len(correct_cubes), len(cube_states)))
     print('Peak memory usage: {:.2f}mb'.format(peak_mem_usg))
 
@@ -161,6 +161,7 @@ def med_irreps():
     irreps = {
         (2, 3, 3): partition_parts((2, 3, 3)),
         (4, 2, 2): partition_parts((4, 2, 2)),
+        (8, 0, 0): [((8,), (), ())]
     }
     return irreps
 
