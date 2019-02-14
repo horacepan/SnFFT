@@ -3,9 +3,7 @@ import pdb
 import random
 import time
 import argparse
-import ast
 import os
-from tqdm import tqdm
 import numpy as np
 import pandas as pd
 from perm2 import sn
@@ -16,7 +14,6 @@ from coset_utils import coset_reps, young_subgroup_perm
 
 sys.path.append('./cube')
 from str_cube import neighbors_fixed_core, get_wreath
-
 
 FOURIER_SUBDIR = 'fourier_unmod'
 IRREP_SUBDIR = 'pickles'
@@ -59,9 +56,7 @@ def main():
     parser = argparse.ArgumentParser(description='Test drive inverse fft')
     parser.add_argument('--prefix', type=str, default='/local/hopan/cube/')
     parser.add_argument('--samples', type=int, default=1)
-    parser.add_argument('--npar', type=int, default=1)
-    parser.add_argument('--bandlimit', action='store_true')
-    parser.add_argument('--smallbandlimit', action='store_true')
+    parser.add_argument('--bandlimit', type=str, default='')
     parser.add_argument('--maxdist', type=int)
     parser.add_argument('--seed', type=int, default=1)
     args = parser.parse_args()
@@ -69,10 +64,12 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
 
+    start = time.time()
     peak_mem_usg = 0
     s8 = sn(8)
     ift_dists = {}
     true_dists = {}
+    bl_irreps = None
     df_cubes = load_sym_cubes(args.prefix)
     cube_strs, _ = random_sample(args.samples, args.maxdist, df_cubes)
 
@@ -83,21 +80,19 @@ def main():
             true_dists[wr] = df_cubes.loc[cnbr][DIST]
 
     if args.bandlimit:
-        bl_irreps = big_irreps()
-        print('Using irreps: {}'.format(bl_irreps.keys()))
-    elif args.smallbandlimit:
-        bl_irreps = med_irreps()
+        bl_func = eval(args.bandlimit)
+        bl_irreps = bl_func()
         print('Using irreps: {}'.format(bl_irreps.keys()))
 
     for alpha in cube2_alphas():
+        if args.bandlimit and alpha not in bl_irreps:
+            continue
+
         cyc_irrep_func = cyclic_irreps(alpha)
         cos_reps = coset_reps(s8, young_subgroup_perm(alpha))
         for parts in partition_parts(alpha):
-            if args.bandlimit or args.smallbandlimit:
-                if alpha not in bl_irreps:
-                    continue
-                elif alpha in bl_irreps and parts not in bl_irreps[alpha]:
-                    continue
+            if args.bandlimit and parts not in bl_irreps[alpha]:
+                continue
 
             fourier_mat = load_fourier(args.prefix, alpha, parts)
             if fourier_mat is None:
@@ -108,19 +103,24 @@ def main():
             ift = cube2_inv_fft_func(irreps, fourier_mat, cos_reps, cyc_irrep_func)
 
             peak_mem_usg = max(check_memory(False), peak_mem_usg)
-            for (ctup, ptup) in ift_dists.keys():
-                ift_dists[(ctup, ptup)] += (ift(ctup, ptup) / CUBE2_SIZE)
+            for wreath in ift_dists.keys():
+                ift_dists[wreath] += (ift(*wreath) / CUBE2_SIZE)
 
             del irreps
             del fourier_mat
             del ift
+            elapsed = (time.time() - start) / 60.
+            print('Elapsed: {:.2f}min | Done with {} | {}'.format(elapsed, alpha, parts))
 
-    for cube, d_pred in ift_dists.items():
-        d_true = true_dists[cube]
-        print('{} | pred dist: {:.2f} | true dist: {:.2f}'.format(cube, d_pred, d_true))
+    for c in cube_strs:
+        print('Neighbors of {}:'.format(c))
+        for cnbr in neighbors_fixed_core(c):
+            wr = get_wreath(cnbr)
+            print('{} | pred: {:.2f} | true: {:.2f}'.format(cnbr, ift_dists[wr].real, true_dists[wr]))
+        print('=============================================')
 
     correct_cubes = compute_correct_moves(ift_dists, true_dists, cube_strs)
-    print('{} / {} correct.'.format(len(correct_cubes), len(cube_states)))
+    print('{} / {} correct.'.format(len(correct_cubes), len(cube_strs)))
     print('Peak memory usage: {:.2f}mb'.format(peak_mem_usg))
 
 def compute_correct_moves(ift_dists, true_dists, cube_states):
@@ -132,7 +132,7 @@ def compute_correct_moves(ift_dists, true_dists, cube_states):
     Returns: number correct, incorrect
     '''
     n_correct = 0
-    total = len(cube_states)
+    correct_cubes = []
 
     for cube in cube_states:
         opt_nbrs = []
@@ -149,15 +149,23 @@ def compute_correct_moves(ift_dists, true_dists, cube_states):
                 opt_nbrs.append(wr_nbr)
 
             if ift_dists[wr_nbr].real < opt_pol_dst:
-                opt_pol_dst = ift_dists[wr_nbr].re
+                opt_pol_dst = ift_dists[wr_nbr].real
                 opt_pol_nbr = wr_nbr
 
         if opt_pol_nbr in opt_nbrs:
             n_correct += 1
+            correct_cubes.append(opt_pol_nbr)
 
-    return n_correct / total
+    return correct_cubes
 
-def med_irreps():
+def top():
+    irreps = {
+        (2, 3, 3): partition_parts((2, 3, 3)),
+        (8, 0, 0): [((8,), (), ())]
+    }
+    return irreps
+
+def top2():
     irreps = {
         (2, 3, 3): partition_parts((2, 3, 3)),
         (4, 2, 2): partition_parts((4, 2, 2)),
@@ -165,16 +173,36 @@ def med_irreps():
     }
     return irreps
 
-def big_irreps():
+def top4():
     irreps = {
         (2, 3, 3): partition_parts((2, 3, 3)),
         (4, 2, 2): partition_parts((4, 2, 2)),
         (3, 1, 4): partition_parts((3, 1, 4)),
         (3, 4, 1): partition_parts((3, 4, 1)),
-        #(8, 0, 0): [((8,), (), ())]
+        (8, 0, 0): [((8,), (), ())]
     }
-
     return irreps
+
+def t341():
+    irreps = {
+        (3, 4, 1): partition_parts((3, 4, 1)),
+        (8, 0, 0): [((8,), (), ())]
+    }
+    return irreps
+
+def t314():
+    irreps = {
+        (3, 1, 4): partition_parts((3, 1, 4)),
+        (8, 0, 0): [((8,), (), ())]
+    }
+    return irreps
+
+def mode():
+    irreps = {
+        (8, 0, 0): [((8,), (), ())]
+    }
+    return irreps
+
 
 if __name__ == '__main__':
     tf(main)
