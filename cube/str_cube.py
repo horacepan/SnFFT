@@ -675,6 +675,7 @@ def cubie_orientation(cube_str, cube_idx):
     elif 'B' in cubie:
         return cubie.index('B')
     else:
+        print('Cubie orientation failed')
         print(cubie)
         render(cube_str)
         print(cube_idx)
