@@ -63,6 +63,9 @@ CMAP = {
     'YMG': 7, # ubr
 }
 COLORED_CUBIES = [''.join([FACE_COLOR_MAP[f] for f in c]) for c in CUBIES]
+CUBE2_START = ''.join([4*c for c in COLORS])
+SOLVED_STATES = set([CUBE2_START])
+
 
 def init_2cube():
     cube = ''
@@ -744,6 +747,9 @@ def get_s8_tup(cube_str):
 
 def get_wreath(cube_str):
     return orientation(cube_str), get_s8_tup(cube_str)
+
+def is_solved(cube_state):
+    return cube_state in SOLVED_STATES
 
 if __name__ == '__main__':
     c = init_2cube()
