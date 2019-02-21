@@ -22,19 +22,6 @@ def clean_line(line):
     dist = int(dist)
     return otup, ptup, dist
 
-def mult_yor(irrep, scalar, save_dict):
-    '''
-    irrep: map from (i, j) -> matrix
-    scalar: number to mult each entry of the irrep by
-    save_dict
-    Returns: None, results are saved in save_dict
-    '''
-    for k in irrep.keys():
-        if k not in save_dict:
-            save_dict[k] = scalar * irrep[k]
-        else:
-            save_dict[k] += scalar * irrep[k]
-
 def mult_yor_block(irrep, scalar, block_scalars, save_dict):
     for k in irrep.keys():
         i, j = k

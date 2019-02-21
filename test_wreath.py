@@ -3,13 +3,13 @@ import pdb
 import random
 import numpy as np
 import perm2
-from yor import yor, load_yor
 import unittest
-from wreath import young_subgroup_yor, wreath_yor, mult, get_mat, WreathCycSn, cyclic_irreps, wreath_rep
+from wreath import wreath_yor, get_mat, WreathCycSn, cyclic_irreps, wreath_rep
 from utils import load_irrep
-from coset_utils import young_subgroup_perm
+from coset_utils import young_subgroup_perm, coset_reps
+from cube_irrep import Cube2Irrep
+
 sys.path.append('./cube')
-from multi import *
 from str_cube import *
 
 class TestWreath(unittest.TestCase):
@@ -26,11 +26,11 @@ class TestWreath(unittest.TestCase):
         g = random.choice(ks)
         h = random.choice(ks)
         gh = perm2.Perm2.from_tup(g) * perm2.Perm2.from_tup(h)
-        gh_mat = mult(g, h, ydict)
+        gh_mat = get_mat(g, ydict).dot(get_mat(h, ydict))
         self.assertTrue(np.allclose(gh_mat, get_mat(gh, ydict)))
 
         eye = perm2.Perm2.eye(len(g))
-        eye_g_mat = mult(eye, g, ydict)
+        eye_g_mat = get_mat(eye, ydict).dot(get_mat(g, ydict))
         eye_mat = get_mat(eye * perm2.Perm2.from_tup(g), ydict)
         self.assertTrue(np.allclose(eye_mat, eye_g_mat))
 
@@ -72,6 +72,17 @@ class TestWreath(unittest.TestCase):
 
         self.assertTrue(np.allclose(w12, wd12))
         self.assertTrue(np.allclose(w13, wd13))
+
+    def test(self):
+        alpha = (1, 2, 5)
+        parts = ((1,), (1, 1), (3, 2))
+        loc = '/local/hopan/cube/pickles/{}/{}.pkl'.format(str(alpha), str(parts))
+        cirrep = Cube2Irrep(alpha, parts, loc)
+
+        otup = (0,) * 8
+        ptup = tuple(i for i in range(1, len(otup)+1))
+        grep = cirrep.irrep(otup, ptup)
+        self.assertTrue(np.allclose(grep, np.eye(*grep.shape)))
 
     '''
     def test_cube_wreath(self):

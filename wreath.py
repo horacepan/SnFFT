@@ -337,21 +337,5 @@ def wreath_rep(cyc_tup, perm, yor_dict, cos_reps, cyc_irrep_func=None, alpha=Non
     block_scalars = block_cyclic_irreps(cyc_tup, cos_reps, cyc_irrep_func)
     return get_mat(perm, yor_dict, block_scalars)
 
-def mult(g, h, yd):
-    '''
-    g: perm2.Perm2
-    h: perm2.Perm2
-    yd: dictionary mapping Perm2 objects -> (dicts of (i, j) int tuples -> numpy matrices)
-            which represent the wreath product matrices
-    Returns a numpy matrix
-    '''
-    if isinstance(g, tuple):
-        g = perm2.Perm2.from_tup(g)
-    if isinstance(h, tuple):
-        h = perm2.Perm2.from_tup(h)
-    mat_g = get_mat(g, yd)
-    mat_h = get_mat(h, yd)
-    return mat_g.dot(mat_h)
-
 if __name__ == '__main__':
     pass
