@@ -14,6 +14,11 @@ from str_cube import get_wreath
 
 class Cube2Irrep(object):
     def __init__(self, alpha, parts, cached_loc=None):
+        '''
+        alpha: tuple of ints, the weak partition of 8 into 3 parts
+        parts: tuple of ints, the partitions of each part of alpha
+        cached_loc: string, location of the cached pickle file of S_8 mod S_alpha irreps
+        '''
         self.alpha = alpha
         self.parts = parts
         self.cos_reps = coset_reps(sn(8), young_subgroup_perm(alpha))
@@ -25,15 +30,29 @@ class Cube2Irrep(object):
         else:
             pass
 
-    def cube_irrep(self, cube_str):
+    def str_to_irrep(self, cube_str):
+        '''
+        cube_str: string representation of 2-cube state
+        Returns: numpy matrix
+        '''
         otup, gtup = get_wreath(cube_str)
-        return self.irrep(otup, gtup)
+        return self.tup_to_irrep(otup, gtup)
 
-    def irrep(self, otup, ptup):
+    def tup_to_irrep(self, otup, ptup):
+        '''
+        otup: tuple of orientations in Z/3Z
+        ptup: tuple of permutation of S_8
+        Returns: numpy matrix
+        '''
         #mult_yor_block(perm_rep, dist, block_cyclic_rep, save_dict)
         block_scalars = block_cyclic_irreps(otup, self.cos_reps, self.cyc_irrep_func)
         rep = get_mat(ptup, self.yor_dict, block_scalars)
         return rep
 
-    def irrepv(self, otup, gtup):
-        return self.irrep(otup, gtup).ravel()
+    def tup_irrepv(self, otup, gtup):
+        '''
+        otup: tuple of orientations in Z/3Z
+        ptup: tuple of permutation of S_8
+        Returns: numpy array (unraveled numpy matrix)
+        '''
+        return self.tup_irrep(otup, gtup).ravel()

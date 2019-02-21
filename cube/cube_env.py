@@ -50,6 +50,7 @@ class CubeEnv(gym.Env):
     def reset(self):
         if self.size == 2:
             self.state = CubeEnv.reset2()
+            return self.state
         else:
             raise NotImplementedError('Havent implemented other sizes yet')
 
