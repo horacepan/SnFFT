@@ -3,6 +3,7 @@ import logging
 import pdb
 import random
 import time
+import ast
 from datetime import datetime
 import argparse
 import os
@@ -23,8 +24,15 @@ SPLIT_SUBDIR = 'split_unmod'
 SYM_CUBES = 'cube_sym_mod.txt'
 DIST = 'dist'
 
-logger = logging.getLogger(__name__)
-print = logger.info
+#logger = logging.getLogger(__name__)
+#print = logger.info
+def get_kth_irreps(k):
+    df = pd.read_csv('data/cube2_scaled_norms.csv')
+    # sort by the scaled norm, grab the top k alphas + parts
+    topk_df = df.nlargest(k, columns=['scaled_norm'])[['alpha', 'parts', 'scaled_norm']]
+    alpha = ast.literal_eval(topk_df['alpha'].values[k-1].replace('.', ','))
+    parts = ast.literal_eval(topk_df['parts'].values[k-1].replace('.', ','))
+    return alpha, parts
 
 def load_sym_cubes(prefixdir):
     all_cubes = pd.read_csv(os.path.join(prefixdir, SYM_CUBES), header=None)
@@ -66,16 +74,17 @@ def main():
     parser.add_argument('--minnorm', type=float, default=0.)
     parser.add_argument('--maxnorm', type=float, default=2.)
     parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--kth', type=int, default=None)
     parser.add_argument('--logfile', type=str, default='ift.log')
     args = parser.parse_args()
 
-    logging.basicConfig(
-         filename='{}_{}.log'.format(args.logfile,
-                                     datetime.now().strftime("%m_%d_%H_%M_%S")),
-         level=logging.INFO,
-         format= '[%(asctime)s][%(module)s][%(funcName)s]: %(message)s',
-         datefmt='%H:%M:%S'
-    )
+    #logging.basicConfig(
+    #     filename='{}_{}.log'.format(args.logfile,
+    #                                 datetime.now().strftime("%m_%d_%H_%M_%S")),
+    #     level=logging.INFO,
+    #     format= '[%(asctime)s][%(module)s][%(funcName)s]: %(message)s',
+    #     datefmt='%H:%M:%S'
+    #)
     print("Starting inverse fft test")
 
     random.seed(args.seed)
@@ -87,6 +96,7 @@ def main():
     s8 = sn(8)
     ift_dists = {}
     true_dists = {}
+    kth_irrep = get_kth_irreps(args.kth)
     df_cubes = load_sym_cubes(args.prefix)
     cube_strs, _ = random_sample(args.samples, args.maxdist, args.mindist, df_cubes)
 
@@ -100,6 +110,9 @@ def main():
         cyc_irrep_func = cyclic_irreps(alpha)
         cos_reps = coset_reps(s8, young_subgroup_perm(alpha))
         for parts in partition_parts(alpha):
+            if args.kth and (alpha, parts) != kth_irrep:
+                continue
+
             fourier_mat = load_fourier(args.prefix, alpha, parts)
             if fourier_mat is None:
                 continue
@@ -125,6 +138,7 @@ def main():
             used_irreps.append((alpha, parts))
             elapsed = (time.time() - start) / 60.
             print('Done with {} | {:30} | Fourier norm: {:.2f}'.format(alpha, str(parts), mat_sn))
+
 
     correct_cubes = compute_correct_moves(ift_dists, true_dists, cube_strs)
     print('Used {} irreps:'.format(irreps_used))

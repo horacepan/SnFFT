@@ -11,7 +11,7 @@ from yor import yor
 sys.path.append('./cube/')
 from str_cube import get_wreath
 
-
+IRREP_LOC_FMT = '/local/hopan/cube/pickles/{}/{}.pkl'
 class Cube2Irrep(object):
     def __init__(self, alpha, parts, cached_loc=None):
         '''
@@ -26,9 +26,12 @@ class Cube2Irrep(object):
         self.yor_dict = None
 
         if cached_loc:
+            # expect the full pickle filename
             self.yor_dict = load_pkl(cached_loc)
         else:
-            pass
+            pkl_loc = IRREP_LOC_FMT.format(alpha, parts)
+            print('loading from: {}'.format(pkl_loc))
+            self.yor_dict = load_pkl(pkl_loc)
 
     def str_to_irrep(self, cube_str):
         '''
@@ -56,3 +59,11 @@ class Cube2Irrep(object):
         Returns: numpy array (unraveled numpy matrix)
         '''
         return self.tup_irrep(otup, gtup).ravel()
+
+def test():
+    parts = (8, 0, 0)
+    alpha = ((6,2), (), ())
+    cube = Cube2Irrep(parts, alpha)
+
+if __name__ == '__main__':
+    test()

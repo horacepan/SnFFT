@@ -26,11 +26,11 @@ class TestWreath(unittest.TestCase):
         g = random.choice(ks)
         h = random.choice(ks)
         gh = perm2.Perm2.from_tup(g) * perm2.Perm2.from_tup(h)
-        gh_mat = get_mat(g, ydict).dot(get_mat(h, ydict))
+        gh_mat = np.matmul(get_mat(g, ydict), get_mat(h, ydict))
         self.assertTrue(np.allclose(gh_mat, get_mat(gh, ydict)))
 
         eye = perm2.Perm2.eye(len(g))
-        eye_g_mat = get_mat(eye, ydict).dot(get_mat(g, ydict))
+        eye_g_mat = np.matmul(get_mat(eye, ydict), get_mat(g, ydict))
         eye_mat = get_mat(eye * perm2.Perm2.from_tup(g), ydict)
         self.assertTrue(np.allclose(eye_mat, eye_g_mat))
 
@@ -65,8 +65,8 @@ class TestWreath(unittest.TestCase):
         wreath1 = wreath_rep(o1, p1, yor_dict, cos_reps, cyc_irrep_func, alpha)
         wreath2 = wreath_rep(o2, p2, yor_dict, cos_reps, cyc_irrep_func, alpha)
         wreath3 = wreath_rep(o3, p3, yor_dict, cos_reps, cyc_irrep_func, alpha)
-        w12 = wreath1.dot(wreath2)
-        w13 = wreath1.dot(wreath3)
+        w12 = np.matmul(wreath1, wreath2)
+        w13 = np.matmul(wreath1, wreath3)
         wd12 = wreath_rep(o12, perm12, yor_dict, cos_reps, cyc_irrep_func, alpha)
         wd13 = wreath_rep(o13, perm13, yor_dict, cos_reps, cyc_irrep_func, alpha)
 
@@ -81,7 +81,7 @@ class TestWreath(unittest.TestCase):
 
         otup = (0,) * 8
         ptup = tuple(i for i in range(1, len(otup)+1))
-        grep = cirrep.irrep(otup, ptup)
+        grep = cirrep.tup_to_irrep(otup, ptup)
         self.assertTrue(np.allclose(grep, np.eye(*grep.shape)))
 
     '''
