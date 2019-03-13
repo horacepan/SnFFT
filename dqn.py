@@ -14,7 +14,7 @@ import pdb
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
-
+Batch = namedtuple('Batch', ('state', 'action', 'next_state', 'reward', 'done'))
 
 class ReplayMemory(object):
 
@@ -22,20 +22,35 @@ class ReplayMemory(object):
         self.capacity = capacity
         self.memory = []
         self.position = 0
+        self.filled = 0
 
-    def push(self, *args):
-        """Saves a transition."""
-        if len(self.memory) < self.capacity:
-            self.memory.append(None)
-        self.memory[self.position] = Transition(*args)
+        self.states = np.empty([capacity], np.dtype('<U24'))
+        self.actions = np.empty([capacity, 1], np.dtype('i1'))
+        self.new_states = np.empty([capacity], np.dtype('<U24'))
+        self.rewards = np.empty([capacity, 1], np.dtype('i1'))
+        self.dones = np.empty([capacity, 1], np.dtype('bool'))
+
+    def push(self, state, action, new_state, reward, done):
+        self.states[self.position]      = state
+        self.actions[self.position]     = action
+        self.new_states[self.position]  = new_state
+        self.rewards[self.position]     = reward
+        self.dones[self.position]       = done
+
         self.position = (self.position + 1) % self.capacity
+        self.filled = min(self.filled + 1, self.capacity)
 
     def sample(self, batch_size):
-        print('sampling | memory size is: {} | batch is: {}'.format(len(self), batch_size))
-        return random.sample(self.memory, batch_size)
+        idx = np.random.choice(self.filled, batch_size)
+        state = self.states[idx]
+        new_state = self.new_states[idx]
+        action = self.actions[idx]
+        reward = self.rewards[idx]
+        done = self.dones[idx]
+        return Batch(state, action, new_state, reward, done)
 
     def __len__(self):
-        return len(self.memory)
+        return self.filled
 
 class IrrepLinreg(nn.Module):
     '''
@@ -112,18 +127,18 @@ def update(env, model, batch, opt, discount=0.9, summary_writer=None):
     nsr = []
     nsi = []
 
-    for s in [x[0] for x in batch]:
+    # this should be fixed
+    for s in batch.state:
         xr, xi = env.real_imag_irrep(s)
         sr.append(xr)
         si.append(xi) 
 
-    for ns in [x[2] for x in batch]:
+    for ns in batch.next_state:
         xr, xi = env.real_imag_irrep(ns)
         nsr.append(xr)
         nsi.append(xi) 
 
-    rewards = [x[3] for x in batch]
-    reward = torch.FloatTensor(rewards)
+    reward = torch.FloatTensor(batch.reward.astype(np.float32))
     sr = torch.stack(sr, dim=0)
     si = torch.stack(si, dim=0)
     nsr = torch.stack(nsr, dim=0)
@@ -163,13 +178,27 @@ def test(hparams):
             action = get_action(env, model, state)
             # add option to make the irrep optional
             ns, rew, done, _ = env.step(action, irrep=False)
-            memory.push(state, action, ns, rew)
+            memory.push(state, action, ns, rew, done)
 
             if niter > 0 and niter % hparams['update_int'] == 0:
                 print('Updating | niter {}'.format(niter))
                 sample = memory.sample(hparams['batch_size'])
                 update(env, model, sample, optimizer)
             niter += 1
+
+def test_batch():
+    mem = ReplayMemory(100)
+    for i in range(10):
+        s = str_cube.init_2cube()
+        a = 1
+        ns = str_cube.init_2cube()
+        rew = -1
+        done = False
+        mem.push(s, a, ns, rew, done)
+
+    batch = mem.sample(3)
+    for c in batch:
+        print(c)
 
 if __name__ == '__main__':
     hparams = {
@@ -185,4 +214,3 @@ if __name__ == '__main__':
         }
     }
     test(hparams)
-    #test_env(hparams)
