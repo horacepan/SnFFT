@@ -79,7 +79,6 @@ def test_simple():
     parts = ((2,), (1,1,1), (1,1,1))
     env = Cube2IrrepEnv(alpha, parts)
     state = env.reset()
-    pdb.set_trace()
 
 if __name__ == '__main__':
     test_simple()

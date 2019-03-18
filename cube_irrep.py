@@ -7,9 +7,10 @@ from coset_utils import young_subgroup_perm, coset_reps
 from wreath import wreath_rep, get_mat, cyclic_irreps, block_cyclic_irreps
 from utils import load_pkl
 from yor import yor
+import time
 
 sys.path.append('./cube/')
-from str_cube import get_wreath
+from str_cube import get_wreath, init_2cube, render, scramble
 
 IRREP_LOC_FMT = '/local/hopan/cube/pickles/{}/{}.pkl'
 class Cube2Irrep(object):
@@ -61,9 +62,23 @@ class Cube2Irrep(object):
         return self.tup_irrep(otup, gtup).ravel()
 
 def test():
-    parts = (8, 0, 0)
-    alpha = ((6,2), (), ())
-    cube = Cube2Irrep(parts, alpha)
+    alpha = (8, 0, 0)
+    parts = ((6,2), (), ())
+    cube = Cube2Irrep(alpha, parts)
+
+def time_irreps(cube, n):
+    c2 = init_2cube()
+    cubes = [scramble(c2, 100) for c in range(n)]
+    wreath_tups = [get_wreath(c) for c in cubes]
+
+    npstart = time.time()
+    for ot, pt in wreath_tups:
+        cube.tup_to_irrep(ot, pt)
+    npend = time.time()
+    print('Elapsed: {:4.3f}'.format(npend - npstart))
 
 if __name__ == '__main__':
-    test()
+    alpha = (2, 3, 3)
+    parts = ((2,), (1,1,1), (1,1,1))
+    cube = Cube2Irrep(alpha, parts)
+    time_irreps(cube, 1)

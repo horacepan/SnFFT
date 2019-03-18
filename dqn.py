@@ -8,12 +8,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from complex_utils import cmm, cmse, cmse_real
 from irrep_env import Cube2IrrepEnv
+from utils import check_memory
 import numpy as np
 import str_cube
 import pdb
 
-Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
 Batch = namedtuple('Batch', ('state', 'action', 'next_state', 'reward', 'done'))
 
 class ReplayMemory(object):
@@ -128,23 +127,29 @@ def update(env, model, batch, opt, discount=0.9, summary_writer=None):
     nsi = []
 
     # this should be fixed
+    sir = time.time()
     for s in batch.state:
         xr, xi = env.real_imag_irrep(s)
         sr.append(xr)
         si.append(xi) 
+    print('get irrep time: {:3.2f}'.format(time.time() - sir))
 
+    sir = time.time()
     for ns in batch.next_state:
         xr, xi = env.real_imag_irrep(ns)
         nsr.append(xr)
         nsi.append(xi) 
+    print('get irrep time: {:3.2f}'.format(time.time() - sir))
 
+    sir = time.time()
     reward = torch.FloatTensor(batch.reward.astype(np.float32))
     sr = torch.stack(sr, dim=0)
     si = torch.stack(si, dim=0)
     nsr = torch.stack(nsr, dim=0)
     nsi = torch.stack(nsi, dim=0)
-    print('stacked shape:', sr.shape)
+    print('stacking time: {:3.2f}'.format(time.time() - sir))
     yr_pred, yi_pred = model.forward(sr, si)
+    print('forward + stacking time: {:3.2f}'.format(time.time() - sir))
     yr_onestep, yi_onestep = model.forward(nsr, nsi)
     loss = lossfunc(reward + discount * yr_onestep, discount * yi_onestep, yr_pred, yi_pred)
 
@@ -152,23 +157,26 @@ def update(env, model, batch, opt, discount=0.9, summary_writer=None):
     loss.backward()
     opt.step()
 
+    print('forward + stacking time + loss: {:3.2f}'.format(time.time() - sir))
+    return loss.item()
 
 def test(hparams):
     start = time.time()
-    #alpha = (2, 3, 3)
-    #parts = ((2,), (1, 1, 1), (1, 1, 1))
-    alpha = (0, 7, 1)
-    parts = ((), (6, 1), (1,))
+    alpha = (2, 3, 3)
+    parts = ((2,), (1, 1, 1), (1, 1, 1))
 
     env = Cube2IrrepEnv(alpha, parts)
     state, _ = env.reset()
 
-    #model = IrrepLinreg(560 * 560)
-    model = IrrepLinreg(48 * 48)
+    model = IrrepLinreg(560 * 560)
     optimizer = torch.optim.SGD(model.parameters(), **hparams['opt_params'])
     memory = ReplayMemory(hparams['mem_size'])
     print('Done setup: {:.2f}s'.format(time.time() - start))
     niter = 0
+    nupdates = 1
+    losses = np.zeros(hparams['logint'])
+    nlosses = 0
+    start = time.time()
 
     for e in range(hparams['epochs']):
         state, irrep = env.reset()
@@ -181,10 +189,20 @@ def test(hparams):
             memory.push(state, action, ns, rew, done)
 
             if niter > 0 and niter % hparams['update_int'] == 0:
-                print('Updating | niter {}'.format(niter))
+                #print('Updating | niter {} | loss: {:5.2f}'.format(niter, np.mean(losses)))
                 sample = memory.sample(hparams['batch_size'])
-                update(env, model, sample, optimizer)
+                sup = time.time()
+                _loss = update(env, model, sample, optimizer)
+                send = time.time()
+                print('update time: {:3.2f}'.format(send - sup))
+                nlosses += _loss
+                nupdates = (nupdates + 1)
             niter += 1
+
+        if e % 100 == 0:
+            elapsed = (time.time() - start) / 60.
+            print('Epoch {:6} | Elapsed: {:5.2f}min | nupdates: {} | avg loss: {:4.2f}'.format(e, elapsed, nupdates, nlosses / nupdates))
+    check_memory()
 
 def test_batch():
     mem = ReplayMemory(100)
@@ -203,14 +221,15 @@ def test_batch():
 if __name__ == '__main__':
     hparams = {
         'mem_size': 1000, 
-        'epochs': 10,
+        'epochs': 1000,
         'max_eplen': 20,
-        'batch_size': 10,
-        'capacity': 10000,
+        'batch_size': 128,
+        'capacity': 100000,
         'update_int': 100,
+        'logint': 1000,
         'discount': 0.99,
         'opt_params': {
-            'lr': 0.001
+            'lr': 0.1
         }
     }
     test(hparams)
