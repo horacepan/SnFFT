@@ -81,7 +81,7 @@ class TestWreath(unittest.TestCase):
 
         otup = (0,) * 8
         ptup = tuple(i for i in range(1, len(otup)+1))
-        grep = cirrep.tup_to_irrep(otup, ptup)
+        grep = cirrep.tup_to_irrep_np(otup, ptup)
         self.assertTrue(np.allclose(grep, np.eye(*grep.shape)))
 
     '''

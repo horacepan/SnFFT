@@ -29,32 +29,39 @@ class Cube2IrrepEnv(CubeEnv):
 
     def reset(self):
         state = super(Cube2IrrepEnv, self).reset()
-        return state, self.convert_irrep(state)
+        return state
 
     def step(self, action, irrep=False):
         state, rew, done, _dict = super(Cube2IrrepEnv, self).step(action)
         if irrep:
-            irrep_state = self.convert_irrep(self.state)
+            irrep_state = self.convert_irrep_np(self.state)
             _dict['irrep'] = irrep_state
         return state, rew, done, _dict
 
-    def convert_irrep(self, cube_state):
+    def convert_irrep_np(self, cube_state, shape=None):
         '''
         state: string representing 2-cube state
         Returns: numpy matrix
         '''
-        rep = self._cubeirrep.str_to_irrep(cube_state)
-        return rep.ravel()
+        if shape is None:
+            rep = self._cubeirrep.str_to_irrep_np(cube_state)
+            return rep.ravel()
+        else:
+            return rep.reshape(shape)
+
+    def real_imag_irrep_torch(self, cube_state):
+        re, im = self._cubeirrep.str_to_irrep_th(cube_state)
+        return re, im
 
     def real_imag_irrep(self, cube_state):
-        irrep = self.convert_irrep(cube_state)
-        return torch.from_numpy(irrep.real.astype(np.float32)), \
-               torch.from_numpy(irrep.imag.astype(np.float32))
+        irrep = self._cubeirrep.str_to_irrep_np(cube_state).ravel()
+        return torch.from_numpy(irrep.real), torch.from_numpy(irrep.imag)
 
 def test(ntrials=100):
     start = time.time()
     alpha = (2,3,3)
     parts = ((2,), (1, 1, 1), (1, 1, 1))
+
     env = Cube2IrrepEnv(alpha, parts)
     setup_time = time.time() - start
     print('Done loading: {:.2f}s'.format(setup_time))

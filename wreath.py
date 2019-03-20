@@ -9,6 +9,7 @@ import numpy as np
 from utils import check_memory, chunk
 import perm2
 from coset_utils import coset_reps, young_subgroup_perm, young_subgroup, tup_set
+import torch
 
 def dot(perm, cyc):
     '''
@@ -315,18 +316,59 @@ def get_mat(g, yor_dict, block_scalars=None):
     vs = list(yg.values())
     block_size = vs[0].shape[0]
     size = len(yg) * block_size
-    mat = np.zeros((size, size), dtype=np.complex128)
+    mat = np.zeros((size, size), dtype=np.complex64)
 
     for (i, j), v in yg.items():
         x1, x2 = (block_size*i, block_size*i+block_size)
         y1, y2 = (block_size*j, block_size*j+block_size)
-        if block_scalars is not None:
-            scalar = block_scalars[i]
-        else:
+        if block_scalars is None:
             scalar = 1
+        else:
+            scalar = block_scalars[i]
         mat[x1:x2, y1:y2] = scalar * v
 
     return mat
+
+def convert(idx, size):
+    return idx[1] + (size * idx[0])
+
+# TODO: This is a hack
+def get_sparse_mat(g, yor_dict, block_scalars=None, shape=None):
+    '''
+    g: group element or perm tuple
+    yor_dict: dictionary of perm tuples -> dictionaries of block idx -> matrix
+    block_scalars: map of scalars multipliers for each block
+    shape: shape of the output sparse tensor
+    Returns: torch sparse tensor
+    '''
+    if type(g) == tuple:
+        yg = yor_dict[g]
+    else:
+        yg = yor_dict[g.tup_rep]
+
+    if shape is None:
+        vs = list(yg.values())
+        block_size = vs[0].shape[0]
+        size = len(yg) * block_size
+        shape = torch.Size([1, size * size])
+    else:
+        size = shape[0]
+        shape = torch.Size([1, size * size])
+
+    idxs = torch.LongTensor([(0, convert(idx, size)) for idx in yg.keys()]).t()
+    re_vals = []
+    im_vals = []
+    for idx, mat in yg.items():
+        scalar = block_scalars[idx[0]]
+        # this is a hack that only works for the 1 dim blocks
+        re_vals.append(scalar.real * mat[0, 0])
+        im_vals.append(scalar.imag * mat[0, 0])
+
+    ret = torch.FloatTensor(re_vals)
+    imt = torch.FloatTensor(im_vals)
+    sparse_re = torch.sparse.FloatTensor(idxs, ret, shape)
+    sparse_im = torch.sparse.FloatTensor(idxs, imt, shape)
+    return sparse_re, sparse_im
 
 def wreath_rep(cyc_tup, perm, yor_dict, cos_reps, cyc_irrep_func=None, alpha=None):
     if (cyc_irrep_func is None) and (alpha is None):

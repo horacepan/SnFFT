@@ -6,7 +6,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from complex_utils import cmm, cmse, cmse_real
+from complex_utils import cmm, cmse, cmse_real, cmm_sparse
 from irrep_env import Cube2IrrepEnv
 from utils import check_memory
 import numpy as np
@@ -26,7 +26,7 @@ class ReplayMemory(object):
         self.states = np.empty([capacity], np.dtype('<U24'))
         self.actions = np.empty([capacity, 1], np.dtype('i1'))
         self.new_states = np.empty([capacity], np.dtype('<U24'))
-        self.rewards = np.empty([capacity, 1], np.dtype('i1'))
+        self.rewards = np.empty([capacity, 1], dtype=np.float32)
         self.dones = np.empty([capacity, 1], np.dtype('bool'))
 
     def push(self, state, action, new_state, reward, done):
@@ -78,6 +78,12 @@ class IrrepLinreg(nn.Module):
         xi     = xi + self.bi
         return xr, xi
 
+    def forward_sparse(self, xr, xi):
+        xr, xi = cmm_sparse(xr, xi, self.wr, self.wi)
+        xr     = xr + self.br
+        xi     = xi + self.bi
+        return xr, xi
+
     def init_weights(self):
         nn.init.xavier_normal_(self.wr)
         nn.init.xavier_normal_(self.wi)
@@ -89,12 +95,19 @@ def get_action(env, model, state):
     model: nn.Module
     state: string of cube state
     '''
-    start = time.time()
     neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
-    nbr_irreps = np.stack([env.convert_irrep(n) for n in neighbors])
-    xr = nbr_irreps.real.astype(np.float32)
-    xi = nbr_irreps.imag.astype(np.float32)
+    nbr_irreps = np.stack([env.convert_irrep_np(n) for n in neighbors])
+    xr = nbr_irreps.real
+    xi = nbr_irreps.imag
     yr, yi = model.np_forward(xr, xi)
+    return yr.argmax().item()
+
+def get_action_th(env, model, state):
+    neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
+    xr, xi = zip(*[env.real_imag_irrep_torch(n) for n in neighbors])
+    xr = torch.cat(xr, dim=0)
+    xi = torch.cat(xi, dim=0)
+    yr, yi = model.forward_sparse(xr, xi)
     return yr.argmax().item()
 
 def test_update():
@@ -129,28 +142,30 @@ def update(env, model, batch, opt, discount=0.9, summary_writer=None):
     # this should be fixed
     sir = time.time()
     for s in batch.state:
-        xr, xi = env.real_imag_irrep(s)
+        #xr, xi = env.real_imag_irrep(s)
+        xr, xi = env.real_imag_irrep_torch(s)
         sr.append(xr)
         si.append(xi) 
     print('get irrep time: {:3.2f}'.format(time.time() - sir))
 
     sir = time.time()
     for ns in batch.next_state:
-        xr, xi = env.real_imag_irrep(ns)
+        #xr, xi = env.real_imag_irrep(ns)
+        xr, xi = env.real_imag_irrep_torch(ns)
         nsr.append(xr)
         nsi.append(xi) 
     print('get irrep time: {:3.2f}'.format(time.time() - sir))
 
     sir = time.time()
-    reward = torch.FloatTensor(batch.reward.astype(np.float32))
-    sr = torch.stack(sr, dim=0)
-    si = torch.stack(si, dim=0)
-    nsr = torch.stack(nsr, dim=0)
-    nsi = torch.stack(nsi, dim=0)
+    reward = torch.from_numpy(batch.reward)#.astype(np.float32))
+    sr = torch.cat(sr, dim=0)
+    si = torch.cat(si, dim=0)
+    nsr = torch.cat(nsr, dim=0)
+    nsi = torch.cat(nsi, dim=0)
     print('stacking time: {:3.2f}'.format(time.time() - sir))
-    yr_pred, yi_pred = model.forward(sr, si)
+    yr_pred, yi_pred = model.forward_sparse(sr, si)
     print('forward + stacking time: {:3.2f}'.format(time.time() - sir))
-    yr_onestep, yi_onestep = model.forward(nsr, nsi)
+    yr_onestep, yi_onestep = model.forward_sparse(nsr, nsi)
     loss = lossfunc(reward + discount * yr_onestep, discount * yi_onestep, yr_pred, yi_pred)
 
     opt.zero_grad()
@@ -162,13 +177,18 @@ def update(env, model, batch, opt, discount=0.9, summary_writer=None):
 
 def test(hparams):
     start = time.time()
-    alpha = (2, 3, 3)
-    parts = ((2,), (1, 1, 1), (1, 1, 1))
+    if hparams['test']:
+        alpha = (0, 7, 1)
+        parts = ((), (6, 1), (1,))
+        model = IrrepLinreg(48 * 48)
+    else:
+        alpha = (2, 3, 3)
+        parts = ((2,), (1, 1, 1), (1, 1, 1))
+        model = IrrepLinreg(560 * 560)
 
     env = Cube2IrrepEnv(alpha, parts)
-    state, _ = env.reset()
+    state = env.reset()
 
-    model = IrrepLinreg(560 * 560)
     optimizer = torch.optim.SGD(model.parameters(), **hparams['opt_params'])
     memory = ReplayMemory(hparams['mem_size'])
     print('Done setup: {:.2f}s'.format(time.time() - start))
@@ -176,10 +196,12 @@ def test(hparams):
     nupdates = 1
     losses = np.zeros(hparams['logint'])
     nlosses = 0
-    start = time.time()
+    print('Before training memory check:', end='')
+    check_memory()
 
+    start = time.time()
     for e in range(hparams['epochs']):
-        state, irrep = env.reset()
+        state = env.reset()
         for i in range(hparams['max_eplen']):
             # get the opt action
             # stash the thing
@@ -230,6 +252,11 @@ if __name__ == '__main__':
         'discount': 0.99,
         'opt_params': {
             'lr': 0.1
-        }
+        },
+        'test': False
     }
-    test(hparams)
+    try:
+        test(hparams)
+    except KeyboardInterrupt:
+        print('Keyboard escape!')
+        check_memory()

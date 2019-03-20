@@ -78,9 +78,11 @@ class TestYoungTableau(unittest.TestCase):
         f = lambda p: 1 if p[1] == 2 else 1.5
         for idx, partition in enumerate(partitions(6)):
             ferrers = FerrersDiagram(partition)
-            fft_result = fft2(f, ferrers)
-            full_transform = fourier_transform2(f, ferrers)
-            self.assertTrue(np.allclose(fft_result, full_transform))
+            fft_res = fft(f, ferrers)
+            ft = fourier_transform(f, ferrers)
+            ft2 = fourier_transform2(f, ferrers)
+            self.assertTrue(np.allclose(ft, ft2))
+            self.assertTrue(np.allclose(fft_res, ft))
 
 if __name__ == '__main__':
     unittest.main()

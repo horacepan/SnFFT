@@ -103,6 +103,9 @@ class Perm2:
     def __mul__(self, other):
         g = self.tup_rep
         h = other.tup_rep
+        if self.size != other.size:
+            raise Exception('Currently cant mult two perms of diff sizes!')
+
         new_tup = tuple(g[h[i] - 1] for i in range(self.size))
         return Perm2.from_tup(new_tup)
 

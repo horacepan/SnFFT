@@ -41,7 +41,6 @@ def fft2(f, ferrers):
         #return np.eye(1) * f(Perm([(1, )]))
         return np.eye(1) * f(Perm2.eye(ferrers.size))
 
-
     n = ferrers.size
     d_branches = ferrers.branch_down()
     tabs = ferrers.tableaux
