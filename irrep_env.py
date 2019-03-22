@@ -17,7 +17,7 @@ class Cube2IrrepEnv(CubeEnv):
     This class represents the 2-cube environment but wraps each cube state
     with an irrep(corresponding to alpha, parts) matrix.
     '''
-    def __init__(self, alpha, parts):
+    def __init__(self, alpha, parts, sparse=False):
         '''
         alpha: tuple of ints, the weak partition of 8 into 3 parts
         parts: tuple of ints, the partitions of each part of alpha
@@ -25,7 +25,8 @@ class Cube2IrrepEnv(CubeEnv):
         super(Cube2IrrepEnv, self).__init__(size=2)
         self.alpha = alpha
         self.parts = parts
-        self._cubeirrep = Cube2Irrep(alpha, parts)
+        self.sparse = sparse
+        self._cubeirrep = Cube2Irrep(alpha, parts, sparse=sparse)
 
     def reset(self):
         state = super(Cube2IrrepEnv, self).reset()
@@ -56,6 +57,16 @@ class Cube2IrrepEnv(CubeEnv):
     def real_imag_irrep(self, cube_state):
         irrep = self._cubeirrep.str_to_irrep_np(cube_state).ravel()
         return torch.from_numpy(irrep.real), torch.from_numpy(irrep.imag)
+
+    def real_imag_irrep_sp(self, cube_state):
+        re, im = self._cubeirrep.str_to_irrep_sp(cube_state)
+        return re, im
+
+    def irrep(self, cube_state):
+        if self.sparse:
+            return self.real_imag_irrep_sp(cube_state)
+        else:
+            return self.real_imag_irrep_torch(cube_state)
 
 def test(ntrials=100):
     start = time.time()

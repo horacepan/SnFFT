@@ -47,10 +47,11 @@ def block_cyclic_irreps(tup, coset_reps, cyclic_irrep_func):
         coset_reps = [pi_0, pi_1, ...]
         Returns: {0: cyclic_irrep_func(f \dot pi_0), 1: cyclic_irrep_func(f \dot pi_1), ...}
     '''
-    scalars = {}
+    scalars = np.zeros(len(coset_reps), dtype=np.complex64)
     for idx, rep in enumerate(coset_reps):
-        tup_g = dot_tup_inv(rep, tup)
+        tup_g = dot_tup_inv(rep, tup) # original tuple is f(x) |-> f(g(x))
         scalars[idx] = cyclic_irrep_func(tup_g)
+
     return scalars
 
 class CyclicGroup:
@@ -359,8 +360,9 @@ def get_sparse_mat(g, yor_dict, block_scalars=None, shape=None):
     re_vals = []
     im_vals = []
     for idx, mat in yg.items():
-        scalar = block_scalars[idx[0]]
+        scalar = 1 if block_scalars is None else block_scalars[idx[0]]
         # this is a hack that only works for the 1 dim blocks
+        # but we don't use get_sparse_mat so this is to be deprecated anyhow
         re_vals.append(scalar.real * mat[0, 0])
         im_vals.append(scalar.imag * mat[0, 0])
 

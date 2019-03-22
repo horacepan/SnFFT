@@ -5,18 +5,21 @@ import numpy as np
 from perm2 import sn
 from coset_utils import young_subgroup_perm, coset_reps
 from wreath import wreath_rep, get_mat, cyclic_irreps, block_cyclic_irreps, get_sparse_mat
-from utils import load_pkl
+from utils import load_pkl, load_sparse_pkl
 from yor import yor
+from young_tableau import wreath_dim
 import time
 import torch
 from tqdm import tqdm
 sys.path.append('./cube/')
 from str_cube import get_wreath, init_2cube, render, scramble
+from cube_utils import cube2_orientations
 
 IRREP_LOC_FMT = '/local/hopan/cube/pickles/{}/{}.pkl'
+IRREP_SP_LOC_FMT = '/local/hopan/cube/pickles_sparse/{}/{}.pkl'
 
 class Cube2Irrep(object):
-    def __init__(self, alpha, parts, cached_loc=None):
+    def __init__(self, alpha, parts, cached_loc=None, sparse=True):
         '''
         alpha: tuple of ints, the weak partition of 8 into 3 parts
         parts: tuple of ints, the partitions of each part of alpha
@@ -28,13 +31,46 @@ class Cube2Irrep(object):
         self.cyc_irrep_func = cyclic_irreps(alpha)
         self.yor_dict = None
 
-        if cached_loc:
+        # cache orientation tuple -> cyclic irrep
+        self.cyclic_irreps_re = {}
+        self.cyclic_irreps_im = {}
+        self.fill_cyclic_irreps()
+
+        # also cache the cyclic irreps
+        if cached_loc and sparse:
+            self.yor_dict = load_sparse_pkl(cached_loc)
+        elif cached_loc:
             # expect the full pickle filename
             self.yor_dict = load_pkl(cached_loc)
+        elif sparse:
+            pkl_loc = IRREP_SP_LOC_FMT.format(alpha, parts)
+            np_pkl_loc = IRREP_LOC_FMT.format(alpha, parts)
+            self.yor_dict = load_sparse_pkl(pkl_loc)
         else:
             pkl_loc = IRREP_LOC_FMT.format(alpha, parts)
-            print('loading from: {}'.format(pkl_loc))
-            self.yor_dict = load_pkl(pkl_loc)
+            self.np_yor_dict = load_pkl(pkl_loc)
+
+    def block_pad(self, arr):
+        '''
+        Given an array of length(self.cos_reps)
+        Block extend this to length full group / len(self.cos_reps)
+        '''
+        block_size = wreath_dim(self.parts) ** 2
+        output = np.zeros(len(arr) * block_size)
+        for i in range(arr.size):
+            output[i * block_size: (i+1) * block_size] =  arr[i]
+        return output
+
+    def fill_cyclic_irreps(self):
+        '''
+        Stores the cyclic irrep for every single 2-cube orientation
+        so fetching a 2-cube state representation becomes
+        two dictionary lookups and a sparse elementwise multiplication.
+        '''
+        for tup in cube2_orientations():
+            cyc_irrep = block_cyclic_irreps(tup, self.cos_reps, self.cyc_irrep_func)
+            self.cyclic_irreps_re[tup] = torch.FloatTensor(self.block_pad(cyc_irrep.real))
+            self.cyclic_irreps_im[tup] = torch.FloatTensor(self.block_pad(cyc_irrep.imag))
 
     def str_to_irrep_np(self, cube_str):
         '''
@@ -60,8 +96,16 @@ class Cube2Irrep(object):
 
     def tup_to_irrep_th(self, otup, ptup):
         block_scalars = block_cyclic_irreps(otup, self.cos_reps, self.cyc_irrep_func)
-        rep_re, rep_im = get_sparse_mat(ptup, self.yor_dict, block_scalars)
+        rep_re, rep_im = get_sparse_mat(ptup, self.np_yor_dict, block_scalars)
         return rep_re, rep_im
+
+    def str_to_irrep_sp(self, cube_str):
+        otup, gtup = get_wreath(cube_str)
+        re = self.yor_dict[gtup]['real']
+        im = self.yor_dict[gtup]['imag']
+        re = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[otup], re.size()))
+        im = im.mul(torch.sparse.FloatTensor(im.indices(), self.cyclic_irreps_im[otup], im.size()))
+        return re, im
 
 def test():
     alpha = (8, 0, 0)

@@ -5,6 +5,8 @@ import pdb
 from functools import reduce
 from itertools import product
 import psutil
+from tqdm import tqdm
+import torch
 
 CUBE2_SIZE = 88179840
 FOURIER_SUBDIR = 'fourier'
@@ -153,6 +155,21 @@ def load_pkl(fname, options='rb'):
     with open(fname, options) as f:
         res = pickle.load(f)
         return res
+
+def load_sparse_pkl(fname):
+    th_pkl = load_pkl(fname)
+    size = th_pkl.pop('size')
+    new_dict = {}
+
+    for perm, ydict in tqdm(th_pkl.items()):
+        sparse_re = torch.sparse.FloatTensor(ydict['idx'], ydict['real'], size).coalesce()
+        sparse_im = torch.sparse.FloatTensor(ydict['idx'], ydict['imag'], size).coalesce()
+        new_dict[perm] = {
+            'real': sparse_re,
+            'imag': sparse_im,
+        }
+
+    return new_dict
 
 def load_irrep(prefix, alpha, parts):
     irrep_path = os.path.join(prefix, IRREP_SUBDIR, str(alpha), '{}.pkl'.format(parts))

@@ -3,6 +3,7 @@ sys.path.append('./cube')
 from collections import namedtuple
 import time
 import random
+import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -91,6 +92,12 @@ class IrrepLinreg(nn.Module):
         self.bi.data.zero_()
 
 def get_action(env, model, state):
+    if env.sparse:
+        return get_action_th(env, model, state)
+    else:
+        return get_action_np(env, model, state)
+
+def get_action_np(env, model, state):
     '''
     model: nn.Module
     state: string of cube state
@@ -104,10 +111,13 @@ def get_action(env, model, state):
 
 def get_action_th(env, model, state):
     neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
-    xr, xi = zip(*[env.real_imag_irrep_torch(n) for n in neighbors])
+    xr, xi = zip(*[env.irrep(n) for n in neighbors])
     xr = torch.cat(xr, dim=0)
     xi = torch.cat(xi, dim=0)
-    yr, yi = model.forward_sparse(xr, xi)
+    if env.sparse:
+        yr, yi = model.forward_sparse(xr, xi)
+    else:
+        yr, yi = model.forward(xr, xi)
     return yr.argmax().item()
 
 def test_update():
@@ -142,18 +152,16 @@ def update(env, model, batch, opt, discount=0.9, summary_writer=None):
     # this should be fixed
     sir = time.time()
     for s in batch.state:
-        #xr, xi = env.real_imag_irrep(s)
-        xr, xi = env.real_imag_irrep_torch(s)
+        xr, xi = env.irrep(s)
         sr.append(xr)
-        si.append(xi) 
+        si.append(xi)
     print('get irrep time: {:3.2f}'.format(time.time() - sir))
 
     sir = time.time()
     for ns in batch.next_state:
-        #xr, xi = env.real_imag_irrep(ns)
-        xr, xi = env.real_imag_irrep_torch(ns)
+        xr, xi = env.real_imag_irrep_sp(ns)
         nsr.append(xr)
-        nsi.append(xi) 
+        nsi.append(xi)
     print('get irrep time: {:3.2f}'.format(time.time() - sir))
 
     sir = time.time()
@@ -163,9 +171,17 @@ def update(env, model, batch, opt, discount=0.9, summary_writer=None):
     nsr = torch.cat(nsr, dim=0)
     nsi = torch.cat(nsi, dim=0)
     print('stacking time: {:3.2f}'.format(time.time() - sir))
-    yr_pred, yi_pred = model.forward_sparse(sr, si)
+
+    if env.sparse:
+        yr_pred, yi_pred = model.forward_sparse(sr, si)
+    else:
+        yr_pred, yi_pred = model.forward(sr, si)
     print('forward + stacking time: {:3.2f}'.format(time.time() - sir))
-    yr_onestep, yi_onestep = model.forward_sparse(nsr, nsi)
+
+    if env.sparse:
+        yr_onestep, yi_onestep = model.forward_sparse(nsr, nsi)
+    else:
+        yr_onestep, yi_onestep = model.forward(nsr, nsi)
     loss = lossfunc(reward + discount * yr_onestep, discount * yi_onestep, yr_pred, yi_pred)
 
     opt.zero_grad()
@@ -186,7 +202,7 @@ def test(hparams):
         parts = ((2,), (1, 1, 1), (1, 1, 1))
         model = IrrepLinreg(560 * 560)
 
-    env = Cube2IrrepEnv(alpha, parts)
+    env = Cube2IrrepEnv(alpha, parts, sparse=hparams['sparse'])
     state = env.reset()
 
     optimizer = torch.optim.SGD(model.parameters(), **hparams['opt_params'])
@@ -195,7 +211,7 @@ def test(hparams):
     niter = 0
     nupdates = 1
     losses = np.zeros(hparams['logint'])
-    nlosses = 0
+    tot_loss = 0
     print('Before training memory check:', end='')
     check_memory()
 
@@ -217,35 +233,21 @@ def test(hparams):
                 _loss = update(env, model, sample, optimizer)
                 send = time.time()
                 print('update time: {:3.2f}'.format(send - sup))
-                nlosses += _loss
+                tot_loss += _loss
                 nupdates = (nupdates + 1)
             niter += 1
 
-        if e % 100 == 0:
+        if e % hparams['logint'] == 0:
             elapsed = (time.time() - start) / 60.
-            print('Epoch {:6} | Elapsed: {:5.2f}min | nupdates: {} | avg loss: {:4.2f}'.format(e, elapsed, nupdates, nlosses / nupdates))
+            print('Epoch {:6} | Elapsed: {:5.2f}min | nupdates: {} | avg loss: {:4.2f}'.format(e, elapsed, nupdates, tot_loss / nupdates))
     check_memory()
-
-def test_batch():
-    mem = ReplayMemory(100)
-    for i in range(10):
-        s = str_cube.init_2cube()
-        a = 1
-        ns = str_cube.init_2cube()
-        rew = -1
-        done = False
-        mem.push(s, a, ns, rew, done)
-
-    batch = mem.sample(3)
-    for c in batch:
-        print(c)
 
 if __name__ == '__main__':
     hparams = {
         'mem_size': 1000, 
         'epochs': 1000,
         'max_eplen': 20,
-        'batch_size': 128,
+        'batch_size': 256,
         'capacity': 100000,
         'update_int': 100,
         'logint': 1000,
@@ -253,8 +255,12 @@ if __name__ == '__main__':
         'opt_params': {
             'lr': 0.1
         },
-        'test': False
+        'test': False,
+        #'test': True,
+        'sparse': True
+        #'sparse': False
     }
+    print('Testing with sparse: {}'.format(hparams['sparse']))
     try:
         test(hparams)
     except KeyboardInterrupt:
