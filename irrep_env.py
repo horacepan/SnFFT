@@ -17,7 +17,7 @@ class Cube2IrrepEnv(CubeEnv):
     This class represents the 2-cube environment but wraps each cube state
     with an irrep(corresponding to alpha, parts) matrix.
     '''
-    def __init__(self, alpha, parts, sparse=False):
+    def __init__(self, alpha, parts, sparse=True):
         '''
         alpha: tuple of ints, the weak partition of 8 into 3 parts
         parts: tuple of ints, the partitions of each part of alpha

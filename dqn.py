@@ -1,20 +1,36 @@
-import sys
-sys.path.append('./cube')
-from collections import namedtuple
+import os
+import logging
 import time
 import random
 import argparse
+from collections import namedtuple
+import json
+import pdb
+import sys
+sys.path.append('./cube')
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from complex_utils import cmm, cmse, cmse_real, cmm_sparse
+from complex_utils import cmm, cmse_real, cmm_sparse
 from irrep_env import Cube2IrrepEnv
 from utils import check_memory
-import numpy as np
 import str_cube
-import pdb
 
 Batch = namedtuple('Batch', ('state', 'action', 'next_state', 'reward', 'done'))
+CUBE2_SIZE = 40320 * (3**7)
+NP_TOP_IRREP_LOC = '/local/hopan/cube/fourier_unmod/(2, 3, 3)/((2,), (1, 1, 1), (1, 1, 1)).npy'
+
+def get_logger(fname):
+    logging.basicConfig(
+        filename=fname,
+        level=logging.DEBUG,
+        format='%(asctime)s.%(msecs)03d %(levelname)s %(module)s %(funcName)s: %(message)s',
+        datefmt="%Y-%m-%d %H:%M:%S")
+    logger = logging.getLogger(__name__)
+    logger.addHandler(logging.StreamHandler())
+    return logger
 
 class ReplayMemory(object):
 
@@ -28,7 +44,7 @@ class ReplayMemory(object):
         self.actions = np.empty([capacity, 1], np.dtype('i1'))
         self.new_states = np.empty([capacity], np.dtype('<U24'))
         self.rewards = np.empty([capacity, 1], dtype=np.float32)
-        self.dones = np.empty([capacity, 1], np.dtype('bool'))
+        self.dones = np.empty([capacity, 1], np.dtype(np.float32))
 
     def push(self, state, action, new_state, reward, done):
         self.states[self.position]      = state
@@ -61,9 +77,7 @@ class IrrepLinreg(nn.Module):
         super(IrrepLinreg, self).__init__()
         self.wr = nn.Parameter(torch.rand(n_in, 1))
         self.wi = nn.Parameter(torch.rand(n_in, 1))
-        self.br = nn.Parameter(torch.rand(1, 1))
-        self.bi = nn.Parameter(torch.rand(1, 1))
-        self.init_weights()
+        self.zero_weights()
 
     def np_forward(self, xr, xi):
         '''
@@ -75,21 +89,27 @@ class IrrepLinreg(nn.Module):
 
     def forward(self, xr, xi):
         xr, xi = cmm(xr, xi, self.wr, self.wi)
-        xr     = xr + self.br
-        xi     = xi + self.bi
         return xr, xi
 
     def forward_sparse(self, xr, xi):
         xr, xi = cmm_sparse(xr, xi, self.wr, self.wi)
-        xr     = xr + self.br
-        xi     = xi + self.bi
         return xr, xi
+
+    def zero_weights(self):
+        self.wr.data.zero_()
+        self.wi.data.zero_()
 
     def init_weights(self):
         nn.init.xavier_normal_(self.wr)
         nn.init.xavier_normal_(self.wi)
-        self.br.data.zero_()
-        self.bi.data.zero_()
+
+    def loadnp(self, fname):
+        mat = np.load(fname)
+        mat_re = mat.real.astype(np.float32)
+        mat_im = mat.imag.astype(np.float32)
+        size = mat_re.shape[0]
+        self.wr.data = torch.from_numpy(mat_re.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
+        self.wi.data = torch.from_numpy(mat_im.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
 
 def get_action(env, model, state):
     if env.sparse:
@@ -118,30 +138,15 @@ def get_action_th(env, model, state):
         yr, yi = model.forward_sparse(xr, xi)
     else:
         yr, yi = model.forward(xr, xi)
+
     return yr.argmax().item()
 
-def test_update():
-    alpha = (0, 7, 1)
-    parts = ((), (6, 1), (1,))
-    print('Loading irrep: {} | {}'.format(alpha, parts))
-    env = Cube2IrrepEnv(alpha, parts)
-    print('Done loading irrep: {} | {}'.format(alpha, parts))
-    model = IrrepLinreg(48 * 48)
-    c = str_cube.init_2cube()
-    batch = [
-        [c, 0, c, 1.0],
-        [c, 0, c, 1.0],
-    ]
-    opt = torch.optim.SGD(model.parameters(), lr=0.01)
-    update(env, model, batch, opt)
-
-def update(env, model, batch, opt, discount=0.9, summary_writer=None):
+def update(env, model, batch, opt, discount=0.9):
     '''
     batch: named tuple of stuff
     discount: float
     lossfunc: loss function
     opt: torch optim
-    summary_writer: optional
     '''
     lossfunc = cmse_real
     sr = []
@@ -149,50 +154,62 @@ def update(env, model, batch, opt, discount=0.9, summary_writer=None):
     nsr = []
     nsi = []
 
-    # this should be fixed
-    sir = time.time()
     for s in batch.state:
         xr, xi = env.irrep(s)
         sr.append(xr)
         si.append(xi)
-    print('get irrep time: {:3.2f}'.format(time.time() - sir))
 
-    sir = time.time()
     for ns in batch.next_state:
         xr, xi = env.real_imag_irrep_sp(ns)
         nsr.append(xr)
         nsi.append(xi)
-    print('get irrep time: {:3.2f}'.format(time.time() - sir))
 
-    sir = time.time()
     reward = torch.from_numpy(batch.reward)#.astype(np.float32))
+    dones = torch.from_numpy(batch.done)
     sr = torch.cat(sr, dim=0)
     si = torch.cat(si, dim=0)
     nsr = torch.cat(nsr, dim=0)
     nsi = torch.cat(nsi, dim=0)
-    print('stacking time: {:3.2f}'.format(time.time() - sir))
 
-    if env.sparse:
-        yr_pred, yi_pred = model.forward_sparse(sr, si)
-    else:
-        yr_pred, yi_pred = model.forward(sr, si)
-    print('forward + stacking time: {:3.2f}'.format(time.time() - sir))
-
-    if env.sparse:
-        yr_onestep, yi_onestep = model.forward_sparse(nsr, nsi)
-    else:
-        yr_onestep, yi_onestep = model.forward(nsr, nsi)
-    loss = lossfunc(reward + discount * yr_onestep, discount * yi_onestep, yr_pred, yi_pred)
-
+    yr_pred, yi_pred = model.forward_sparse(sr, si)
+    yr_onestep, yi_onestep = model.forward_sparse(nsr, nsi)
+    loss = lossfunc(reward + discount * yr_onestep * (1 - dones),
+                    discount * yi_onestep * (1 - dones), yr_pred, yi_pred)
     opt.zero_grad()
     loss.backward()
     opt.step()
 
-    print('forward + stacking time + loss: {:3.2f}'.format(time.time() - sir))
-    return loss.item()
+def explore_rate(epoch_num, explore_epochs, eps_min):
+    return max(eps_min, 1 - (epoch_num / explore_epochs))
 
-def test(hparams):
-    start = time.time()
+def get_logdir(logdir, saveprefix):
+    '''
+    Produce a unique directory name
+    '''
+    cnt = 0
+    while os.path.exists(os.path.join(logdir, saveprefix + str(cnt))):
+        cnt += 1
+
+    return os.path.join(logdir, saveprefix + str(cnt))
+
+def main(hparams):
+    logfname = get_logdir(hparams['logdir'], hparams['savename'])
+    if not os.path.exists(hparams['logdir']):
+        os.makedirs(hparams['logdir'])
+    savedir = get_logdir(hparams['logdir'], hparams['savename'])
+    logfile = os.path.join(savedir, 'log.txt')
+
+    os.makedirs(savedir)
+    with open(os.path.join(savedir, 'args.json'), 'w') as f:
+        json.dump(hparams, f, indent=4)
+
+    log = get_logger(logfile)
+    log.debug('Starting main')
+    log.debug('hparams: {}'.format(hparams))
+
+    torch.manual_seed(hparams['seed'])
+    random.seed(hparams['seed'])
+    log.debug('first log!')
     if hparams['test']:
         alpha = (0, 7, 1)
         parts = ((), (6, 1), (1,))
@@ -202,67 +219,83 @@ def test(hparams):
         parts = ((2,), (1, 1, 1), (1, 1, 1))
         model = IrrepLinreg(560 * 560)
 
-    env = Cube2IrrepEnv(alpha, parts, sparse=hparams['sparse'])
-    state = env.reset()
+        if hparams['loadnp']:
+            model.loadnp(hparams['loadnp'])
 
-    optimizer = torch.optim.SGD(model.parameters(), **hparams['opt_params'])
-    memory = ReplayMemory(hparams['mem_size'])
-    print('Done setup: {:.2f}s'.format(time.time() - start))
+    env = Cube2IrrepEnv(alpha, parts)
+    optimizer = torch.optim.SGD(model.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
+    memory = ReplayMemory(hparams['capacity'])
     niter = 0
-    nupdates = 1
-    losses = np.zeros(hparams['logint'])
+    nupdates = 0
     tot_loss = 0
-    print('Before training memory check:', end='')
-    check_memory()
+    nsolved = 0
+    rewards = np.zeros(hparams['logint'])
+    seen_states = set()
 
-    start = time.time()
     for e in range(hparams['epochs']):
-        state = env.reset()
-        for i in range(hparams['max_eplen']):
-            # get the opt action
-            # stash the thing
-            action = get_action(env, model, state)
-            # add option to make the irrep optional
+        state = env.reset_fixed(max_dist=hparams['max_dist'])
+        epoch_rews = 0
+
+        for i in range(hparams['max_dist' + 10]):
+            if random.random() < explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['eps_min']):
+                action = random.randint(0, env.action_space.n - 1)
+            else:
+                action = get_action(env, model, state)
+
+            seen_states.add(state)
             ns, rew, done, _ = env.step(action, irrep=False)
             memory.push(state, action, ns, rew, done)
-
-            if niter > 0 and niter % hparams['update_int'] == 0:
-                #print('Updating | niter {} | loss: {:5.2f}'.format(niter, np.mean(losses)))
-                sample = memory.sample(hparams['batch_size'])
-                sup = time.time()
-                _loss = update(env, model, sample, optimizer)
-                send = time.time()
-                print('update time: {:3.2f}'.format(send - sup))
-                tot_loss += _loss
-                nupdates = (nupdates + 1)
+            epoch_rews += rew
+            state = ns
             niter += 1
 
-        if e % hparams['logint'] == 0:
-            elapsed = (time.time() - start) / 60.
-            print('Epoch {:6} | Elapsed: {:5.2f}min | nupdates: {} | avg loss: {:4.2f}'.format(e, elapsed, nupdates, tot_loss / nupdates))
+            if niter > 0 and niter % hparams['update_int'] == 0:
+                sample = memory.sample(hparams['batch_size'])
+                _loss = update(env, model, sample, optimizer)
+                tot_loss += _loss
+                nupdates = (nupdates + 1)
+
+            if done:
+                nsolved += 1
+                break
+
+        rewards[e%len(rewards)] = epoch_rews
+        if e % hparams['logint'] == 0 and e > 0:
+            log.info('Epoch {:7} | avg rew: {:4.2f} | reset dist: {:3} | solved: {:.3f} | explore: {:.2f} | rez: {} | imz: {}'.format(
+                e, np.mean(rewards), hparams['max_dist'], nsolved / hparams['logint'],
+                explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['eps_min']),
+                torch.nonzero(model.wr.data).numel(),
+                torch.nonzero(model.wi.data).numel()
+            ))
+            nsolved = 0
+
+    log.info('Total updates: {}'.format(nupdates))
+    torch.save(model, os.path.join(savedir, 'model.pt'))
     check_memory()
 
 if __name__ == '__main__':
-    hparams = {
-        'mem_size': 1000, 
-        'epochs': 1000,
-        'max_eplen': 20,
-        'batch_size': 256,
-        'capacity': 100000,
-        'update_int': 100,
-        'logint': 1000,
-        'discount': 0.99,
-        'opt_params': {
-            'lr': 0.1
-        },
-        'test': False,
-        #'test': True,
-        'sparse': True
-        #'sparse': False
-    }
-    print('Testing with sparse: {}'.format(hparams['sparse']))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--max_dist', type=int, default=15)
+    parser.add_argument('--explore_proportion', type=float, default=0.2)
+    parser.add_argument('--eps_min', type=float, default=0.05)
+    parser.add_argument('--epochs', type=int, default=10000)
+    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--capacity', type=int, default=10000)
+    parser.add_argument('--update_int', type=int, default=50)
+    parser.add_argument('--logint', type=int, default=1000)
+    parser.add_argument('--discount', type=float, default=0.9)
+    parser.add_argument('--lr', type=float, default=0.01)
+    parser.add_argument('--momentum', type=float, default=0.9)
+    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--savename', type=str, default='randomlog')
+    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--loadnp', type=str, default=NP_TOP_IRREP_LOC)
+    parser.add_argument('--logdir', type=str, default='./logs/')
+    args = parser.parse_args()
+    hparams = vars(args)
+
     try:
-        test(hparams)
+        main(hparams)
     except KeyboardInterrupt:
         print('Keyboard escape!')
         check_memory()
