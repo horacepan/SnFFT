@@ -19,6 +19,15 @@ class CubeEnv(gym.Env):
         4: 'f',
         5: 'b',
     }
+    # This is really the fixed core function map
+    FUNCTION_MAP = {
+        'u': str_cube.rot_u,
+        'd': str_cube.rot_d2,
+        'l': str_cube.rot_l2,
+        'r': str_cube.rot_r,
+        'f': str_cube.rot_f,
+        'b': str_cube.rot_ib2,
+    }
     def __init__(self, size, reward_mode='penalty'):
         self.size = size
         self.action_space = spaces.Discrete(6)
@@ -29,15 +38,15 @@ class CubeEnv(gym.Env):
         self.seed()
 
         if size == 2:
-            self.state = CubeEnv.reset2()
+            self.state = self.reset2()
 
     def step(self, action):
         if action in CubeEnv.ACTION_MAP:
             face = CubeEnv.ACTION_MAP[action]
-            self.state = str_cube.rotate(self.state, face)
+            rot_func = CubeEnv.FUNCTION_MAP[face]
+            self.state = rot_func(self.state)
         else:
-            pass
-            #raise ValueError('Action {} is invalid'.format(action))
+            raise ValueError('Action {} is invalid'.format(action))
 
         done = is_done(self.state)
         reward = self.reward_func(done)
@@ -47,9 +56,9 @@ class CubeEnv(gym.Env):
     def is_done(self):
         return (self.state in SOLVED_STATES)
 
-    def reset(self):
+    def reset(self, max_dist=100):
         if self.size == 2:
-            self.state = CubeEnv.reset2()
+            self.state = CubeEnv.reset2(max_dist)
             return self.state
         else:
             raise NotImplementedError('Havent implemented other sizes yet')
@@ -69,16 +78,24 @@ class CubeEnv(gym.Env):
     def penalty_reward(self, solved):
         return 1 if solved else -1
 
-    def close(self):
-        pass
-
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
 
-    @staticmethod
-    def reset2():
+    def reset2(self, max_dist=100):
+        '''
+        Resets the state to a random 2-cube configuration
+        '''
+        c = str_cube.init_2cube()
+        self.state = str_cube.scramble(c, max_dist)
+        return self.state
+
+    def reset_fixed(self, max_dist=100):
+        '''
+        Resets the cube state using the fixed core moves for the 2-cube.
+        '''
         c = str_cube.init_2cube() 
-        return str_cube.scramble(c, 1000)
+        self.state = str_cube.scramble_fixedcore(c, max_dist)
+        return self.state
 
     def soft_reset(self):
         self.state = str_cube.init_2cube()

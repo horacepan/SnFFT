@@ -268,13 +268,15 @@ def neighbors_fixed_core(cube_str):
         rot_l2(cube_str),
         rot_r(cube_str),
         rot_f(cube_str),
-        rot_b2(cube_str),
+        rot_ib2(cube_str), # f \circ ib2 = id
+        #rot_b2(cube_str),
         rot_iu(cube_str),
         rot_id2(cube_str),
         rot_il2(cube_str),
         rot_ir(cube_str),
         rot_if(cube_str),
-        rot_ib2(cube_str)
+        #rot_ib2(cube_str)
+        rot_b2(cube_str)
     ]
     return nbrs
 
@@ -638,6 +640,13 @@ def scramble(cube, n=1):
         f = random.choice(ALL_ROTS)
         cube = rotate(cube, f)
     return cube
+
+def scramble_fixedcore(cube, n=1):
+    for _ in range(n):
+        f = random.choice(FACES)
+        cube = rotate(cube, f)
+    return cube
+
 
 def get_cubie(c, cube_idx):
     '''

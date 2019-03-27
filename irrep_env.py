@@ -28,8 +28,12 @@ class Cube2IrrepEnv(CubeEnv):
         self.sparse = sparse
         self._cubeirrep = Cube2Irrep(alpha, parts, sparse=sparse)
 
-    def reset(self):
-        state = super(Cube2IrrepEnv, self).reset()
+    def reset(self, max_dist=100):
+        state = super(Cube2IrrepEnv, self).reset(max_dist)
+        return state
+
+    def reset_fixed(self, max_dist=100):
+        state = super(Cube2IrrepEnv, self).reset_fixed(max_dist)
         return state
 
     def step(self, action, irrep=False):

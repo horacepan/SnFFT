@@ -28,5 +28,6 @@ def cmse_real(ytr, yti, yr, yi):
     '''
     real_diff = ytr - yr
     im_diff = yti - yi
-    loss = (real_diff.pow(2) + im_diff.pow(2) + yti.pow(2) + yi.pow(2)).mean()
+    #loss = (real_diff.pow(3) + im_diff.pow(2) + yti.pow(2) + yi.pow(2)).mean()
+    loss = (real_diff.pow(2) + im_diff.pow(2)).mean()
     return loss
