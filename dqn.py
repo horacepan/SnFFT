@@ -178,6 +178,7 @@ def update(env, model, batch, opt, discount=0.9):
     opt.zero_grad()
     loss.backward()
     opt.step()
+    return loss.item()
 
 def explore_rate(epoch_num, explore_epochs, eps_min):
     return max(eps_min, 1 - (epoch_num / explore_epochs))
@@ -190,7 +191,7 @@ def get_logdir(logdir, saveprefix):
     while os.path.exists(os.path.join(logdir, saveprefix + str(cnt))):
         cnt += 1
 
-    return os.path.join(logdir, saveprefix + str(cnt))
+    return os.path.join(logdir, saveprefix + '_' + str(cnt))
 
 def main(hparams):
     logfname = get_logdir(hparams['logdir'], hparams['savename'])
@@ -236,7 +237,7 @@ def main(hparams):
         state = env.reset_fixed(max_dist=hparams['max_dist'])
         epoch_rews = 0
 
-        for i in range(hparams['max_dist' + 10]):
+        for i in range(hparams['max_dist'] + 5):
             if random.random() < explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['eps_min']):
                 action = random.randint(0, env.action_space.n - 1)
             else:
