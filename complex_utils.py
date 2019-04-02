@@ -7,14 +7,14 @@ def cmm(t1r, t1i, t2r, t2i):
     ri = t1r.mm(t2i)
     ir = t1i.mm(t2r)
     ii = t1i.mm(t2i)
-    return (rr-ii, ri + ii)
+    return (rr-ii, ri + ir)
 
 def cmm_sparse(sparse_r, sparse_i, wr, wi):
     rr = torch.sparse.mm(sparse_r, wr)
     ri = torch.sparse.mm(sparse_r, wi)
     ir = torch.sparse.mm(sparse_i, wr)
     ii = torch.sparse.mm(sparse_i, wi)
-    return (rr - ii, ri + ii)
+    return (rr - ii, ri + ir)
 
 def cmse(y_true, yr, yi):
     real_diff = y_true - yr
