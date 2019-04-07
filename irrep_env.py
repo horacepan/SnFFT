@@ -36,6 +36,10 @@ class Cube2IrrepEnv(CubeEnv):
         state = super(Cube2IrrepEnv, self).reset_fixed(max_dist)
         return state
 
+    def curriculum_reset(self, max_dist, curr_epoch, max_curric_epochs):
+        max_dist = max_dist * curr_epoch / max_curric_epochs
+        return self.reset_fixed(max_dist)
+
     def step(self, action, irrep=False):
         state, rew, done, _dict = super(Cube2IrrepEnv, self).step(action)
         if irrep:

@@ -10,26 +10,35 @@ import sys
 sys.path.append('./cube')
 
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from complex_utils import cmm, cmse_real, cmm_sparse
+from complex_utils import cmm, cmse, cmse_min_imag, cmse_real, cmm_sparse
 from irrep_env import Cube2IrrepEnv
 from utils import check_memory
 import str_cube
+from tensorboardX import SummaryWriter
 
 Batch = namedtuple('Batch', ('state', 'action', 'next_state', 'reward', 'done'))
 CUBE2_SIZE = 40320 * (3**7)
 NP_TOP_IRREP_LOC = '/local/hopan/cube/fourier_unmod/(2, 3, 3)/((2,), (1, 1, 1), (1, 1, 1)).npy'
 
 def get_logger(fname):
+    str_fmt = '[%(asctime)s.%(msecs)03d] %(levelname)s %(module)s %(funcName)s: %(message)s'
+    date_fmt = "%Y-%m-%d %H:%M:%S"
     logging.basicConfig(
         filename=fname,
         level=logging.DEBUG,
-        format='%(asctime)s.%(msecs)03d %(levelname)s %(module)s %(funcName)s: %(message)s',
-        datefmt="%Y-%m-%d %H:%M:%S")
+        format=str_fmt,
+        datefmt=date_fmt)
+
     logger = logging.getLogger(__name__)
-    logger.addHandler(logging.StreamHandler())
+    sh = logging.StreamHandler()
+    formatter = logging.Formatter(str_fmt, datefmt=date_fmt)
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
+
     return logger
 
 class ReplayMemory(object):
@@ -77,7 +86,9 @@ class IrrepLinreg(nn.Module):
         super(IrrepLinreg, self).__init__()
         self.wr = nn.Parameter(torch.rand(n_in, 1))
         self.wi = nn.Parameter(torch.rand(n_in, 1))
-        self.zero_weights()
+        self.uniform_init()
+        #self.normal_init()
+        #self.zero_weights()
 
     def np_forward(self, xr, xi):
         '''
@@ -102,6 +113,14 @@ class IrrepLinreg(nn.Module):
     def init_weights(self):
         nn.init.xavier_normal_(self.wr)
         nn.init.xavier_normal_(self.wi)
+
+    def normal_init(self):
+        nn.init.normal_(self.wr, 0, 0.018)
+        nn.init.normal_(self.wi, 0, 0.017)
+
+    def uniform_init(self):
+        nn.init.uniform_(self.wr, 0, 0.02)
+        nn.init.uniform_(self.wi, 0, 0.02)
 
     def loadnp(self, fname):
         mat = np.load(fname)
@@ -141,26 +160,32 @@ def get_action_th(env, model, state):
 
     return yr.argmax().item()
 
-def update(env, model, batch, opt, discount=0.9):
+def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     '''
     batch: named tuple of stuff
     discount: float
     lossfunc: loss function
     opt: torch optim
     '''
-    lossfunc = cmse_real
+    if hparams['lossfunc'] == 'cmse_real':
+        lossfunc = cmse_real
+    elif hparams['lossfunc'] == 'cmse_min_imag':
+        lossfunc = cmse_min_imag
+    else:
+        lossfunc = cmse
+    discount = hparams['discount']
     sr = []
     si = []
     nsr = []
     nsi = []
 
     for s in batch.state:
-        xr, xi = env.irrep(s)
-        sr.append(xr)
-        si.append(xi)
+        _xr, _xi = env.irrep(s)
+        sr.append(_xr)
+        si.append(_xi)
 
     for ns in batch.next_state:
-        xr, xi = env.real_imag_irrep_sp(ns)
+        xr, xi = env.irrep(ns)
         nsr.append(xr)
         nsi.append(xi)
 
@@ -171,132 +196,31 @@ def update(env, model, batch, opt, discount=0.9):
     nsr = torch.cat(nsr, dim=0)
     nsi = torch.cat(nsi, dim=0)
 
-    yr_pred, yi_pred = model.forward_sparse(sr, si)
-    yr_onestep, yi_onestep = model.forward_sparse(nsr, nsi)
-    loss = lossfunc(reward + discount * yr_onestep * (1 - dones),
-                    discount * yi_onestep * (1 - dones), yr_pred, yi_pred)
+    yr_pred, yi_pred = pol_net.forward_sparse(sr, si)
+    yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
+
     opt.zero_grad()
+    loss = lossfunc(reward + discount * yr_onestep.detach() * (1 - dones),
+                             discount * yi_onestep.detach() * (1 - dones), yr_pred, yi_pred)
+
     loss.backward()
+    old_wr = pol_net.wr.detach().clone()
+    old_wi = pol_net.wi.detach().clone()
     opt.step()
+    # log the size of the update?
+    logger.add_scalar('wr_update_norm', (pol_net.wr - old_wr).norm().item(), nupdate)
+    logger.add_scalar('wi_update_norm', (pol_net.wi - old_wi).norm().item(), nupdate)
     return loss.item()
 
 def explore_rate(epoch_num, explore_epochs, eps_min):
-    return max(eps_min, 1 - (epoch_num / explore_epochs))
+    return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
 
 def get_logdir(logdir, saveprefix):
     '''
     Produce a unique directory name
     '''
     cnt = 0
-    while os.path.exists(os.path.join(logdir, saveprefix + str(cnt))):
+    while os.path.exists(os.path.join(logdir, saveprefix + '_' + str(cnt))):
         cnt += 1
 
     return os.path.join(logdir, saveprefix + '_' + str(cnt))
-
-def main(hparams):
-    logfname = get_logdir(hparams['logdir'], hparams['savename'])
-    if not os.path.exists(hparams['logdir']):
-        os.makedirs(hparams['logdir'])
-    savedir = get_logdir(hparams['logdir'], hparams['savename'])
-    logfile = os.path.join(savedir, 'log.txt')
-
-    os.makedirs(savedir)
-    with open(os.path.join(savedir, 'args.json'), 'w') as f:
-        json.dump(hparams, f, indent=4)
-
-    log = get_logger(logfile)
-    log.debug('Starting main')
-    log.debug('hparams: {}'.format(hparams))
-
-    torch.manual_seed(hparams['seed'])
-    random.seed(hparams['seed'])
-    log.debug('first log!')
-    if hparams['test']:
-        alpha = (0, 7, 1)
-        parts = ((), (6, 1), (1,))
-        model = IrrepLinreg(48 * 48)
-    else:
-        alpha = (2, 3, 3)
-        parts = ((2,), (1, 1, 1), (1, 1, 1))
-        model = IrrepLinreg(560 * 560)
-
-        if hparams['loadnp']:
-            model.loadnp(hparams['loadnp'])
-
-    env = Cube2IrrepEnv(alpha, parts)
-    optimizer = torch.optim.SGD(model.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
-    memory = ReplayMemory(hparams['capacity'])
-    niter = 0
-    nupdates = 0
-    tot_loss = 0
-    nsolved = 0
-    rewards = np.zeros(hparams['logint'])
-    seen_states = set()
-
-    for e in range(hparams['epochs']):
-        state = env.reset_fixed(max_dist=hparams['max_dist'])
-        epoch_rews = 0
-
-        for i in range(hparams['max_dist'] + 5):
-            if random.random() < explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['eps_min']):
-                action = random.randint(0, env.action_space.n - 1)
-            else:
-                action = get_action(env, model, state)
-
-            seen_states.add(state)
-            ns, rew, done, _ = env.step(action, irrep=False)
-            memory.push(state, action, ns, rew, done)
-            epoch_rews += rew
-            state = ns
-            niter += 1
-
-            if niter > 0 and niter % hparams['update_int'] == 0:
-                sample = memory.sample(hparams['batch_size'])
-                _loss = update(env, model, sample, optimizer)
-                tot_loss += _loss
-                nupdates = (nupdates + 1)
-
-            if done:
-                nsolved += 1
-                break
-
-        rewards[e%len(rewards)] = epoch_rews
-        if e % hparams['logint'] == 0 and e > 0:
-            log.info('Epoch {:7} | avg rew: {:4.2f} | reset dist: {:3} | solved: {:.3f} | explore: {:.2f} | rez: {} | imz: {}'.format(
-                e, np.mean(rewards), hparams['max_dist'], nsolved / hparams['logint'],
-                explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['eps_min']),
-                torch.nonzero(model.wr.data).numel(),
-                torch.nonzero(model.wi.data).numel()
-            ))
-            nsolved = 0
-
-    log.info('Total updates: {}'.format(nupdates))
-    torch.save(model, os.path.join(savedir, 'model.pt'))
-    check_memory()
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--max_dist', type=int, default=15)
-    parser.add_argument('--explore_proportion', type=float, default=0.2)
-    parser.add_argument('--eps_min', type=float, default=0.05)
-    parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--batch_size', type=int, default=128)
-    parser.add_argument('--capacity', type=int, default=10000)
-    parser.add_argument('--update_int', type=int, default=50)
-    parser.add_argument('--logint', type=int, default=1000)
-    parser.add_argument('--discount', type=float, default=0.9)
-    parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--momentum', type=float, default=0.9)
-    parser.add_argument('--test', action='store_true')
-    parser.add_argument('--savename', type=str, default='randomlog')
-    parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--loadnp', type=str, default=NP_TOP_IRREP_LOC)
-    parser.add_argument('--logdir', type=str, default='./logs/')
-    args = parser.parse_args()
-    hparams = vars(args)
-
-    try:
-        main(hparams)
-    except KeyboardInterrupt:
-        print('Keyboard escape!')
-        check_memory()

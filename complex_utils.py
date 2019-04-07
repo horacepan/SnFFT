@@ -16,9 +16,10 @@ def cmm_sparse(sparse_r, sparse_i, wr, wi):
     ii = torch.sparse.mm(sparse_i, wi)
     return (rr - ii, ri + ir)
 
-def cmse(y_true, yr, yi):
-    real_diff = y_true - yr
-    loss = (real_diff.pow(2) + yi.pow(2)).mean()
+def cmse(ytr, yti, yr, yi):
+    real_diff = ytr - yr
+    im_diff = yti - yi
+    loss = (real_diff.pow(2) + im_diff.pow(2)).mean()
     return loss
 
 def cmse_min_imag(ytr, yti, yr, yi):
@@ -31,6 +32,6 @@ def cmse_min_imag(ytr, yti, yr, yi):
     loss = (real_diff.pow(2) + im_diff.pow(2) + yti.pow(2) + yi.pow(2)).mean()
     return loss
 
-def cmse_real_only(ytr, yti, yr, yi):
+def cmse_real(ytr, yti, yr, yi):
     real_diff = ytr - yr
     return real_diff.pow(2).mean()
