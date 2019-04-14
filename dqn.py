@@ -22,10 +22,9 @@ from tensorboardX import SummaryWriter
 
 Batch = namedtuple('Batch', ('state', 'action', 'next_state', 'reward', 'done'))
 CUBE2_SIZE = 40320 * (3**7)
-NP_TOP_IRREP_LOC = '/local/hopan/cube/fourier_unmod/(2, 3, 3)/((2,), (1, 1, 1), (1, 1, 1)).npy'
 
 def get_logger(fname):
-    str_fmt = '[%(asctime)s.%(msecs)03d] %(levelname)s %(module)s %(funcName)s: %(message)s'
+    str_fmt = '[%(asctime)s.%(msecs)03d] %(levelname)s %(module)s: %(message)s'
     date_fmt = "%Y-%m-%d %H:%M:%S"
     logging.basicConfig(
         filename=fname,
@@ -86,9 +85,9 @@ class IrrepLinreg(nn.Module):
         super(IrrepLinreg, self).__init__()
         self.wr = nn.Parameter(torch.rand(n_in, 1))
         self.wi = nn.Parameter(torch.rand(n_in, 1))
-        self.uniform_init()
-        #self.normal_init()
-        #self.zero_weights()
+        self.br = nn.Parameter(torch.zeros(1))
+        self.bi = nn.Parameter(torch.zeros(1))
+        self.zero_weights()
 
     def np_forward(self, xr, xi):
         '''
@@ -104,23 +103,38 @@ class IrrepLinreg(nn.Module):
 
     def forward_sparse(self, xr, xi):
         xr, xi = cmm_sparse(xr, xi, self.wr, self.wi)
+        xr = self.br + xr
+        xi = self.bi + xi
         return xr, xi
 
     def zero_weights(self):
         self.wr.data.zero_()
         self.wi.data.zero_()
+        self.bi.data.zero_()
+        self.br.data.zero_()
 
-    def init_weights(self):
-        nn.init.xavier_normal_(self.wr)
-        nn.init.xavier_normal_(self.wi)
+    def init(self, mode):
+        if mode == 'normal':
+            self.normal_init()
+        elif mode == 'uniform':
+            self.uniform_init()
+        elif mode == 'binary':
+            scale = 0.01
+            self.wr.data = ((torch.rand(self.wr.size()) > 0.5).float() * scale) - (scale / 2)
+            self.wi.data = ((torch.rand(self.wr.size()) > 0.5).float() * scale) - (scale / 2)
+        else:
+            self.zero_weights()
 
     def normal_init(self):
-        nn.init.normal_(self.wr, 0, 0.018)
-        nn.init.normal_(self.wi, 0, 0.017)
+        nn.init.normal_(self.wr, 0, 0.01)
+        nn.init.normal_(self.wi, 0, 0.01)
 
     def uniform_init(self):
-        nn.init.uniform_(self.wr, 0, 0.02)
-        nn.init.uniform_(self.wi, 0, 0.02)
+        nn.init.uniform_(self.wr, -0.01, 0.01)
+        nn.init.uniform_(self.wi, -0.01, 0.01)
+
+    def binary_init(self):
+        pass
 
     def loadnp(self, fname):
         mat = np.load(fname)
@@ -129,6 +143,11 @@ class IrrepLinreg(nn.Module):
         size = mat_re.shape[0]
         self.wr.data = torch.from_numpy(mat_re.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
         self.wi.data = torch.from_numpy(mat_im.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
+
+def value(model, env, state):
+    xr, xi = env.irrep(state)
+    yr, yi = model.forward(xr, xi)
+    return yr.item(), yi.item()
 
 def get_action(env, model, state):
     if env.sparse:

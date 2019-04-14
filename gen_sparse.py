@@ -7,7 +7,7 @@ import torch
 import torch.nn
 import glob
 from tqdm import tqdm
-from utils import load_sparse_pkl, load_pkl, check_memory
+from utils import load_sparse_pkl, load_pkl, check_memory, partition_parts
 from wreath import get_mat
 
 def convert_idx(idx, in_cols, out_cols):
@@ -59,7 +59,13 @@ def to_block_sparse(mat_dict, outshape=None):
     return torch_i, torch_v_re, torch_v_im, size
 
 def gen_th_pkl(np_pkl, th_pkl):
-    print('Does {} exist? {}'.format(os.path.exists(os.path.dirname(th_pkl)), os.path.dirname(th_pkl)))
+    #print('Does {} exist? {}'.format(os.path.exists(os.path.dirname(th_pkl)), os.path.dirname(th_pkl)))
+    if os.path.exists(th_pkl):
+        print('Skipping pkl: {}'.format(th_pkl))
+        return 
+    else:
+        print('Not skipping pkl: {}'.format(th_pkl))
+
     if not os.path.exists(np_pkl):
         print(np_pkl, 'doesnt exist! Exiting!')
         exit()
@@ -113,10 +119,39 @@ def test_th_pkl(np_pkl, th_pkl):
     check_memory()
 
 def test():
-    np_pkl = '/local/hopan/cube/pickles/(2, 3, 3)/((2,), (1, 1, 1), (1, 1, 1)).pkl'
-    th_pkl = '/local/hopan/cube/pickles_sparse/(2, 3, 3)/((2,), (1, 1, 1), (1, 1, 1)).pkl'
-    gen_th_pkl(np_pkl, th_pkl)
-    test_th_pkl(np_pkl, th_pkl)
+    alphas = [
+        #(2, 3, 3),
+        #(4, 2, 2),
+        #(3, 1, 4),
+        #(1, 2, 5),
+        #(0, 4, 4),
+        #(5, 0, 3),
+        #(6, 1, 1),
+        #(2, 0, 6),
+        #(0, 1, 7),
+        (8, 0, 0),
+    ]
+    pset = set()
+    pkls = []
+    mem_usg = [0]
+    for alpha in alphas:
+        parts = partition_parts(alpha)
+        for idx, p in enumerate(parts):
+            other = (p[0], p[2], p[1])
+            if other in pset:
+                continue
+            np_pkl = '/local/hopan/cube/pickles/{}/{}.pkl'.format(alpha, p)
+            th_pkl = '/local/hopan/cube/pickles_sparse/{}/{}.pkl'.format(alpha, p)
+            #gen_th_pkl(np_pkl, th_pkl)
+            #test_th_pkl(np_pkl, th_pkl)
+            pkls.append(load_sparse_pkl(th_pkl))
+            #print('Done with alpha: {}'.format(alpha))
+            curr = check_memory()
+            print('{:2} irreps | {:30}: {:9.2f} | '.format(idx+1, str(p), curr - mem_usg[-1]), end=' | ')
+            mem_usg.append(curr)
+            pset.add(p)
+    print('Done')
+    check_memory()
 
 if __name__ == '__main__':
     test()
