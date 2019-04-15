@@ -123,11 +123,11 @@ def solve(state, model, env, log, time_limit=None, max_steps=None):
         nsteps += 1
 
         if max_steps and nsteps > max_steps:
-            log.info('Max steps exceeded. Stopping now after {} iters'.format(nsteps))
+            #log.info('Max steps exceeded. Stopping now after {} iters'.format(nsteps))
             break
 
         if time_limit and (time.time() - start) > time_limit:
-            log.info('Max time exceeded. Stopping now after {} iters'.format(nsteps))
+            #log.info('Max time exceeded. Stopping now after {} iters'.format(nsteps))
             break
 
     return None, tree
@@ -140,6 +140,7 @@ def main():
     parser.add_argument('--dist', type=int, default=100)
     parser.add_argument('--max_steps', type=int, default=None)
     parser.add_argument('--time_limit', type=int, default=600)
+    parser.add_argument('--ntest', type=int, default=100)
     args = parser.parse_args()
 
     model = os.path.join(args.path, 'model.pt')
@@ -160,7 +161,7 @@ def main():
     log.info('Loaded model using irrep: {} | {}'.format(alpha, parts))
     env = Cube2IrrepEnv(alpha, parts)
     log.info('Loaded env')
-    cubes = [scramble_fixedcore(init_2cube(), n=args.dist) for _ in range(10)]
+    cubes = [scramble_fixedcore(init_2cube(), n=args.dist) for _ in range(args.ntest)]
     time_limit = 600
     log.info('Starting to attempt solves')
     nsolved = 0
@@ -175,7 +176,7 @@ def main():
             log.info('Unable to solve: {} | total explored: {}'.format(c, tree.nexplored))
             notsolved.append(c)
         else:
-            log.info('Solved: {} | total explored: {}'.format(c, res, tree.nexplored))
+            log.info('Solved: {} | len: {} | total explored: {}'.format(c, len(res), tree.nexplored))
             nsolved += 1
             solved.append(c)
 

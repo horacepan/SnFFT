@@ -20,6 +20,7 @@ FACE_COLOR_MAP = {
     'b': 'Y',
 }
 FACES = ['u', 'd',  'l', 'r', 'f', 'b']
+FIXEDCORE_FACES = ['u', 'd2',  'l2', 'r', 'f', 'ib2', 'iu', 'id2', 'il2', 'ir', 'if', 'b2']
 FACE_START_IDX = {f: 4 * idx for idx, f in enumerate(FACES)}
 ALL_ROTS = [
     'd2', 'l2', 'b2', 'id2', 'il2', 'ib2', 'u', 'iu', 'r', 'ir', 'f', 'if'
@@ -643,7 +644,7 @@ def scramble(cube, n=1):
 
 def scramble_fixedcore(cube, n=1):
     for _ in range(n):
-        f = random.choice(FACES)
+        f = random.choice(FIXEDCORE_FACES)
         cube = rotate(cube, f)
     return cube
 
