@@ -1,3 +1,4 @@
+import logging
 import pickle
 import os
 import time
@@ -12,6 +13,23 @@ CUBE2_SIZE = 88179840
 FOURIER_SUBDIR = 'fourier'
 IRREP_SUBDIR = 'pickles'
 SPLIT_SUBDIR = 'split_or'
+
+def get_logger(fname=None):
+    str_fmt = '[%(asctime)s.%(msecs)03d] %(levelname)s %(module)s: %(message)s'
+    date_fmt = "%Y-%m-%d %H:%M:%S"
+    logging.basicConfig(
+        filename=fname,
+        level=logging.DEBUG,
+        format=str_fmt,
+        datefmt=date_fmt)
+
+    logger = logging.getLogger(__name__)
+    sh = logging.StreamHandler()
+    formatter = logging.Formatter(str_fmt, datefmt=date_fmt)
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
+
+    return logger
 
 def chunk(lst, n):
     '''

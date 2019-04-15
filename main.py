@@ -42,10 +42,10 @@ def curriculum_dist(max_dist, curr_epoch, tot_epochs):
         # pick a random distance in 1 - max_dist * curr_epoch / (tot_epochs/2)
         return random.randint(1, 1 + int(max_dist * curr_epoch / (tot_epochs/2)))
 
-def init_memory(memory):
+def init_memory(memory, env):
     state = ns = 'GGGGBBBBRRRRMMMMWWWWYYYY'
     action = 0
-    rew = 1.
+    rew = env.solve_rew
     done = True
     for _ in range(memory.capacity):
         memory.push(state, action, ns, rew, done)
@@ -71,10 +71,10 @@ def main(hparams):
     torch.manual_seed(hparams['seed'])
     random.seed(hparams['seed'])
 
-    #alpha = (2, 3, 3)
-    #parts = ((2,), (1, 1, 1), (1, 1, 1))
-    alpha = (4, 2, 2)
-    parts = ((4,), (1, 1), (1, 1))
+    alpha = (2, 3, 3)
+    parts = ((2,), (1, 1, 1), (1, 1, 1))
+    #alpha = (4, 2, 2)
+    #parts = ((4,), (1, 1), (1, 1))
     log.info('alpha: {} | parts: {}'.format(alpha, parts))
     size = IRREP_SIZE[(alpha, parts)]
     pol_net = IrrepLinreg(size * size)
@@ -103,16 +103,17 @@ def main(hparams):
         targ_net.wr.data.add_(wr_noise)
         targ_net.wi.data.add_(wi_noise)
 
-    env = Cube2IrrepEnv(alpha, parts)
+    env = Cube2IrrepEnv(alpha, parts, solve_rew=hparams['solve_rew'])
+    log.info('env solve reward: {}'.format(env.solve_rew))
     if hparams['opt'] == 'sgd':
-        print('Using sgd')
+        log.info('Using sgd')
         optimizer = torch.optim.SGD(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
     elif hparams['opt'] == 'rms':
-        print('Using rmsprop')
+        log.info('Using rmsprop')
         optimizer = torch.optim.RMSprop(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
     memory = ReplayMemory(hparams['capacity'])
     if hparams['meminit']:
-        init_memory(memory)
+        init_memory(memory, env)
     niter = 0
     nupdates = 0
     totsolved = 0
@@ -121,7 +122,7 @@ def main(hparams):
 
     log.info('Before any training:')
     val_avg, val_prop, val_time = val_model(pol_net, env, hparams)
-    print('Validation | avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
+    log.info('Validation | avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
         val_avg, val_prop, val_time
     ))
     scramble_lens = []
@@ -195,7 +196,7 @@ def main(hparams):
 
     hparams['val_size'] = 10 * hparams['val_size']
     val_avg, val_prop, val_time = val_model(pol_net, env, hparams)
-    print('Validation avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
+    log.info('Validation avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
         val_avg, val_prop, val_time
     ))
 
@@ -250,6 +251,7 @@ if __name__ == '__main__':
     parser.add_argument('--lossfunc', type=str, default='cmse')
     parser.add_argument('--curric', action='store_true')
     parser.add_argument('--meminit', action='store_true')
+    parser.add_argument('--solve_rew', type=int, default=1)
     args = parser.parse_args()
     hparams = vars(args)
 

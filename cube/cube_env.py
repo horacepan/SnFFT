@@ -20,7 +20,7 @@ class CubeEnv(gym.Env):
         5: 'b',
     }
     # This is really the fixed core function map
-    FUNCTION_MAP = {
+    FIXEDCORE_FUNCTION_MAP = {
         'u': str_cube.rot_u,
         'd': str_cube.rot_d2,
         'l': str_cube.rot_l2,
@@ -28,9 +28,42 @@ class CubeEnv(gym.Env):
         'f': str_cube.rot_f,
         'b': str_cube.rot_ib2,
     }
-    def __init__(self, size, reward_mode='penalty'):
+    # standard rotations
+    FUNCTION_MAP = {
+        'u': str_cube.rot_u,
+        'd': str_cube.rot_d,
+        'l': str_cube.rot_l,
+        'r': str_cube.rot_r,
+        'f': str_cube.rot_f,
+        'b': str_cube.rot_ib,
+        'iu': str_cube.rot_iu,
+        'id': str_cube.rot_id,
+        'il': str_cube.rot_il,
+        'ir': str_cube.rot_ir,
+        'if': str_cube.rot_if,
+        'ib': str_cube.rot_ib,
+    }
+
+    @property
+    def actions(self):
+        return self.action_space.n
+
+    def next_state(self, state, action):
+        face = CubeEnv.ACTION_MAP[action]
+        if self.fixedcore:
+            rot_func = CubeEnv.FIXEDCORE_FUNCTION_MAP[face]
+        else:
+            rot_func = CubeEnv.FUNCTION_MAP[face]
+        return rot_func(state)
+
+    def __init__(self, size, reward_mode='penalty', fixedcore=True, solve_rew=1):
         self.size = size
-        self.action_space = spaces.Discrete(6)
+        self.fixedcore = fixedcore
+        self.solve_rew = solve_rew
+        if fixedcore:
+            self.action_space = spaces.Discrete(6)
+        else:
+            self.action_space = spaces.Discrete(12)
         if reward_mode == 'binary':
             self.reward_func = self.binary_reward
         elif reward_mode == 'penalty':
@@ -43,7 +76,10 @@ class CubeEnv(gym.Env):
     def step(self, action):
         if action in CubeEnv.ACTION_MAP:
             face = CubeEnv.ACTION_MAP[action]
-            rot_func = CubeEnv.FUNCTION_MAP[face]
+            if self.fixedcore:
+                rot_func = CubeEnv.FIXEDCORE_FUNCTION_MAP[face]
+            else:
+                rot_func = CubeENv.FUNCTION_MAP[face]
             self.state = rot_func(self.state)
         else:
             raise ValueError('Action {} is invalid'.format(action))
@@ -53,8 +89,8 @@ class CubeEnv(gym.Env):
         return self.state, reward, done, {}
 
     @staticmethod
-    def is_done(self):
-        return (self.state in SOLVED_STATES)
+    def is_done(state):
+        return (state in SOLVED_STATES)
 
     def reset(self, max_dist=100):
         if self.size == 2:
@@ -73,10 +109,10 @@ class CubeEnv(gym.Env):
             raise ValueError('Invalid render mode for a cube!')
 
     def binary_reward(self, solved):
-        return 1 if solved else 0
+        return self.solve_rew if solved else 0
 
     def penalty_reward(self, solved):
-        return 1 if solved else -1
+        return self.solve_rew if solved else -1
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -99,6 +135,9 @@ class CubeEnv(gym.Env):
 
     def soft_reset(self):
         self.state = str_cube.init_2cube()
+
+    def neighbors(self, state):
+        return str_cube.neighbors_fixed_core(state)[:6]
 
 def test():
     env = CubeEnv(2)
