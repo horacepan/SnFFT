@@ -4,7 +4,7 @@ import pdb
 import numpy as np
 from perm2 import sn
 from coset_utils import young_subgroup_perm, coset_reps
-from wreath import wreath_rep, get_mat, cyclic_irreps, block_cyclic_irreps, get_sparse_mat
+from wreath import wreath_rep, get_mat, cyclic_irreps, block_cyclic_irreps, get_sparse_mat, WreathCycSn
 from utils import load_pkl, load_sparse_pkl
 from yor import yor
 from young_tableau import wreath_dim
@@ -15,8 +15,15 @@ sys.path.append('./cube/')
 from str_cube import get_wreath, init_2cube, render, scramble
 from cube_utils import cube2_orientations
 
-IRREP_LOC_FMT = '/local/hopan/cube/pickles/{}/{}.pkl'
-IRREP_SP_LOC_FMT = '/local/hopan/cube/pickles_sparse/{}/{}.pkl'
+if os.path.exists('/local/hopan'):
+    IRREP_LOC_FMT = '/local/hopan/cube/pickles/{}/{}.pkl'
+    IRREP_SP_LOC_FMT = '/local/hopan/cube/pickles_sparse/{}/{}.pkl'
+elif os.path.exists('/scratch/hopan'):
+    IRREP_LOC_FMT = '/scratch/hopan/cube/pickles/{}/{}.pkl'
+    IRREP_SP_LOC_FMT = '/scratch/hopan/cube/pickles_sparse/{}/{}.pkl'
+else:
+    IRREP_LOC_FMT = '/project2/risi/cube/pickles/{}/{}.pkl'
+    IRREP_SP_LOC_FMT = '/project2/risi/cube/pickles_sparse/{}/{}.pkl'
 
 class Cube2Irrep(object):
     def __init__(self, alpha, parts, cached_loc=None, sparse=True):
@@ -106,6 +113,27 @@ class Cube2Irrep(object):
         re = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[otup], re.size()))
         im = im.mul(torch.sparse.FloatTensor(im.indices(), self.cyclic_irreps_im[otup], im.size()))
         return re, im
+
+    def str_to_irrep_sp_inv(self, cube_str):
+        otup, gtup = get_wreath(cube_str)
+        wreath_el = WreathCycSn.from_tup(otup, gtup, 3)
+        oinv, ginv = wreath_el.inv_tup_rep()
+        re = self.yor_dict[ginv]['real']
+        im = self.yor_dict[ginv]['imag']
+        re = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[oinv], re.size()))
+        im = im.mul(torch.sparse.FloatTensor(im.indices(), self.cyclic_irreps_im[oinv], im.size()))
+        return re, im
+
+    def tup_to_irrep_inv(self, otup, ptup):
+        wreath_el = WreathCycSn.from_tup(otup, ptup, 3)
+        # want ginv tuple, want to dot ginv with oinv
+        oinv, ginv = wreath_el.inv_tup_rep()
+        re = self.yor_dict[ginv]['real']
+        im = self.yor_dict[ginv]['imag']
+        re = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[oinv], re.size()))
+        im = im.mul(torch.sparse.FloatTensor(im.indices(), self.cyclic_irreps_im[oinv], im.size()))
+        return re, im
+
 
 def test():
     alpha = (8, 0, 0)

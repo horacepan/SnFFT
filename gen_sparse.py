@@ -1,3 +1,4 @@
+import sys
 import os
 import random
 import pickle
@@ -59,7 +60,6 @@ def to_block_sparse(mat_dict, outshape=None):
     return torch_i, torch_v_re, torch_v_im, size
 
 def gen_th_pkl(np_pkl, th_pkl):
-    #print('Does {} exist? {}'.format(os.path.exists(os.path.dirname(th_pkl)), os.path.dirname(th_pkl)))
     if os.path.exists(th_pkl):
         print('Skipping pkl: {}'.format(th_pkl))
         return 
@@ -74,20 +74,25 @@ def gen_th_pkl(np_pkl, th_pkl):
         try:
             os.makedirs(dirname) # rp
         except:
-            print('Exists {}? {}'.format(dirname, os.path.exists(dirname)))
-        print('AlreadyExists {}? {}'.format(dirname, os.path.exists(dirname)))
+            print('makedirs: Director already exists {}? {}'.format(dirname, os.path.exists(dirname)))
 
     with open(np_pkl, 'rb') as f:
         ydict = pickle.load(f) 
 
+    check_memory()
+    print('after loading {}'.format(np_pkl))
+
     sparse_tdict = {}
-    for perm_tup, rep_dict in tqdm(ydict.items()):
+    for perm_tup, rep_dict in (ydict.items()):
         idx, vreal, vimag, size = to_block_sparse(rep_dict)
         sparse_tdict[perm_tup] = {
             'idx': idx,
             'real': vreal,
             'imag': vimag,
         }
+    check_memory()
+    print('making the sparse dict loading {}'.format(th_pkl))
+    del ydict
 
     # hacky way to assign this
     sparse_tdict['size'] = size
@@ -96,10 +101,10 @@ def gen_th_pkl(np_pkl, th_pkl):
         pickle.dump(sparse_tdict, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Created:', th_pkl)
-    print('size' in sparse_tdict)
+    del sparse_tdict
 
 def compare(np_dict, th_dict):
-    for perm, ydict in tqdm(np_dict.items()):
+    for perm, ydict in (np_dict.items()):
         if perm not in th_dict:
             print('torch pkl doesnt have permutation: {}'.format(perm))
             pdb.set_trace()
@@ -118,34 +123,34 @@ def test_th_pkl(np_pkl, th_pkl):
     print('All equal between numpy and torch versions!!')
     check_memory()
 
-def test():
-    alphas = [
-        #(2, 3, 3),
-        #(4, 2, 2),
-        #(3, 1, 4),
-        #(1, 2, 5),
-        #(0, 4, 4),
-        #(5, 0, 3),
-        #(6, 1, 1),
-        #(2, 0, 6),
-        #(0, 1, 7),
-        (8, 0, 0),
-    ]
+def gen_pickle_name(suffix, alpha, p):
+    if os.path.exists('/local/hopan'):
+        return os.path.join('/local/hopan/cube/', suffix, alpha, p)
+    elif os.path.exists('/scratch/hopan/')
+        return os.path.join('/scratch/hopan/cube/', suffix, alpha, p)
+    elif os.path.exists('/project2/risi'):
+        return os.path.join('/project2/risi/cube/', suffix, alpha, p)
+    else:
+        raise Exception
+
+def test(alpha):
+    alphas = [alpha]
     pset = set()
     pkls = []
     mem_usg = [0]
     for alpha in alphas:
+        print('Computing sparse pickles for: {}'.format(alpha))
         parts = partition_parts(alpha)
         for idx, p in enumerate(parts):
             other = (p[0], p[2], p[1])
             if other in pset:
                 continue
-            np_pkl = '/local/hopan/cube/pickles/{}/{}.pkl'.format(alpha, p)
-            th_pkl = '/local/hopan/cube/pickles_sparse/{}/{}.pkl'.format(alpha, p)
-            #gen_th_pkl(np_pkl, th_pkl)
-            #test_th_pkl(np_pkl, th_pkl)
-            pkls.append(load_sparse_pkl(th_pkl))
-            #print('Done with alpha: {}'.format(alpha))
+
+            np_pkl = gen_pickle_name('pickles', alpha, p)
+            th_pkl = gen_pickle_name('pickles_sparse', alpha, p)
+            gen_th_pkl(np_pkl, th_pkl)
+
+            print('Done with {} | {}'.format(alpha, p))
             curr = check_memory()
             print('{:2} irreps | {:30}: {:9.2f} | '.format(idx+1, str(p), curr - mem_usg[-1]), end=' | ')
             mem_usg.append(curr)
@@ -154,4 +159,17 @@ def test():
     check_memory()
 
 if __name__ == '__main__':
-    test()
+    alphas = [
+        (2, 3, 3),
+        (4, 2, 2),
+        (3, 1, 4),
+        (1, 2, 5),
+        (0, 4, 4),
+        (5, 0, 3),
+        (6, 1, 1),
+        (2, 0, 6),
+        (0, 1, 7),
+        (8, 0, 0),
+    ]
+    alpha = eval(sys.argv[1])
+    test(alpha)

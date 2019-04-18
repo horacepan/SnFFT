@@ -22,6 +22,7 @@ FOURIER_SUBDIR = 'fourier_unmod'
 IRREP_SUBDIR = 'pickles'
 SPLIT_SUBDIR = 'split_unmod'
 SYM_CUBES = 'cube_sym_mod.txt'
+FULL_CUBES = 'cube_sym_mod.txt'
 DIST = 'dist'
 
 #logger = logging.getLogger(__name__)
@@ -36,6 +37,12 @@ def get_kth_irreps(k):
 
 def load_sym_cubes(prefixdir):
     all_cubes = pd.read_csv(os.path.join(prefixdir, SYM_CUBES), header=None)
+    all_cubes.set_index(0, inplace=True)
+    all_cubes.rename(columns={1: DIST}, inplace=True)
+    return all_cubes
+
+def load_full_cubes(prefixdir):
+    all_cubes = pd.read_csv(os.path.join(prefixdir, FULL_CUBES), header=None)
     all_cubes.set_index(0, inplace=True)
     all_cubes.rename(columns={1: DIST}, inplace=True)
     return all_cubes
@@ -68,6 +75,7 @@ def main():
     '''
     parser = argparse.ArgumentParser(description='Test drive inverse fft')
     parser.add_argument('--prefix', type=str, default='/local/hopan/cube/')
+    parser.add_argument('--fullprefix', type=str, default='/local/hopan/cube/split_unmod/'
     parser.add_argument('--samples', type=int, default=1)
     parser.add_argument('--maxdist', type=int, default=15)
     parser.add_argument('--mindist', type=int, default=0)

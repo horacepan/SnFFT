@@ -27,7 +27,12 @@ IRREP_SIZE = {
     ((2, 3, 3), ((2,), (1, 1, 1), (1, 1, 1))): 560,
     ((4, 2, 2), ((4,), (1, 1), (1, 1))) : 420,
 }
-NP_IRREP_FMT = '/local/hopan/cube/fourier_unmod/{}/{}.npy'
+if os.path.exists('/local/hopan')
+    NP_IRREP_FMT = '/local/hopan/cube/fourier_unmod/{}/{}.npy'
+elif os.path.exists('/scratch/hopan'):
+    NP_IRREP_FMT = '/scratch/hopan/cube/fourier_unmod/{}/{}.npy'
+elif os.path.exists('/project2/risi/'):
+    NP_IRREP_FMT = '/project2/risi/cube/fourier_unmod/{}/{}.npy'
 
 def curriculum_dist(max_dist, curr_epoch, tot_epochs):
     '''
@@ -163,7 +168,7 @@ def main(hparams):
         rewards[e%len(rewards)] = epoch_rews
         logger.add_scalar('reward', epoch_rews, e)
 
-        if e % hparams['logint'] == 0:
+        if e % hparams['logint'] == 0 and e > 0:
             val_avg, val_prop, val_time = val_model(pol_net, env, hparams)
             logger.add_scalar('last_{}_solved'.format(hparams['logint']), len(solved_lens) / hparams['logint'], e)
             if len(solved_lens) > 0:

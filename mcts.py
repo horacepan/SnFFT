@@ -99,7 +99,7 @@ class MCTS(object):
         Returns the values of the leaves
         '''
         # now that we're at a leaf node, try to expand it. evaluate the model on each node
-        r_th, i_th = self.env.encode_state(leaves)
+        r_th, i_th = self.env.encode_inv(leaves)
         rv, _ = self.model.forward(r_th, i_th)
         rv = rv.detach().cpu().numpy()
         return rv

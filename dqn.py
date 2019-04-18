@@ -144,14 +144,31 @@ class IrrepLinreg(nn.Module):
         self.wr.data = torch.from_numpy(mat_re.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
         self.wi.data = torch.from_numpy(mat_im.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
 
+    def setnp(self, mat):
+        mat_re = mat.real.astype(np.float32)
+        mat_im = mat.imag.astype(np.float32)
+        size = mat_re.shape[0]
+        self.wr.data = torch.from_numpy(mat_re.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
+        self.wi.data = torch.from_numpy(mat_im.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
+
 def value(model, env, state):
+    xr, xi = env.irrep_inv(state)
+    yr, yi = model.forward(xr, xi)
+    return yr.item(), yi.item()
+
+def value_tup(model, env, otup, ptup):
+    xr, xi = env.tup_irrep_inv(otup, ptup)
+    yr, yi = model.forward(xr, xi)
+    return yr.item(), yi.item()
+
+def value_inv(model, env, state):
     xr, xi = env.irrep(state)
     yr, yi = model.forward(xr, xi)
     return yr.item(), yi.item()
 
 def get_action(env, model, state):
     if env.sparse:
-        return get_action_th(env, model, state)
+        return get_action_th2(env, model, state)
     else:
         return get_action_np(env, model, state)
 
@@ -169,9 +186,17 @@ def get_action_np(env, model, state):
 
 def get_action_th(env, model, state):
     neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
-    xr, xi = zip(*[env.irrep(n) for n in neighbors])
-    xr = torch.cat(xr, dim=0)
-    xi = torch.cat(xi, dim=0)
+    xr, xi = env.encode_state(neighbors)
+    if env.sparse:
+        yr, yi = model.forward_sparse(xr, xi)
+    else:
+        yr, yi = model.forward(xr, xi)
+
+    return yr.argmax().item()
+
+def get_action_th2(env, model, state):
+    neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
+    xr, xi = env.encode_inv(neighbors)
     if env.sparse:
         yr, yi = model.forward_sparse(xr, xi)
     else:

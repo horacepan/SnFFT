@@ -43,7 +43,7 @@ class Cube2IrrepEnv(CubeEnv):
     def step(self, action, irrep=False):
         state, rew, done, _dict = super(Cube2IrrepEnv, self).step(action)
         if irrep:
-            irrep_state = self.convert_irrep_np(self.state)
+            irrep_state = self.irrep(self.state)
             _dict['irrep'] = irrep_state
         return state, rew, done, _dict
 
@@ -70,14 +70,30 @@ class Cube2IrrepEnv(CubeEnv):
         re, im = self._cubeirrep.str_to_irrep_sp(cube_state)
         return re, im
 
+    def real_imag_irrep_sp_inv(self, cube_state):
+        re, im = self._cubeirrep.str_to_irrep_sp_inv(cube_state)
+        return re, im
+
     def irrep(self, cube_state):
         if self.sparse:
             return self.real_imag_irrep_sp(cube_state)
         else:
             return self.real_imag_irrep_torch(cube_state)
 
+    def irrep_inv(self, cube_state):
+        return self.real_imag_irrep_sp_inv(cube_state)
+
+    def tup_irrep_inv(self, otup, ptup):
+        return self._cubeirrep.tup_to_irrep_inv(otup, ptup)
+
     def encode_state(self, cube_states):
         xr, xi = zip(*[self.irrep(n) for n in cube_states])
+        xr = torch.cat(xr, dim=0)
+        xi = torch.cat(xi, dim=0)
+        return xr, xi
+
+    def encode_inv(self, cube_states):
+        xr, xi = zip(*[self.irrep_inv(n) for n in cube_states])
         xr = torch.cat(xr, dim=0)
         xi = torch.cat(xi, dim=0)
         return xr, xi

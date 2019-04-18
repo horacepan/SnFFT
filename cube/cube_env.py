@@ -79,7 +79,7 @@ class CubeEnv(gym.Env):
             if self.fixedcore:
                 rot_func = CubeEnv.FIXEDCORE_FUNCTION_MAP[face]
             else:
-                rot_func = CubeENv.FUNCTION_MAP[face]
+                rot_func = CubeENV.FUNCTION_MAP[face]
             self.state = rot_func(self.state)
         else:
             raise ValueError('Action {} is invalid'.format(action))
