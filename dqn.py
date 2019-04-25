@@ -76,6 +76,15 @@ class ReplayMemory(object):
     def __len__(self):
         return self.filled
 
+class IrrepLinregNP:
+    def __init__(self, fourier_loc):
+        self.weight = np.load(fourier_loc)
+        self.weight = (self.weight.shape[0] / CUBE2_SIZE) * self.weight
+
+    def forward(self, irrep_mat):
+        res = np.sum(irrep_mat * self.weight)
+        return res.real, res.imag
+
 class IrrepLinreg(nn.Module):
     '''
     This is a simple linear regression. Input xs will be in
@@ -166,6 +175,11 @@ def value_inv(model, env, state):
     yr, yi = model.forward(xr, xi)
     return yr.item(), yi.item()
 
+def value_tup_np(np_model, env, otup, ptup):
+    mat = env.tup_irrep_inv_np(otup, ptup)
+    yr, yi = np_model.forward(mat)
+    return yr, yi
+
 def get_action(env, model, state):
     if env.sparse:
         return get_action_th2(env, model, state)
@@ -178,7 +192,7 @@ def get_action_np(env, model, state):
     state: string of cube state
     '''
     neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
-    nbr_irreps = np.stack([env.convert_irrep_np(n) for n in neighbors])
+    nbr_irreps = np.stack([env.irrep_np(n) for n in neighbors])
     xr = nbr_irreps.real
     xi = nbr_irreps.imag
     yr, yi = model.np_forward(xr, xi)

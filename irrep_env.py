@@ -17,7 +17,7 @@ class Cube2IrrepEnv(CubeEnv):
     This class represents the 2-cube environment but wraps each cube state
     with an irrep(corresponding to alpha, parts) matrix.
     '''
-    def __init__(self, alpha, parts, sparse=True, fixedcore=True, solve_rew=1):
+    def __init__(self, alpha, parts, sparse=True, fixedcore=True, solve_rew=1, numpy=False):
         '''
         alpha: tuple of ints, the weak partition of 8 into 3 parts
         parts: tuple of ints, the partitions of each part of alpha
@@ -26,7 +26,7 @@ class Cube2IrrepEnv(CubeEnv):
         self.alpha = alpha
         self.parts = parts
         self.sparse = sparse
-        self._cubeirrep = Cube2Irrep(alpha, parts, sparse=sparse)
+        self._cubeirrep = Cube2Irrep(alpha, parts, numpy=numpy, sparse=sparse)
 
     def reset(self, max_dist=100):
         state = super(Cube2IrrepEnv, self).reset(max_dist)
@@ -47,7 +47,7 @@ class Cube2IrrepEnv(CubeEnv):
             _dict['irrep'] = irrep_state
         return state, rew, done, _dict
 
-    def convert_irrep_np(self, cube_state, shape=None):
+    def irrep_np(self, cube_state, shape=None):
         '''
         state: string representing 2-cube state
         Returns: numpy matrix
@@ -85,6 +85,9 @@ class Cube2IrrepEnv(CubeEnv):
 
     def tup_irrep_inv(self, otup, ptup):
         return self._cubeirrep.tup_to_irrep_inv(otup, ptup)
+
+    def tup_irrep_inv_np(self, otup, ptup):
+        return self._cubeirrep.tup_to_irrep_inv_np(otup, ptup)
 
     def encode_state(self, cube_states):
         xr, xi = zip(*[self.irrep(n) for n in cube_states])

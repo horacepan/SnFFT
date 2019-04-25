@@ -77,7 +77,7 @@ class TestWreath(unittest.TestCase):
         alpha = (1, 2, 5)
         parts = ((1,), (1, 1), (3, 2))
         loc = '/local/hopan/cube/pickles/{}/{}.pkl'.format(str(alpha), str(parts))
-        cirrep = Cube2Irrep(alpha, parts, loc)
+        cirrep = Cube2Irrep(alpha, parts, numpy=True)
 
         otup = (0,) * 8
         ptup = tuple(i for i in range(1, len(otup)+1))

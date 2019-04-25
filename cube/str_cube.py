@@ -22,9 +22,7 @@ FACE_COLOR_MAP = {
 FACES = ['u', 'd',  'l', 'r', 'f', 'b']
 FIXEDCORE_FACES = ['u', 'd2',  'l2', 'r', 'f', 'ib2', 'iu', 'id2', 'il2', 'ir', 'if', 'b2']
 FACE_START_IDX = {f: 4 * idx for idx, f in enumerate(FACES)}
-ALL_ROTS = [
-    'd2', 'l2', 'b2', 'id2', 'il2', 'ib2', 'u', 'iu', 'r', 'ir', 'f', 'if'
-]
+NORM_MOVES = ['u', 'd',  'l', 'r', 'f', 'ib', 'iu', 'id', 'il', 'ir', 'if', 'b']
 
 FACE_INDEX = {f: idx for idx, f in enumerate(FACES)}
 COLORS = ['G', 'B', 'R', 'M', 'W', 'Y']
@@ -613,22 +611,6 @@ def check_same():
     assert cube == rot_b2(rot_if(cube))
     print('f/b okay')
 
-def scramble2(cube, n):
-    '''
-    Scrambles the cube randomly and returns the cube string and the list of moves applied
-    cube: string of cube
-    n: int, num moves to apply
-    Returns: tuple of the cube string and a list of moves applied
-    '''
-    moves = []
-
-    for _ in range(n):
-        f = random.choice(ALL_ROTS)
-        cube = rotate(cube, f)
-        moves.append(f)
-
-    return cube, moves
-
 def scramble(cube, n=1):
     '''
     Performs n random moves to the input cube
@@ -638,7 +620,7 @@ def scramble(cube, n=1):
     Returns a cube string.
     '''
     for _ in range(n):
-        f = random.choice(ALL_ROTS)
+        f = random.choice(NORM_MOVES)
         cube = rotate(cube, f)
     return cube
 

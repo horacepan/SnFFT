@@ -75,7 +75,7 @@ def gen_th_pkl(np_pkl, th_pkl):
             os.makedirs(dirname) # rp
         except:
             print('makedirs: Director already exists {}? {}'.format(dirname, os.path.exists(dirname)))
-
+    print('trying to open: {}'.format(np_pkl))
     with open(np_pkl, 'rb') as f:
         ydict = pickle.load(f) 
 
@@ -125,11 +125,11 @@ def test_th_pkl(np_pkl, th_pkl):
 
 def gen_pickle_name(suffix, alpha, p):
     if os.path.exists('/local/hopan'):
-        return os.path.join('/local/hopan/cube/', suffix, alpha, p)
-    elif os.path.exists('/scratch/hopan/')
-        return os.path.join('/scratch/hopan/cube/', suffix, alpha, p)
+        return '/local/hopan/cube/{}/{}/{}.pkl'.format(suffix, alpha, p)
+    elif os.path.exists('/scratch/hopan/'):
+        return '/scratch/hopan/cube/{}/{}/{}.pkl'.format(suffix, alpha, p)
     elif os.path.exists('/project2/risi'):
-        return os.path.join('/project2/risi/cube/', suffix, alpha, p)
+        return '/project2/risi/cube/{}/{}/{}.pkl'.format(suffix, alpha, p)
     else:
         raise Exception
 

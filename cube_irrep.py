@@ -25,8 +25,9 @@ else:
     IRREP_LOC_FMT = '/project2/risi/cube/pickles/{}/{}.pkl'
     IRREP_SP_LOC_FMT = '/project2/risi/cube/pickles_sparse/{}/{}.pkl'
 
+# This should maybe be split into two classes. One for numpy reps, one for torch sparse reps
 class Cube2Irrep(object):
-    def __init__(self, alpha, parts, cached_loc=None, sparse=True):
+    def __init__(self, alpha, parts, numpy=False, sparse=True):
         '''
         alpha: tuple of ints, the weak partition of 8 into 3 parts
         parts: tuple of ints, the partitions of each part of alpha
@@ -44,16 +45,15 @@ class Cube2Irrep(object):
         self.fill_cyclic_irreps()
 
         # also cache the cyclic irreps
-        if cached_loc and sparse:
-            self.yor_dict = load_sparse_pkl(cached_loc)
-        elif cached_loc:
-            # expect the full pickle filename
-            self.yor_dict = load_pkl(cached_loc)
+        if numpy:
+            pkl_loc = IRREP_LOC_FMT.format(alpha, parts)
+            self.yor_dict = load_pkl(pkl_loc)
         elif sparse:
             pkl_loc = IRREP_SP_LOC_FMT.format(alpha, parts)
-            np_pkl_loc = IRREP_LOC_FMT.format(alpha, parts)
             self.yor_dict = load_sparse_pkl(pkl_loc)
         else:
+            # TODO: deprecate
+            print('neither sparse nor numpy')
             pkl_loc = IRREP_LOC_FMT.format(alpha, parts)
             self.np_yor_dict = load_pkl(pkl_loc)
 
@@ -90,6 +90,11 @@ class Cube2Irrep(object):
     def str_to_irrep_th(self, cube_str):
         otup, gtup = get_wreath(cube_str)
         return self.tup_to_irrep_th(otup, gtup)
+
+    def tup_to_irrep_inv_np(self, otup, ptup):
+        wreath_el = WreathCycSn.from_tup(otup, ptup, 3)
+        oinv, ginv = wreath_el.inv_tup_rep()
+        return self.tup_to_irrep_np(oinv, ginv)
 
     def tup_to_irrep_np(self, otup, ptup):
         '''

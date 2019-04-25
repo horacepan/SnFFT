@@ -179,7 +179,7 @@ def load_sparse_pkl(fname):
     size = th_pkl.pop('size')
     new_dict = {}
 
-    for perm, ydict in tqdm(th_pkl.items()):
+    for perm, ydict in (th_pkl.items()):
         sparse_re = torch.sparse.FloatTensor(ydict['idx'], ydict['real'], size).coalesce()
         sparse_im = torch.sparse.FloatTensor(ydict['idx'], ydict['imag'], size).coalesce()
         new_dict[perm] = {
