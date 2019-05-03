@@ -7,7 +7,6 @@ import pdb
 from str_cube import *
 from collections import deque
 from itertools import permutations
-from utils import check_memory
 import argparse
 
 if len(sys.argv) > 1:
@@ -178,7 +177,6 @@ if __name__ == '__main__':
     dist_dict = dist_bfs(args.test)
     print('Done with bfs')
     print('Size dict: {}'.format(len(dist_dict)))
-    check_memory()
 
     if args.savepath:
         write_dist(dist_dict, args.savepath)
@@ -187,4 +185,3 @@ if __name__ == '__main__':
     if args.wreathpath:
         write_wreath(dist_dict, args.wreathpath)
     print('Done writing results')
-    check_memory()

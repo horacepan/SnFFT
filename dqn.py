@@ -85,6 +85,10 @@ class IrrepLinregNP:
         res = np.sum(irrep_mat * self.weight)
         return res.real, res.imag
 
+    def forward_t(self, irrep_mat):
+        res = np.sum(irrep_mat.T * self.weight)
+        return res.real, res.imag
+
 class IrrepLinreg(nn.Module):
     '''
     This is a simple linear regression. Input xs will be in
@@ -176,8 +180,25 @@ def value_inv(model, env, state):
     return yr.item(), yi.item()
 
 def value_tup_np(np_model, env, otup, ptup):
+    '''
+    np_model: IrrepLinregNP object
+    env: Cube2Irrep
+    otup: tuple of orientation
+    ptup: tuple of permutation
+    '''
     mat = env.tup_irrep_inv_np(otup, ptup)
     yr, yi = np_model.forward(mat)
+    return yr, yi
+
+def value_tup_np_t(np_model, env, otup, ptup):
+    '''
+    np_model: IrrepLinregNP object
+    env: Cube2Irrep
+    otup: tuple of orientation
+    ptup: tuple of permutation
+    '''
+    mat = env.tup_irrep_inv_np(otup, ptup)
+    yr, yi = np_model.forward_t(mat)
     return yr, yi
 
 def get_action(env, model, state):
