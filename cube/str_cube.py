@@ -257,6 +257,20 @@ def neighbors(cube_str):
     ]
     return nbrs
 
+def neighbors_fixed_core_small(cube_str):
+    '''
+    This should give you 24x fewer states due to the isometries of the cube.
+    '''
+    nbrs = [
+        rot_u(cube_str),
+        rot_d2(cube_str),
+        rot_l2(cube_str),
+        rot_r(cube_str),
+        rot_f(cube_str),
+        rot_ib2(cube_str)
+    ]
+    return nbrs
+
 def neighbors_fixed_core(cube_str):
     '''
     This should give you 24x fewer states due to the isometries of the cube.
