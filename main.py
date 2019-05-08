@@ -26,13 +26,17 @@ from dqn import * #ReplayMemory, IrrepLinreg, get_logger, update, explore_rate
 IRREP_SIZE = {
     ((2, 3, 3), ((2,), (1, 1, 1), (1, 1, 1))): 560,
     ((4, 2, 2), ((4,), (1, 1), (1, 1))) : 420,
+    ((8, 0, 0), ((8,), (), ())) : 1,
 }
-if os.path.exists('/local/hopan')
+if os.path.exists('/local/hopan'):
     NP_IRREP_FMT = '/local/hopan/cube/fourier_unmod/{}/{}.npy'
+    PREFIX = '/local/hopan/cube'
 elif os.path.exists('/scratch/hopan'):
     NP_IRREP_FMT = '/scratch/hopan/cube/fourier_unmod/{}/{}.npy'
+    PREFIX = '/scratch/hopan/cube'
 elif os.path.exists('/project2/risi/'):
     NP_IRREP_FMT = '/project2/risi/cube/fourier_unmod/{}/{}.npy'
+    PREFIX = '/project2/risi/cube'
 
 def curriculum_dist(max_dist, curr_epoch, tot_epochs):
     '''
@@ -76,10 +80,8 @@ def main(hparams):
     torch.manual_seed(hparams['seed'])
     random.seed(hparams['seed'])
 
-    alpha = (2, 3, 3)
-    parts = ((2,), (1, 1, 1), (1, 1, 1))
-    #alpha = (4, 2, 2)
-    #parts = ((4,), (1, 1), (1, 1))
+    alpha = eval(hparams['alpha'])
+    parts = eval(hparams['parts'])
     log.info('alpha: {} | parts: {}'.format(alpha, parts))
     size = IRREP_SIZE[(alpha, parts)]
     pol_net = IrrepLinreg(size * size)
@@ -257,6 +259,8 @@ if __name__ == '__main__':
     parser.add_argument('--curric', action='store_true')
     parser.add_argument('--meminit', action='store_true')
     parser.add_argument('--solve_rew', type=int, default=1)
+    parser.add_argument('--alpha', type=str, default='(8, 0, 0)')
+    parser.add_argument('--parts', type=str, default='((8,), (), ())')
     args = parser.parse_args()
     hparams = vars(args)
 

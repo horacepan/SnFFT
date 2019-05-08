@@ -113,31 +113,28 @@ class Cube2Irrep(object):
 
     def str_to_irrep_sp(self, cube_str):
         otup, gtup = get_wreath(cube_str)
-        re = self.yor_dict[gtup]['real']
-        im = self.yor_dict[gtup]['imag']
-        re = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[otup], re.size()))
-        im = im.mul(torch.sparse.FloatTensor(im.indices(), self.cyclic_irreps_im[otup], im.size()))
-        return re, im
+        re = self.yor_dict[gtup]
+        rem = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[otup], re.size()))
+        imm = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_im[otup], re.size()))
+        return rem, imm
 
     def str_to_irrep_sp_inv(self, cube_str):
         otup, gtup = get_wreath(cube_str)
         wreath_el = WreathCycSn.from_tup(otup, gtup, 3)
         oinv, ginv = wreath_el.inv_tup_rep()
-        re = self.yor_dict[ginv]['real']
-        im = self.yor_dict[ginv]['imag']
-        re = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[oinv], re.size()))
-        im = im.mul(torch.sparse.FloatTensor(im.indices(), self.cyclic_irreps_im[oinv], im.size()))
-        return re, im
+        re = self.yor_dict[ginv]
+        rem = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[oinv], re.size()))
+        imm = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_im[oinv], re.size()))
+        return rem, imm
 
     def tup_to_irrep_inv(self, otup, ptup):
         wreath_el = WreathCycSn.from_tup(otup, ptup, 3)
         # want ginv tuple, want to dot ginv with oinv
         oinv, ginv = wreath_el.inv_tup_rep()
-        re = self.yor_dict[ginv]['real']
-        im = self.yor_dict[ginv]['imag']
-        re = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[oinv], re.size()))
-        im = im.mul(torch.sparse.FloatTensor(im.indices(), self.cyclic_irreps_im[oinv], im.size()))
-        return re, im
+        re = self.yor_dict[ginv]
+        rem = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[oinv], re.size()))
+        imm = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_im[oinv], re.size()))
+        return rem, imm
 
 
 def test():

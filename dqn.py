@@ -17,6 +17,7 @@ import torch.nn.functional as F
 from complex_utils import cmm, cmse, cmse_min_imag, cmse_real, cmm_sparse
 from irrep_env import Cube2IrrepEnv
 from utils import check_memory
+from io_utils import get_prefix
 import str_cube
 from tensorboardX import SummaryWriter
 
@@ -79,7 +80,7 @@ class ReplayMemory(object):
 class IrrepLinregNP:
     def __init__(self, fourier_loc):
         self.weight = np.load(fourier_loc)
-        self.weight = (self.weight.shape[0] / CUBE2_SIZE) * self.weight
+        self.weight = -(self.weight.shape[0] / CUBE2_SIZE) * self.weight
 
     def forward(self, irrep_mat):
         res = np.sum(irrep_mat * self.weight)
@@ -101,6 +102,15 @@ class IrrepLinreg(nn.Module):
         self.br = nn.Parameter(torch.zeros(1))
         self.bi = nn.Parameter(torch.zeros(1))
         self.zero_weights()
+
+    @staticmethod
+    def from_np(alpha, parts):
+        np_mat = os.path.join(get_prefix(), 'fourier_unmod', str(alpha), str(parts) + '.npy')
+        mat = np.load(np_mat)
+        size = mat.shape[0]
+        model = IrrepLinreg(size * size)
+        model.setnp(mat)
+        return model
 
     def np_forward(self, xr, xi):
         '''
@@ -149,17 +159,24 @@ class IrrepLinreg(nn.Module):
     def binary_init(self):
         pass
 
-    def loadnp(self, fname):
+    def loadnp(self, fname, transpose=True):
         mat = np.load(fname)
-        mat_re = mat.real.astype(np.float32)
-        mat_im = mat.imag.astype(np.float32)
+        if transpose:
+            print('Doing transpose')
+            mat_re = mat.real.astype(np.float32).T
+            mat_im = mat.imag.astype(np.float32).T
+        else:
+            mat_re = mat.real.astype(np.float32)
+            mat_im = mat.imag.astype(np.float32)
+
         size = mat_re.shape[0]
         self.wr.data = torch.from_numpy(mat_re.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
         self.wi.data = torch.from_numpy(mat_im.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
 
     def setnp(self, mat):
-        mat_re = mat.real.astype(np.float32)
-        mat_im = mat.imag.astype(np.float32)
+        print('Doing transpose in setnp')
+        mat_re = mat.real.astype(np.float32).T
+        mat_im = mat.imag.astype(np.float32).T
         size = mat_re.shape[0]
         self.wr.data = torch.from_numpy(mat_re.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
         self.wi.data = torch.from_numpy(mat_im.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
@@ -203,7 +220,7 @@ def value_tup_np_t(np_model, env, otup, ptup):
 
 def get_action(env, model, state):
     if env.sparse:
-        return get_action_th2(env, model, state)
+        return get_action_th(env, model, state)
     else:
         return get_action_np(env, model, state)
 
@@ -212,7 +229,7 @@ def get_action_np(env, model, state):
     model: nn.Module
     state: string of cube state
     '''
-    neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
+    neighbors = str_cube.neighbors_fixed_core_small(state) # do the symmetry modded out version for now
     nbr_irreps = np.stack([env.irrep_np(n) for n in neighbors])
     xr = nbr_irreps.real
     xi = nbr_irreps.imag
@@ -220,18 +237,8 @@ def get_action_np(env, model, state):
     return yr.argmax().item()
 
 def get_action_th(env, model, state):
-    neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
+    neighbors = str_cube.neighbors_fixed_core_small(state) # do the symmetry modded out version for now
     xr, xi = env.encode_state(neighbors)
-    if env.sparse:
-        yr, yi = model.forward_sparse(xr, xi)
-    else:
-        yr, yi = model.forward(xr, xi)
-
-    return yr.argmax().item()
-
-def get_action_th2(env, model, state):
-    neighbors = str_cube.neighbors_fixed_core(state)[:6] # do the symmetry modded out version for now
-    xr, xi = env.encode_inv(neighbors)
     if env.sparse:
         yr, yi = model.forward_sparse(xr, xi)
     else:

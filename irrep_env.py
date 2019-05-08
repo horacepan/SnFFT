@@ -70,10 +70,6 @@ class Cube2IrrepEnv(CubeEnv):
         re, im = self._cubeirrep.str_to_irrep_sp(cube_state)
         return re, im
 
-    def real_imag_irrep_sp_inv(self, cube_state):
-        re, im = self._cubeirrep.str_to_irrep_sp_inv(cube_state)
-        return re, im
-
     def irrep(self, cube_state):
         if self.sparse:
             return self.real_imag_irrep_sp(cube_state)
@@ -81,7 +77,8 @@ class Cube2IrrepEnv(CubeEnv):
             return self.real_imag_irrep_torch(cube_state)
 
     def irrep_inv(self, cube_state):
-        return self.real_imag_irrep_sp_inv(cube_state)
+        re, im = self._cubeirrep.str_to_irrep_sp_inv(cube_state)
+        return re, im
 
     def tup_irrep_inv(self, otup, ptup):
         return self._cubeirrep.tup_to_irrep_inv(otup, ptup)

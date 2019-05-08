@@ -45,24 +45,21 @@ def to_block_sparse(mat_dict, outshape=None):
 
     idxs = []
     vals_re = []
-    vals_im = []
 
     for idx, mat in mat_dict.items():
         indices = [convert_idx(i, in_cols, out_cols) for i in block_indices(idx, bs)]
         idxs.extend(indices)
         vals_re = np.concatenate((vals_re, mat.real.ravel()))
-        vals_im = np.concatenate((vals_im, mat.imag.ravel()))
 
     torch_i = torch.LongTensor(idxs).t()
     torch_v_re = torch.FloatTensor(vals_re)
-    torch_v_im = torch.FloatTensor(vals_im)
     size = (bs**2 * ncosets**2 // out_cols, out_cols)
-    return torch_i, torch_v_re, torch_v_im, size
+    return torch_i, torch_v_re, size
 
 def gen_th_pkl(np_pkl, th_pkl):
     if os.path.exists(th_pkl):
         print('Skipping pkl: {}'.format(th_pkl))
-        return 
+        #return
     else:
         print('Not skipping pkl: {}'.format(th_pkl))
 
@@ -83,13 +80,13 @@ def gen_th_pkl(np_pkl, th_pkl):
     print('after loading {}'.format(np_pkl))
 
     sparse_tdict = {}
-    for perm_tup, rep_dict in (ydict.items()):
-        idx, vreal, vimag, size = to_block_sparse(rep_dict)
+    for perm_tup, rep_dict in tqdm(ydict.items()):
+        idx, vreal, size = to_block_sparse(rep_dict)
         sparse_tdict[perm_tup] = {
             'idx': idx,
             'real': vreal,
-            'imag': vimag,
         }
+
     check_memory()
     print('making the sparse dict loading {}'.format(th_pkl))
     del ydict
@@ -97,8 +94,8 @@ def gen_th_pkl(np_pkl, th_pkl):
     # hacky way to assign this
     sparse_tdict['size'] = size
 
-    with open(th_pkl, 'wb') as f:
-        pickle.dump(sparse_tdict, f, protocol=pickle.HIGHEST_PROTOCOL)
+    #with open(th_pkl, 'wb') as f:
+    #    pickle.dump(sparse_tdict, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Created:', th_pkl)
     del sparse_tdict
@@ -109,9 +106,8 @@ def compare(np_dict, th_dict):
             print('torch pkl doesnt have permutation: {}'.format(perm))
             pdb.set_trace()
         mat = get_mat(perm, np_dict)
-        th_mat_re = th_dict[perm]['real'].to_dense().numpy()
-        th_mat_im = th_dict[perm]['imag'].to_dense().numpy()
-        if not (np.allclose(mat.real.ravel(), th_mat_re) and np.allclose(mat.imag.ravel(), th_mat_im)):
+        th_mat_re = th_dict[perm].to_dense().numpy()
+        if not np.allclose(mat.ravel(), th_mat_re):
             print('Inconsistency between numpy and torch versions!')
             pdb.set_trace()
 
@@ -133,14 +129,15 @@ def gen_pickle_name(suffix, alpha, p):
     else:
         raise Exception
 
-def test(alpha):
-    alphas = [alpha]
+def test():
+    alphas = [(2, 3, 3)]
+    parts = [((2,), (1, 1, 1), (1, 1, 1))]
     pset = set()
     pkls = []
     mem_usg = [0]
     for alpha in alphas:
         print('Computing sparse pickles for: {}'.format(alpha))
-        parts = partition_parts(alpha)
+        #parts = partition_parts(alpha)
         for idx, p in enumerate(parts):
             other = (p[0], p[2], p[1])
             if other in pset:
@@ -171,5 +168,4 @@ if __name__ == '__main__':
         (0, 1, 7),
         (8, 0, 0),
     ]
-    alpha = eval(sys.argv[1])
-    test(alpha)
+    test()

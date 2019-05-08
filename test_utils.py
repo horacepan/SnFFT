@@ -1,7 +1,15 @@
 import unittest
 from utils import *
+from complex_utils import *
 from gen_sparse import convert_idx, block_indices
+import numpy as np
+import torch
 
+def make_complex(A, B):
+    Z = np.zeros(A.shape, dtype=np.complex128)
+    Z.real = A
+    Z.imag = B
+    return Z
 
 class TestUtils(unittest.TestCase):
     def test_partitions(self):
@@ -70,6 +78,20 @@ class TestUtils(unittest.TestCase):
             (0, 81), (0, 82), (0, 83),
         ]
         self.assertCountEqual(expected, output)
+
+    def test_cmm(self):
+        th = lambda m: torch.from_numpy(m)
+        X = np.random.random((10, 10))
+        Y = np.random.random((10, 10))
+        Z = make_complex(X, Y)
+        A = np.random.random((10, 10))
+        B = np.random.random((10, 10))
+        C = make_complex(A, B)
+
+        np_res = np.matmul(Z, C)
+        real, imag = cmm(th(X), th(Y), th(A), th(B))
+        th_res_np = make_complex(real.numpy(), imag.numpy())
+        self.assertTrue(np.allclose(np_res, th_res_np))
 
 if __name__ == '__main__':
     unittest.main()
