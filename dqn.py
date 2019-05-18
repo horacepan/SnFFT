@@ -105,7 +105,7 @@ class IrrepLinreg(nn.Module):
 
     @staticmethod
     def from_np(alpha, parts):
-        np_mat = os.path.join(get_prefix(), 'fourier_unmod', str(alpha), str(parts) + '.npy')
+        np_mat = os.path.join(get_prefix(), 'cube', 'fourier_unmod', str(alpha), str(parts) + '.npy')
         mat = np.load(np_mat)
         size = mat.shape[0]
         model = IrrepLinreg(size * size)

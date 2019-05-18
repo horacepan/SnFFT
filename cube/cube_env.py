@@ -44,18 +44,6 @@ class CubeEnv(gym.Env):
         'ib': str_cube.rot_ib,
     }
 
-    @property
-    def actions(self):
-        return self.action_space.n
-
-    def next_state(self, state, action):
-        face = CubeEnv.ACTION_MAP[action]
-        if self.fixedcore:
-            rot_func = CubeEnv.FIXEDCORE_FUNCTION_MAP[face]
-        else:
-            rot_func = CubeEnv.FUNCTION_MAP[face]
-        return rot_func(state)
-
     def __init__(self, size, reward_mode='penalty', fixedcore=True, solve_rew=1):
         self.size = size
         self.fixedcore = fixedcore
@@ -73,6 +61,18 @@ class CubeEnv(gym.Env):
         if size == 2:
             self.state = self.reset2()
 
+    @property
+    def actions(self):
+        return self.action_space.n
+
+    def next_state(self, state, action):
+        face = CubeEnv.ACTION_MAP[action]
+        if self.fixedcore:
+            rot_func = CubeEnv.FIXEDCORE_FUNCTION_MAP[face]
+        else:
+            rot_func = CubeEnv.FUNCTION_MAP[face]
+        return rot_func(state)
+
     def step(self, action):
         if action in CubeEnv.ACTION_MAP:
             face = CubeEnv.ACTION_MAP[action]
@@ -84,7 +84,7 @@ class CubeEnv(gym.Env):
         else:
             raise ValueError('Action {} is invalid'.format(action))
 
-        done = is_done(self.state)
+        done = CubeEnv.is_done(self.state)
         reward = self.reward_func(done)
         return self.state, reward, done, {}
 
@@ -94,7 +94,7 @@ class CubeEnv(gym.Env):
 
     def reset(self, max_dist=100):
         if self.size == 2:
-            self.state = CubeEnv.reset2(max_dist)
+            self.state = self.reset2(max_dist)
             return self.state
         else:
             raise NotImplementedError('Havent implemented other sizes yet')
@@ -136,8 +136,12 @@ class CubeEnv(gym.Env):
     def soft_reset(self):
         self.state = str_cube.init_2cube()
 
-    def neighbors(self, state):
-        return str_cube.neighbors_fixed_core(state)[:6]
+    @staticmethod
+    def neighbors(state, fixedcore=True):
+        if fixedcore:
+            return str_cube.neighbors_fixed_core_small(state)
+        else:
+            return str_cube.neighbors(state)
 
 def test():
     env = CubeEnv(2)

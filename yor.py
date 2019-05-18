@@ -1,6 +1,7 @@
+import os
+import random
 import pickle
 import sys
-from scipy.sparse import csr_matrix, coo_matrix
 import pdb
 import math
 import itertools
@@ -48,7 +49,7 @@ def perm_to_adj_transpositions(perm, n):
 
     return all_trans
 
-def yor(ferrers, permutation):
+def yor(ferrers, permutation, use_cache=True):
     '''
     Compute the irreps of a given shape using Young's Orthogonal Representation (YOR)
 
@@ -79,8 +80,8 @@ def yor(ferrers, permutation):
                 res = y
             else:
                 res = res.dot(y)
-
-    YOR_CACHE[(ferrers.partition, permutation.tup_rep)] = res
+    if use_cache:
+        YOR_CACHE[(ferrers.partition, permutation.tup_rep)] = res
     return res
 
 def yor_trans(ferrers, transposition):
@@ -188,15 +189,30 @@ def benchmark(n):
     tstart = time.time()
     _partitions = partitions(n)
     s_n = sn(n)
- 
-    for p in _partitions:
+    print('Starting...')
+    times = []
+    for idx, p in enumerate(_partitions):
         start = time.time()
+        sdict = {}
         f = FerrersDiagram(p)
-
+        if os.path.exists('/local/hopan/irreps/s_9/{}.pkl'.format(p)):
+            print('Skipping {}'.format(p))
+            continue
         for perm in s_n:
+            start = time.time()
             y = yor(f, perm)
+            end = time.time()
+            if random.random() > 0.1 and len(times) < 1000:
+                times.append(end - start)
+            if len(times) >= 1000:
+                pdb.set_trace()
+            sdict[perm.tup_rep] = y
+
         done = time.time() - start
-        print('-' * 80)
+        print('Elapsed: {:.2f}mins | Done {} / {} | Partition: {}'.format(done / 60., idx, len(_partitions), p))
+
+        with open('/local/hopan/irreps/s_{}/{}.pkl'.format(n, p), 'wb') as f:
+            pickle.dump(sdict, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     tend = time.time() - tstart
     print('Total time compute yor matrices for S_{}: {:3f}'.format(n, tend))
@@ -213,6 +229,5 @@ def load_yor(fname, partition):
         return yor_dict
 
 if __name__ == '__main__':
-    #n = int(sys.argv[1])
-    #benchmark(n)
-    pass
+    n = int(sys.argv[1])
+    benchmark(n)
