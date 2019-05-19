@@ -84,5 +84,21 @@ class TestYoungTableau(unittest.TestCase):
             self.assertTrue(np.allclose(ft, ft2))
             self.assertTrue(np.allclose(fft_res, ft))
 
+    def test_yor_random(self):
+        n = 9
+        cnt = 10
+        sym_group = sn(n)
+
+        for p in partitions(n):
+            f = FerrersDiagram(p)
+            for _ in range(cnt):
+                g = Perm2.from_tup(random.choice(sym_group).tup_rep)
+                h = Perm2.from_tup(random.choice(sym_group).tup_rep)
+                yor_g = yor(f, g)
+                yor_h = yor(f, h)
+                yor_gh = yor(f, g*h)
+                mult_gh = np.matmul(yor_g, yor_h)
+                self.assertTrue(np.allclose(yor_gh, mult_gh))
+
 if __name__ == '__main__':
     unittest.main()
