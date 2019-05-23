@@ -21,6 +21,7 @@ import str_cube
 from tensorboardX import SummaryWriter
 
 from dqn import * #ReplayMemory, IrrepLinreg, get_logger, update, explore_rate
+form memory import ReplayMemory
 
 
 IRREP_SIZE = {
