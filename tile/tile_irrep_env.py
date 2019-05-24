@@ -6,6 +6,7 @@ from yor import yor
 from perm2 import Perm2, sn
 from tile_env import TileEnv, neighbors, env_neighbors
 import numpy as np
+from gym import spaces
 
 class SnIrrep:
     def __init__(self, partition):
@@ -25,16 +26,20 @@ class SnIrrep:
         return yor(self.ferrers, perm).ravel()
 
 class TileIrrepEnv(TileEnv):
-    def __init__(self, n, partitions, one_hot=False):
+    def __init__(self, n, partitions):
         '''
         n: int, size of tile puzzle
         partitions: list of partitions of 9(tuples of ints)
         '''
-        super(TileIrrepEnv, self).__init__(n, one_hot)
+        super(TileIrrepEnv, self).__init__(n, one_hot=False) # want to get the grid states
         self.n = n
         self.partitions = partitions
         self.ferrers = [FerrersDiagram(p) for p in partitions]
         self.sn_irreps = [SnIrrep(p) for p in partitions]
+
+        # will only know this from sn_irreps cat irreps!
+        irrep_shape = self.cat_irreps(TileEnv.solved_grid(n)).shape
+        self.observation_space = spaces.Box(low=-float('inf'), high=float('inf'), shape=irrep_shape)
 
     def step(self, action):
         grid_state, reward, done, info = super(TileIrrepEnv, self).step(action)
