@@ -6,7 +6,7 @@ import wreath
 
 class TestCoset(unittest.TestCase):
     def check_coset(self, G, H):
-        reps = cu.coset_reps(G, H) 
+        reps = cu.coset_reps(G, H)
         self.assertEqual(len(reps), len(G)/len(H))
 
         for p in reps:
@@ -18,10 +18,10 @@ class TestCoset(unittest.TestCase):
                 set_gH = set(gH)
                 self.assertTrue(set_pH == set_gH)
 
-    def test_coset(self):
-        H = perm2.sn(4)
-        G = perm2.sn(6)
-        self.check_coset(G, H)
+    #def test_coset(self):
+    #    H = perm2.sn(4)
+    #    G = perm2.sn(6)
+    #    self.check_coset(G, H)
 
     def test_young_coset(self):
         alpha = (2, 2, 2, 1)

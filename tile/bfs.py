@@ -25,7 +25,7 @@ def bfs(root, fname):
         while to_visit:
             curr, dist = to_visit.popleft()
             ctup = np_to_tup(curr)
-            
+
             for nbr in neighbors(curr):
                 ntup = np_to_tup(nbr)
                 if ntup not in dist_dict:
@@ -35,7 +35,7 @@ def bfs(root, fname):
                     to_visit.append((nbr, dist + 1))
     check_memory()
     return dist_dict
- 
+
 def main():
     n = int(sys.argv[1])
     if len(sys.argv) > 2:
@@ -44,11 +44,9 @@ def main():
         prefix = '/local/hopan/tile/'
     fname = os.path.join(prefix, 'tile{}.txt'.format(n))
     print('Saving in: {}'.format(fname))
-    start_state = TileEnv.init_state(n)
+    start_state = TileEnv.solved_grid(n)
     res = bfs(start_state, fname)
     print('Num states: {}'.format(len(res)))
-    #for k, v in res.items():
-    #    print('dist: {} | {}'.format(v, k))
 
 if __name__ == '__main__':
     main()

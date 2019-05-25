@@ -18,7 +18,7 @@ def conjugate(x, g):
     returns x conjugated by g
     '''
     return g.inv() * x * g
-    
+
 class ProdPerm:
     def __init__(self, *perms):
         '''
@@ -89,6 +89,14 @@ class Perm2:
         # store the thing
         SN_CACHE[len(tup)][perm.tup_rep] = perm
         return perm
+
+    @staticmethod
+    def from_trans(trans, n):
+        lst = [i for i in range(1, n+1)]
+        lst[trans[0] - 1] = trans[1]
+        lst[trans[1] - 1] = trans[0]
+        tup = tuple(lst)
+        return Perm2.from_tup(tup)
 
     def __call__(self, x):
         return self._map.get(x, x)

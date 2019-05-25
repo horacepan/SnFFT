@@ -1,7 +1,7 @@
 import pdb
 import unittest
 import sys
-sys.path.append('/home/hopan/github/SnFFT/cube/')
+sys.path.append('./cube/')
 from collections import Counter
 from cube_perms import rot_permutations
 from wreath import WreathCycSn
@@ -41,7 +41,7 @@ class TestCube(unittest.TestCase):
         g = WreathCycSn.from_tup(*get_wreath(cube), 3)
         rot_wreaths = [WreathCycSn.from_tup(*get_wreath(c), 3) for c in rot_permutations(cube)]
         group_elems = [w * g.inv() for w in rot_wreaths]
-        g_set = set([g.tup_rep for g in group_elems]) 
+        g_set = set([g.tup_rep for g in group_elems])
 
         self.assertEqual(g_set, exp_set)
 
@@ -59,7 +59,7 @@ class TestCube(unittest.TestCase):
 
         moves = [random.choice(FIXEDCORE_FACES) for _ in range(len(cubes))]
         move_els = [move_dict[f] for f in moves]
-        
+
         # for each cube, rotate it by
         start = time.time()
         new_str_cubes = [rotate(s, f) for s, f in zip(cubes, moves)]
