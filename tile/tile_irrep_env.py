@@ -26,12 +26,12 @@ class SnIrrep:
         return yor(self.ferrers, perm).ravel()
 
 class TileIrrepEnv(TileEnv):
-    def __init__(self, n, partitions):
+    def __init__(self, n, partitions, reward='penalty'):
         '''
         n: int, size of tile puzzle
         partitions: list of partitions of 9(tuples of ints)
         '''
-        super(TileIrrepEnv, self).__init__(n, one_hot=False) # want to get the grid states
+        super(TileIrrepEnv, self).__init__(n, one_hot=False, reward=reward) # get grid state
         self.n = n
         self.partitions = partitions
         self.ferrers = [FerrersDiagram(p) for p in partitions]
