@@ -12,7 +12,6 @@ import pandas as pd
 from tile_env import TileEnv, neighbors
 from heuristic import hamming, manhattan
 from heuristic import hamming_grid, manhattan_grid, irrep_gen_func
-#from utils import hamming, manhattan
 from tile_utils import get_true_df, tup_to_str
 State = namedtuple('State', ['moves', 'state'])
 IDX_TO_STATE = {idx: p for idx, p in enumerate(permutations(range(1, 10)))}
@@ -63,7 +62,6 @@ def a_star(state, f_heur):
 
         if is_done(parent_state):
             sol_moves = par_moves
-            print('Break early')
             break
 
         # need to be able to get neighbors from a given state
@@ -109,27 +107,26 @@ def test():
         print('True dist: {}'.format(get_true_dist(str_state)))
 
         resh = a_star(puzzle.grid, hamming_grid)
+        print('Hamming | ', end='')
         print(resh)
+
+
         resm = a_star(puzzle.grid, manhattan_grid)
+        print('Manhattan | ', end='')
         print(resm)
 
         parts = [(9,), (8, 1)]
-        print('Manhattan heuristic using parts: {}'.format(parts))
+        print('Manhattan heuristic using parts: {}'.format(parts), end='')
         irrep_manh = irrep_gen_func(parts, 'manhattan_eval')
         resi = a_star(puzzle.grid, irrep_manh)
         print(resi)
 
         parts = [(9,), (8, 1)]
-        print('Hamming heuristic using parts: {}'.format(parts))
+        print('Hamming heuristic using parts: {}'.format(parts), end='')
         irrep_hamm = irrep_gen_func(parts, 'hamming_eval')
         resi = a_star(puzzle.grid, irrep_hamm)
         print(resi)
-
-        parts = [(2, 1, 1, 1, 1, 1, 1, 1), (9,), (3, 2, 1, 1, 1, 1), (4, 1, 1, 1, 1, 1), (7, 1, 1)]
-        print('Hamming heuristic using parts: {}'.format(parts))
-        irrep_hamm = irrep_gen_func(parts, 'hamming_eval')
-        resi = a_star(puzzle.grid, irrep_hamm)
-        print(resi)
+        print('=' * 80)
 
 if __name__ == '__main__':
     test()

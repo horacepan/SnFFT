@@ -5,6 +5,7 @@ from young_tableau import FerrersDiagram
 from yor import yor
 from perm2 import Perm2, sn
 from tile_env import TileEnv, neighbors, env_neighbors
+import numpy as np
 
 class SnIrrep:
     def __init__(self, partition):
@@ -13,46 +14,62 @@ class SnIrrep:
 
     def grid_irrep(self, grid):
         ptup = tuple(i for row in grid for i in row)
-        return self.irrep(ptup)
+        pinv = Perm2.from_tup(ptup).inv()
+        return self.perm_irrep(pinv)
 
     def irrep(self, tup):
-        return yor(self.ferrers, Perm2.from_tup(tup))
+        # TODO: maybe avoid cache?
+        return yor(self.ferrers, Perm2.from_tup(tup)).ravel()
 
     def perm_irrep(self, perm):
-        return yor(self.ferrers, perm)
+        return yor(self.ferrers, perm).ravel()
 
 class TileIrrepEnv(TileEnv):
-    def __init__(self, n, partition, one_hot=False):
+    def __init__(self, n, partitions, one_hot=False):
+        '''
+        n: int, size of tile puzzle
+        partitions: list of partitions of 9(tuples of ints)
+        '''
         super(TileIrrepEnv, self).__init__(n, one_hot)
-        self.partition = partition
-        self.ferrers = FerrersDiagram(partition)
-        self.sn_irrep = SnIrrep(partition)
-
-    @staticmethod
-    def get_yor(self, grid):
-        ptup = tuple(i for row in grid for i in row)
-        return yor(self.ferrers, Perm2.from_tup(ptup).inv())
+        self.n = n
+        self.partitions = partitions
+        self.ferrers = [FerrersDiagram(p) for p in partitions]
+        self.sn_irreps = [SnIrrep(p) for p in partitions]
 
     def step(self, action):
         grid_state, reward, done, info = super(TileIrrepEnv, self).step(action)
-        return self.sn_irrep.grid_irrep(grid_state), reward, done, info
+        cat_irrep = self.cat_irreps(grid_state)
+        return cat_irrep, reward, done, info
+
+    # TODO: maybe manually get the pinv here?
+    def cat_irreps(self, grid):
+        '''
+        grid: n x n numpy matrix
+        Returns the concattenated numpy vector for the given grid state.
+        '''
+        ptup = tuple(i for row in grid for i in row)
+        pinv = Perm2.from_tup(ptup).inv()
+        return np.concatenate([s.perm_irrep(pinv) for s in self.sn_irreps])
 
     def reset(self):
         grid_state = super(TileIrrepEnv, self).reset()
-        return self.sn_irrep.grid_irrep(grid_state)
+        return self.cat_irreps(grid_state)
 
     def neighbors(self):
+        '''
+        Returns neighboring puzzle states' irrep vector
+        '''
         nbrs = super(TileIrrepEnv, self).neighbors()
         irrep_nbrs = {}
-        for a, nb in nbrs.items():
-            irrep_nbrs[a] = self.sn_irrep.grid_irrep(nb)
+        for a, nb_grid in nbrs.items():
+            irrep_nbrs[a] = self.cat_irreps(nb_grid)
 
         return irrep_nbrs
 
 def test():
     n = 3
-    partition = (8, 1)
-    env = TileIrrepEnv(n, partition)
+    partitions = [(9,), (8, 1)]
+    env = TileIrrepEnv(n, partitions)
     irrep_state = env.reset()
     nbrs = env.neighbors()
 
