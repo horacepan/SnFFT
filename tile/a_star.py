@@ -66,7 +66,7 @@ def a_star(state, f_heur):
 
         # need to be able to get neighbors from a given state
         # and we want to call the heuristic on the children
-        for child in neighbors(parent_state):
+        for action, child in neighbors(parent_state).items():
             # neighbors returns the grids
             child_prio = par_moves + f_heur(child)
             child_tup = grid_to_tup(child)

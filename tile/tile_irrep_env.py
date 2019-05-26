@@ -38,9 +38,20 @@ class TileIrrepEnv(TileEnv):
         self.sn_irreps = [SnIrrep(p) for p in partitions]
 
         # will only know this from sn_irreps cat irreps!
-        irrep_shape = self.cat_irreps(TileEnv.solved_grid(n)).shape
-        self.observation_space = spaces.Box(low=-float('inf'), high=float('inf'), shape=irrep_shape)
+        self.irrep_shape = self.cat_irreps(TileEnv.solved_grid(n)).shape
+        self.observation_space = spaces.Box(low=-float('inf'),
+                                            high=float('inf'),
+                                            shape=self.irrep_shape)
 
+    '''
+    def _init_nbr_yor_cache(self):
+        irrep_shape = None
+        for i in range(self.n):
+            for j in range(self.n):
+                nbr_trans = np.zeros((len(TileEnv.MOVES),) + self.irrep_shape)
+                for idx, m in enumerate(TileEnv.MOVES):
+                    pass
+    '''
     def step(self, action):
         grid_state, reward, done, info = super(TileIrrepEnv, self).step(action)
         cat_irrep = self.cat_irreps(grid_state)
@@ -59,6 +70,29 @@ class TileIrrepEnv(TileEnv):
     def reset(self):
         grid_state = super(TileIrrepEnv, self).reset()
         return self.cat_irreps(grid_state)
+
+    def all_nbrs(self, grid):
+        nbrs = super(TileIrrepEnv, self).neighbors()
+        # call something else instead?
+        irrep_nbrs = np.zeros((len(TileIrrepEnv.MOVES),) + self.irrep_shape)
+        self_irrep = None
+
+        for move in TileEnv.MOVES:
+            if move not in nbrs and self_irrep is None:
+                self_irrep = self.cat_irreps(self.grid)
+                irrep_nbrs[move] = self_irrep
+            elif move not in nbrs:
+                irrep_nbrs[move] = self_irrep
+            else:
+                irrep_nbrs[move] = self.cat_irreps(nbrs[move])
+        return irrep_nbrs
+
+    def get_all_nbrs(grid):
+        nbrs = neighbors(grid)
+        irrep_nbrs = []
+        for n in nbrs:
+            irrep_nbrs.append(self.cat_irreps(n))
+        return irrep_nbrs
 
     def neighbors(self):
         '''

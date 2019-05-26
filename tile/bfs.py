@@ -26,7 +26,7 @@ def bfs(root, fname):
             curr, dist = to_visit.popleft()
             ctup = np_to_tup(curr)
 
-            for nbr in neighbors(curr):
+            for nbr in neighbors(curr).keys():
                 ntup = np_to_tup(nbr)
                 if ntup not in dist_dict:
                     dist_dict[ntup] = dist + 1

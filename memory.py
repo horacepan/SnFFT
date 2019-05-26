@@ -6,7 +6,6 @@ Batch = namedtuple('Batch', ('state', 'action', 'next_state', 'reward', 'done'))
 class ReplayMemory(object):
     def __init__(self, capacity):
         self.capacity = capacity
-        self.memory = []
         self.position = 0
         self.filled = 0
 
