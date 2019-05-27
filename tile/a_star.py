@@ -41,22 +41,24 @@ def a_star(state, f_heur):
     '''
     start = time.time()
     to_visit = PriorityQueue()
-    curr_state = State(0, STATE_TO_IDX[grid_to_tup(state)])
+    #curr_state = State(0, STATE_TO_IDX[grid_to_tup(state)])
+    curr_state = State(0, grid_to_tup(state))
     to_visit.put((f_heur(state), curr_state))
 
     done = False
     nodes_explored = 0
     min_heuristic = f_heur(state)
-    visited = set()
+    #visited = set()
     sol_moves = -1
 
     # what things are specific to the 3x3 puzzle?
     while (not to_visit.empty()):
-        fitness, (par_moves, par_idx) = to_visit.get()
-        par_tup = IDX_TO_STATE[par_idx]
+        #fitness, (par_moves, par_idx) = to_visit.get()
+        fitness, (par_moves, par_tup) = to_visit.get()
+        #par_tup = IDX_TO_STATE[par_idx]
         parent_state = to_grid(par_tup)
         nodes_explored += 1
-        visited.add(par_tup)
+        #visited.add(par_tup)
         if fitness < min_heuristic:
             min_heuristic = fitness
 
@@ -71,11 +73,12 @@ def a_star(state, f_heur):
             child_prio = par_moves + f_heur(child)
             child_tup = grid_to_tup(child)
 
-            if child_tup in visited:
-                continue
+            #if child_tup in visited:
+            #    continue
 
-            child_idx = STATE_TO_IDX[child_tup]
-            child_state = State(par_moves + 1, child_idx)
+            #child_idx = STATE_TO_IDX[child_tup]
+            #child_state = State(par_moves + 1, child_idx)
+            child_state = State(par_moves + 1, child_tup)
             to_visit.put((child_prio, child_state))
 
     end = time.time()
@@ -104,13 +107,13 @@ def test():
         print('Puzzle: {}'.format(puzzle.tup_state()))
 
         str_state = tup_to_str(puzzle.tup_state())
-        print('True dist: {}'.format(get_true_dist(str_state)))
+        #print('True dist: {}'.format(get_true_dist(str_state)))
 
-        resh = a_star(puzzle.grid, hamming_grid)
-        print('Hamming | ', end='')
-        print(resh)
+        #resh = a_star(puzzle.grid, hamming_grid)
+        #print('Hamming | ', end='')
+        #print(resh)
 
-
+        print('Trying manhattan a star')
         resm = a_star(puzzle.grid, manhattan_grid)
         print('Manhattan | ', end='')
         print(resm)
@@ -121,12 +124,12 @@ def test():
         resi = a_star(puzzle.grid, irrep_manh)
         print(resi)
 
-        parts = [(9,), (8, 1)]
-        print('Hamming heuristic using parts: {}'.format(parts), end='')
-        irrep_hamm = irrep_gen_func(parts, 'hamming_eval')
-        resi = a_star(puzzle.grid, irrep_hamm)
-        print(resi)
-        print('=' * 80)
+        #parts = [(9,), (8, 1)]
+        #print('Hamming heuristic using parts: {}'.format(parts), end='')
+        #irrep_hamm = irrep_gen_func(parts, 'hamming_eval')
+        #resi = a_star(puzzle.grid, irrep_hamm)
+        #print(resi)
+        #print('=' * 80)
 
 if __name__ == '__main__':
     test()

@@ -26,73 +26,42 @@ log = get_logger(None)
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
 
-def get_action(pol_net, env, state, e):
-    all_nbrs = env.all_nbrs(env.grid)
-    invalid_moves = [m for m in TileEnv.MOVES if m not in env.valid_moves()]
-    vals = pol_net.forward(torch.from_numpy(all_nbrs).float())
-    # TODO: this is pretty hacky
-    for m in invalid_moves:
-        vals[m] = -float('inf')
-    return torch.argmax(vals).item(), all_nbrs
-
-def update2(pol_net, targ_net, env, batch, opt, discount, ep):
-    rewards = torch.from_numpy(batch.reward)
-    dones = torch.from_numpy(batch.done)
-    states = torch.from_numpy(batch.state)
-    nbrs = torch.from_numpy(batch.nbrs)
-
-    # Recall Q(s_t, a_t) = V(s_{t+1})
-    pred_vals = pol_net.forward(states)
-
-    # feed ALL nbrs into this!
-    irrep_dim = states.size(-1)
-    n_nbrs = len(TileEnv.MOVES)
-    #batch_all_nbrs = torch.FloatTensor([env.all_nbrs(grid) for grid in batch.grid]).view(-1, irrep_dim)
-    batch_all_nbrs = nbrs.view(-1, irrep_dim)
-    all_next_vals = targ_net.forward(batch_all_nbrs)
-    all_next_vals = all_next_vals.view(len(states), n_nbrs)
-    best_vals = all_next_vals.max(dim=1)[0]
-    targ_vals = rewards + discount * (1 - dones) * best_vals
-
-    opt.zero_grad()
-    loss = F.mse_loss(pred_vals, targ_vals.detach())
-    loss.backward()
-    opt.step()
-
-    return loss.item()
+def mlp_get_action(pol_net, env, state, e):
+    t_state = torch.from_numpy(state).float().unsqueeze(0)
+    vals = pol_net.forward(t_state)
+    return torch.argmax(vals).item()
 
 def update(pol_net, targ_net, env, batch, opt, discount, ep):
     rewards = torch.from_numpy(batch.reward)
+    actions = torch.from_numpy(batch.action).long()
     dones = torch.from_numpy(batch.done)
     states = torch.from_numpy(batch.state)
     next_states = torch.from_numpy(batch.next_state)
-    dists = torch.from_numpy(batch.scramble_dist).float()
+    #dists = torch.from_numpy(batch.scramble_dist).float()
+
     pred_vals = pol_net.forward(states)
-    targ_vals = (rewards + discount * (1 - dones) * targ_net.forward(next_states))
+    vals = torch.gather(pred_vals, 1, actions)
+
+    targ_max = targ_net.forward(next_states).max(dim=1)[0]
+    targ_vals = rewards + discount * (1 - dones) * targ_max.unsqueeze(-1)
 
     opt.zero_grad()
-    #errors = (1 / (dists + 1.)) * (pred_vals - targ_vals.detach()).pow(2)
-    #errors = (pred_vals - targ_vals.detach()).pow(2)
-    #loss = errors.sum() / len(targ_vals)
-    loss = F.mse_loss(pred_vals, targ_vals.detach())
+    loss = F.mse_loss(vals, targ_vals.detach())
     loss.backward()
     opt.step()
     return loss.item()
 
 def main(hparams):
     partitions = eval(hparams['partitions'])
-    pol_net = IrrepDQN(partitions)
-    targ_net = IrrepDQN(partitions)
-    env = TileIrrepEnv(hparams['tile_size'], partitions, hparams['reward'])
+    #env = TileIrrepEnv(hparams['tile_size'], partitions, hparams['reward'])
+    env = TileEnv(hparams['tile_size'], one_hot=True, reward=hparams['reward'])
+    pol_net = MLP(env.observation_space.shape[0], hparams['nhid'], env.actions)
+    targ_net = MLP(env.observation_space.shape[0], hparams['nhid'], env.actions)
+
     opt = torch.optim.Adam(pol_net.parameters(), hparams['lr'])
 
-    if hparams['update_type'] == 1:
-        memory = ReplayMemory(hparams['capacity'],
-                              env.observation_space.shape[0])
-    else:
-        memory2 = ReplayMemory2(hparams['capacity'],
-                                env.observation_space.shape[0],
-                                (env.n, env.n))
+    memory = ReplayMemory(hparams['capacity'],
+                          env.observation_space.shape[0])
     torch.manual_seed(hparams['seed'])
     np.random.seed(hparams['seed'])
     random.seed(hparams['seed'])
@@ -105,31 +74,19 @@ def main(hparams):
         #states = env.shuffle(10)
         for i in range(hparams['max_iters']):
         #for dist, (grid_state, _x, _y) in enumerate(states):
-            dist = 1
             if random.random() < exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']):
-                nbrs = env.all_nbrs(env.grid)
                 action = random.choice(env.valid_moves())
             else:
-                action, nbrs = get_action(pol_net, env, state, e)
+                action = mlp_get_action(pol_net, env, state, e)
 
             new_state, reward, done, _ = env.step(action)
-            #state = env.cat_irreps(grid_state)
-            #new_state, reward, done, _ = env.peek(grid_state, _x, _y, action)
-
-            if hparams['update_type'] == 1:
-                memory.push(state, action, new_state, reward, done, dist)
-            else:
-                memory2.push(state, nbrs, env.grid, reward, done) # only need the new state
+            memory.push(state, action, new_state, reward, done, 0)
             state = new_state
             iters += 1
 
             if iters % hparams['update_int'] == 0 and iters > 0:
-                if hparams['update_type'] == 1:
-                    batch = memory.sample(hparams['batch_size'])
-                    loss = update(pol_net, targ_net, env, batch, opt, hparams['discount'], e)
-                else:
-                    batch2 = memory2.sample(hparams['batch_size'])
-                    loss = update2(pol_net, targ_net, env, batch2, opt, hparams['discount'], e)
+                batch = memory.sample(hparams['batch_size'])
+                loss = update(pol_net, targ_net, env, batch, opt, hparams['discount'], e)
                 losses.append(loss)
 
             if done:

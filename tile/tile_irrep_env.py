@@ -105,6 +105,11 @@ class TileIrrepEnv(TileEnv):
 
         return irrep_nbrs
 
+    def peek(self, grid_state, x, y, action):
+        new_state, rew, done, info = super(TileIrrepEnv, self).peek(grid_state, x, y, action)
+        irrep_state = self.cat_irreps(new_state)
+        return irrep_state, rew, done, info
+
 def test():
     n = 3
     partitions = [(9,), (8, 1)]
