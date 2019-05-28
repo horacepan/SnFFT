@@ -37,7 +37,7 @@ def update(pol_net, targ_net, env, batch, opt, discount, ep):
     dones = torch.from_numpy(batch.done)
     states = torch.from_numpy(batch.state)
     next_states = torch.from_numpy(batch.next_state)
-    #dists = torch.from_numpy(batch.scramble_dist).float()
+    dists = torch.from_numpy(batch.scramble_dist).float()
 
     pred_vals = pol_net.forward(states)
     vals = torch.gather(pred_vals, 1, actions)
@@ -46,10 +46,29 @@ def update(pol_net, targ_net, env, batch, opt, discount, ep):
     targ_vals = rewards + discount * (1 - dones) * targ_max.unsqueeze(-1)
 
     opt.zero_grad()
-    loss = F.mse_loss(vals, targ_vals.detach())
+    #scale = 10. / (1. + dists)
+    scale = 1
+    loss = (scale * (vals - targ_vals.detach())).pow(2).mean()
+    #loss = F.mse_loss(vals, targ_vals.detach())
     loss.backward()
     opt.step()
     return loss.item()
+
+def eval_model(model, env, trials, max_iters):
+    successes = []
+    move_cnt = []
+    for e in range(trials):
+        state = env.reset()
+        for i in range(max_iters):
+            action = mlp_get_action(model, env, state, e)
+            new_state, reward, done, _ = env.step(action)
+            state = new_state
+            if done:
+                successes.append(True)
+                move_cnt.append(i + 1)
+                break
+    pdb.set_trace()
+    print('Validation | {} Trials | Solves: {:.2f} | Avg Solve: {:.2f}'.format(trials, np.mean(successes), np.mean(move_cnt)))
 
 def main(hparams):
     partitions = eval(hparams['partitions'])
@@ -66,21 +85,31 @@ def main(hparams):
     np.random.seed(hparams['seed'])
     random.seed(hparams['seed'])
 
+    print('Before training')
+    #eval_model(pol_net, env, 100, 100)
+
     iters = 0
     losses = []
     dones = []
+    tot_dists = []
     for e in range(hparams['epochs'] + 1):
-        state = env.reset()
-        #states = env.shuffle(10)
-        for i in range(hparams['max_iters']):
-        #for dist, (grid_state, _x, _y) in enumerate(states):
+        #state = env.reset()
+        states = env.shuffle(50)
+        # are the shuffles grids or one hots?
+
+        #for i in range(hparams['max_iters']):
+        # states are onehot vectors
+        for dist, (grid_state, onehot_state, _x, _y) in enumerate(states):
             if random.random() < exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']):
                 action = random.choice(env.valid_moves())
             else:
-                action = mlp_get_action(pol_net, env, state, e)
+                action = mlp_get_action(pol_net, env, onehot_state, e)
 
-            new_state, reward, done, _ = env.step(action)
-            memory.push(state, action, new_state, reward, done, 0)
+            # need option to do peek instead of step if we want to use a shuffle trajectory!
+            #new_state, reward, done, _ = env.step(action)
+            new_grid, reward, done, info = env.peek(grid_state, _x, _y, action)
+            new_state = info['onehot']
+            memory.push(onehot_state, action, new_state, reward, done, 0)
             state = new_state
             iters += 1
 
@@ -89,18 +118,19 @@ def main(hparams):
                 loss = update(pol_net, targ_net, env, batch, opt, hparams['discount'], e)
                 losses.append(loss)
 
-            if done:
-                break
-
             if iters % hparams['update_int'] == 0 and e > 0:
                 targ_net.load_state_dict(pol_net.state_dict())
 
-        dones.append(done)
+        tot_dists.append(dist)
+
         if e % hparams['log_int'] == 0 and e > 0:
-            log.info('Ep: {:4} | Last {} ep solves: {:.3f} | All avg Loss: {:.3f} | Exp rate: {:.4}'.format(
-                e, hparams['log_int'], np.mean(dones[-hparams['log_int']:]), np.mean(losses),
-                exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate'])
+            log.info('Ep: {:4} | Last {} ep solves: {:.3f} | All avg Loss: {:.3f} | Exp rate: {:.4} | Avg done: {:.2f}'.format(
+                e, hparams['log_int'], np.mean(dones[-hparams['log_int']:]), np.mean(losses[-100:]),
+                exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']), np.mean(tot_dists[-hparams['log_int']:])
             ))
+
+    eval_model(pol_net, env, 100, 100)
+    pdb.set_trace()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
