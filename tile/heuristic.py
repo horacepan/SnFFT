@@ -114,7 +114,11 @@ def irrep_gen_func(partitions, _dir='fourier_eval'):
         # load the appropriate matrix
         f = FerrersDiagram(p)
         # TODO: this should load from the appropriate place
-        fourier_mat = np.load('./tile/{}/{}.npy'.format(_dir, p))
+        #fourier_mat = np.load('./tile/{}/{}.npy'.format(_dir, p))
+        try:
+            fourier_mat = np.load('/local/hopan/tile/{}/{}.npy'.format(_dir, p))
+        except:
+            fourier_mat = np.load('/scratch/hopan/tile/{}/{}.npy'.format(_dir, p))
         scale = fourier_mat.shape[0] / S9_SIZE
         fmats[p] = scale * fourier_mat
         ferrers[p] = f

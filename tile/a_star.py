@@ -13,10 +13,11 @@ from tile_env import TileEnv, neighbors
 from heuristic import hamming, manhattan
 from heuristic import hamming_grid, manhattan_grid, irrep_gen_func
 from tile_utils import get_true_df, tup_to_str
+from utils import check_memory
 State = namedtuple('State', ['moves', 'state'])
 IDX_TO_STATE = {idx: p for idx, p in enumerate(permutations(range(1, 10)))}
 STATE_TO_IDX = {p: idx for idx, p in IDX_TO_STATE.items()}
-TRUE_DISTS = get_true_df()
+#TRUE_DISTS = get_true_df()
 
 def grid_to_tup(grid):
     return tuple(i for row in grid for i in row)
@@ -97,32 +98,35 @@ def get_true_dist(perm):
         print('True dist dict: {} | Cant find {} in distance df'.format(len(TRUE_DISTS), perm))
         pdb.set_trace()
 
-def test():
-    random.seed(4)
+def test(seed):
+    cnt = 10
+    random.seed(seed)
+    print('A star with seed: {} | cnt: {}'.format(seed, cnt))
+
     size = 3
     puzzle = TileEnv(size)
-
-    for _ in range(3):
+    puzzles = []
+    man_nodes = []
+    irrep_nodes = []
+    for idx in range(cnt):
         puzzle.reset()
-        print('Puzzle: {}'.format(puzzle.tup_state()))
-
+        puzzles.append(puzzle.tup_state())
         str_state = tup_to_str(puzzle.tup_state())
-        #print('True dist: {}'.format(get_true_dist(str_state)))
 
         #resh = a_star(puzzle.grid, hamming_grid)
         #print('Hamming | ', end='')
         #print(resh)
-
-        print('Trying manhattan a star')
         resm = a_star(puzzle.grid, manhattan_grid)
-        print('Manhattan | ', end='')
-        print(resm)
+        man_nodes.append(resm['nodes_explored'])
+        print('{:3} | {}'.format(idx, resm))
 
+    for idx, perm in enumerate(puzzles):
+        puzzle._assign_perm(perm)
         parts = [(9,), (8, 1)]
-        print('Manhattan heuristic using parts: {}'.format(parts), end='')
         irrep_manh = irrep_gen_func(parts, 'manhattan_eval')
         resi = a_star(puzzle.grid, irrep_manh)
-        print(resi)
+        irrep_nodes.append(resm['nodes_explored'])
+        print('{:3} | {}'.format(idx, resi))
 
         #parts = [(9,), (8, 1)]
         #print('Hamming heuristic using parts: {}'.format(parts), end='')
@@ -131,5 +135,10 @@ def test():
         #print(resi)
         #print('=' * 80)
 
+    df = pd.DataFrame({'perms': puzzles, 'manhattan': man_nodes, 'manhattan_irrep': irrep_nodes})
+    df.to_csv('./results/results_{}.csv'.format(seed))
+    check_memory()
+
 if __name__ == '__main__':
-    test()
+    seed = int(sys.argv[1])
+    test(seed)
