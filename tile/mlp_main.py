@@ -44,7 +44,9 @@ def eval_model(model, env, trials, max_iters):
                 successes += 1
                 move_cnt.append(i + 1)
                 break
-    print('Validation | {} Trials | Solves: {:.2f} | Avg Solve: {:.2f}'.format(trials, successes, np.mean(move_cnt)))
+    print('Validation | {} Trials | Solves: {:.2f} | LQ: {:.2f} | Avg Solve: {:.2f}  | UQ: {:2f}'.format(
+        trials, successes, np.percentile(move_cnt, 25), np.mean(move_cnt), np.percentile(move_cnt, 75)
+    ))
 
 def main(hparams):
     partitions = eval(hparams['partitions'])

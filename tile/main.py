@@ -19,7 +19,7 @@ from tile_irrep_env import TileIrrepEnv
 from tile_env import TileEnv
 from tensorboardX import SummaryWriter
 
-from tile_dqn import IrrepDQN, MLP
+from tile_dqn import IrrepDQN, MLP, IrrepDQNMLP
 
 log = get_logger(None)
 
@@ -36,7 +36,10 @@ def eval_model(model, env, trials, max_iters):
                 successes += 1
                 move_cnt.append(i + 1)
                 break
-    log.info('Validation | {} Trials | Solves: {:.2f} | Avg Solve: {:.2f}'.format(trials, successes, np.mean(move_cnt)))
+    log.info('Validation | {} Trials | Solves: {:.2f} | LQ {:.2f} | MQ {:.2f} | UQ: {:.2f} | Max solve: {}'.format(
+        trials, successes, np.percentile(move_cnt, 25), np.percentile(move_cnt, 50),
+        np.percentile(move_cnt, 75), np.max(move_cnt)
+    ))
 
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
@@ -107,6 +110,9 @@ def main(hparams):
     partitions = eval(hparams['partitions'])
     pol_net = IrrepDQN(partitions)
     targ_net = IrrepDQN(partitions)
+    #pol_net = IrrepDQNMLP(partitions[0], hparams['nhid'], 1)
+    #targ_net = IrrepDQNMLP(partitions[0], hparams['nhid'], 1)
+
     env = TileIrrepEnv(hparams['tile_size'], partitions, hparams['reward'])
     opt = torch.optim.Adam(pol_net.parameters(), hparams['lr'])
 
@@ -126,21 +132,25 @@ def main(hparams):
     dones = []
     for e in range(hparams['epochs'] + 1):
         #state = env.reset()
-        states = env.shuffle(hparams['shuffle_len'])
-        for dist, (grid_state, _x, _y) in enumerate(states):
+        #states = env.shuffle(hparams['shuffle_len'])
+        #for dist, (grid_state, _x, _y) in enumerate(states):
+        grid_state = env.reset(output='grid') # is this a grid state?
+        for i in range(hparams['max_iters']):
             nbrs = env.all_nbrs(grid_state)
             if random.random() < exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']):
                 # we compute neighbors b/c we need to cache this?
                 action = random.choice(env.valid_moves())
             else:
-                action  = get_action(pol_net, env, state, e, all_nbrs=nbrs)
+                action  = get_action(pol_net, env, grid_state, e, all_nbrs=nbrs)
 
             #new_state, reward, done, _ = env.step(action)
             state = env.cat_irreps(grid_state)
-            new_grid_state, reward, done, _ = env.peek(grid_state, _x, _y, action)
+            # TODO: how do we parameterize this
+            #new_grid_state, reward, done, _ = env.peek(grid_state, _x, _y, action)
+            new_grid_state, reward, done, _ = env.step(action)
             new_state = nbrs[action]
             if hparams['update_type'] == 1:
-                memory.push(state, action, new_state, reward, done, dist)
+                memory.push(state, action, new_state, reward, done, 0)
             else:
                 memory2.push(state, nbrs, env.grid, reward, done) # only need the new state
             state = new_state

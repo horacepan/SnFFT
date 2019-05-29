@@ -27,6 +27,19 @@ class IrrepDQN(nn.Module):
     def init_weights(self):
         pass
 
+class IrrepDQNMLP(nn.Module):
+    def __init__(self, partition, n_hid, n_out):
+        super(IrrepDQNMLP, self).__init__()
+        ferrer = FerrersDiagram(partition)
+        size = len(ferrer.tableaux) * len(ferrer.tableaux)
+        self.net = MLP(size, n_hid, n_out)
+
+    def forward(self, x):
+        '''
+        x: an irrep
+        '''
+        return self.net(x)
+
 class MLP(nn.Module):
     def __init__(self, n_in, n_hid, n_out):
         super(MLP, self).__init__()

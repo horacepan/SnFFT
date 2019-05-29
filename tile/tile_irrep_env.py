@@ -67,9 +67,12 @@ class TileIrrepEnv(TileEnv):
         pinv = Perm2.from_tup(ptup).inv()
         return np.concatenate([s.perm_irrep(pinv) for s in self.sn_irreps])
 
-    def reset(self):
+    def reset(self, output='grid'):
         grid_state = super(TileIrrepEnv, self).reset()
-        return self.cat_irreps(grid_state)
+        if output == 'grid':
+            return grid_state
+        else:
+            return self.cat_irreps(grid_state)
 
     def all_nbrs(self, grid):
         nbrs = super(TileIrrepEnv, self).neighbors()
