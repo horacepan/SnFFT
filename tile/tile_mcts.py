@@ -6,6 +6,7 @@ import time
 import torch
 import random
 import numpy as np
+import pandas as pd
 import collections
 import pdb
 from utils import get_logger, load_pkl
@@ -13,8 +14,10 @@ import argparse
 from io_utils import get_prefix
 from tile_env import *
 from tile_env import neighbors as tile_neighbors
+from tile_utils import tup_to_str
 
 np.set_printoptions(precision=5)
+
 '''
 How does the monte carlo tree search interact with the environment and model?
 mcts.model.forward: maybe force the model to have something else?
@@ -34,6 +37,14 @@ class MCTS(object):
 
         # store the string rep or the encoded rep?
         self.nbr_cache = {} # tree will not grow to be so large so this is fine
+        self.true_dist_2 = self.load_true('/local/hopan/tile/tile2.txt')
+        self.true_dist_3 = self.load_true('/local/hopan/tile/tile3.txt')
+
+    def load_true(self, fname):
+        df = pd.read_csv(fname, header=None, dtype={0: str, 1:int})
+        df.columns = ['perm', 'distance']
+        df = df.set_index('perm')
+        return df
 
     @property
     def nexplored(self):
@@ -57,7 +68,9 @@ class MCTS(object):
 
         # in the autodidactic iter paper the network spits out prob of neighbors
         # we do no such thing, so expand leaves is just evaluates 1 state's value
+        # this basically feeds leaf through the neural net and computes the max action
         value = self.expand_leaves([leaf])
+        pdb.set_trace()
         self.backup_leaf(path_states, path_actions, value)
         is_solved = [TileEnv.is_solved_perm(s) for s in leaf_nbrs]
         if any(is_solved):
@@ -88,17 +101,17 @@ class MCTS(object):
             else:
                 u = self.coeff * sqrt_n / (act_cnts + 1)
                 q = self.values[curr]
-                act = np.argmax(u + q)
-                #print('visits:', u)
-                #print('vals', q)
-                #print('combined', u + q)
-                if cnt > 500:
-                    pdb.set_trace()
+                uq = u + q
+                act = np.random.choice(np.flatnonzero(uq == uq.max()))
+
+            if cnt > 500:
+                pdb.set_trace()
 
             curr = next_states[act]
-            if curr in curr_traj:
-                act = random.randint(0, self.env.action_space.n - 1)
-                curr = next_states[act]
+            # random action if repeated state
+            #if curr in curr_traj:
+            #    act = random.randint(0, self.env.action_space.n - 1)
+            #    curr = next_states[act]
 
             curr_traj.add(curr)
             path_actions.append(act)
@@ -124,6 +137,24 @@ class MCTS(object):
         for s, a in zip(states, actions):
             self.values[s][a] = max(value, self.values[s][a])
             self.visits[s][a] += 1
+
+    def best_action(self, tup):
+        if len(tup) == 4:
+            df = self.true_dist_2
+        else:
+            df = self.true_dist_3
+
+        def get_val(action, nbrs_dict):
+            grid = nbrs_dict[action]
+            tup = grid_to_tup(grid)
+            str_rep = tup_to_str(tup)
+            return df.loc[str_rep].distance
+
+        grid = tup_to_grid(tup)
+        nbrs = tile_neighbors(grid)
+        dists = np.array([get_val(a, nbrs) for a in TileEnv.MOVES])
+        return np.flatnonzero(dists == dists.max())
+        #return max(TileEnv.MOVES, key=lambda x: get_val(x, nbrs))
 
 def solve(state, model, env, log, time_limit=None, max_steps=None, coeff=1):
     '''
@@ -158,17 +189,12 @@ def solve(state, model, env, log, time_limit=None, max_steps=None, coeff=1):
     return None, tree
 
 def main():
-    _dir = '/local/hopan/cube/logs/dist422long_9/'
-    #_dir = '/local/hopan/cube/logs/dist233long_curric_2'
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', type=str, default=_dir)
+    parser.add_argument('--modelname', type=str, default='20k10k.pt')
     parser.add_argument('--dist', type=int, default=100)
     parser.add_argument('--max_steps', type=int, default=None)
     parser.add_argument('--time_limit', type=int, default=600)
-    parser.add_argument('--ntest', type=int, default=100)
-    parser.add_argument('--nptrue', action='store_true')
-    parser.add_argument('--alpha', type=str)
-    parser.add_argument('--parts', type=str)
+    parser.add_argument('--ntest', type=int, default=20)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--tile_size', type=int, default=3)
     parser.add_argument('--coeff', type=float, default=1)
@@ -176,7 +202,7 @@ def main():
 
     random.seed(args.seed)
     logpath = None
-    model = torch.load('./models/tile3_onehot.pt')
+    model = torch.load('./models/{}'.format(args.modelname))
 
     log = get_logger(logpath)
     log.info('params: {}'.format(args))
@@ -184,7 +210,7 @@ def main():
     env = TileEnv(args.tile_size, one_hot=False)
     #cubes = [scramble_fixedcore(init_2cube(), n=args.dist) for _ in range(args.ntest)]
     grid_puzzles = [env.reset() for _ in range(args.ntest)]
-    time_limit = 100
+    time_limit = 30
     log.info('Starting to attempt solves')
     nsolved = 0
 

@@ -135,8 +135,9 @@ def test(seed):
         #print(resi)
         #print('=' * 80)
 
-    df = pd.DataFrame({'perms': puzzles, 'manhattan': man_nodes, 'manhattan_irrep': irrep_nodes})
-    df.to_csv('./results/results_{}.csv'.format(seed))
+    puzzle_strs = [tup_to_str(t) for t in puzzles]
+    df = pd.DataFrame({'perms': puzzle_strs, 'manhattan': man_nodes, 'manhattan_irrep': irrep_nodes})
+    df.to_csv('./results/results_{}.csv'.format(seed), header=True)
     check_memory()
 
 if __name__ == '__main__':

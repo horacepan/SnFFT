@@ -23,17 +23,41 @@ from tile_dqn import IrrepDQN, MLP
 
 log = get_logger(None)
 
+def eval_model(model, env, trials, max_iters):
+    successes = 0
+    move_cnt = []
+    for e in range(trials):
+        state = env.reset()
+        for i in range(max_iters):
+            action = get_action(model, env, env.grid, e)
+            new_state, reward, done, _ = env.step(action)
+            state = new_state
+            if done:
+                successes += 1
+                move_cnt.append(i + 1)
+                break
+    log.info('Validation | {} Trials | Solves: {:.2f} | Avg Solve: {:.2f}'.format(trials, successes, np.mean(move_cnt)))
+
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
 
-def get_action(pol_net, env, state, e):
-    all_nbrs = env.all_nbrs(env.grid)
+def get_action(pol_net, env, state, e, all_nbrs=None):
+    '''
+    pol_net: TileDQN
+    env: TileIrrepEnv
+    state: not actually used! b/c we need to get the neighbors of the current state!
+           Well, we _could_ have the state be the grid state!
+    e: int
+    '''
+    if all_nbrs is None:
+        all_nbrs = env.all_nbrs(env.grid) # these are irreps
+
     invalid_moves = [m for m in TileEnv.MOVES if m not in env.valid_moves()]
     vals = pol_net.forward(torch.from_numpy(all_nbrs).float())
     # TODO: this is pretty hacky
     for m in invalid_moves:
         vals[m] = -float('inf')
-    return torch.argmax(vals).item(), all_nbrs
+    return torch.argmax(vals).item()
 
 def update2(pol_net, targ_net, env, batch, opt, discount, ep):
     rewards = torch.from_numpy(batch.reward)
@@ -101,21 +125,20 @@ def main(hparams):
     losses = []
     dones = []
     for e in range(hparams['epochs'] + 1):
-        state = env.reset()
-        #states = env.shuffle(10)
-        for i in range(hparams['max_iters']):
-        #for dist, (grid_state, _x, _y) in enumerate(states):
-            dist = 1
+        #state = env.reset()
+        states = env.shuffle(hparams['shuffle_len'])
+        for dist, (grid_state, _x, _y) in enumerate(states):
+            nbrs = env.all_nbrs(grid_state)
             if random.random() < exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']):
-                nbrs = env.all_nbrs(env.grid)
+                # we compute neighbors b/c we need to cache this?
                 action = random.choice(env.valid_moves())
             else:
-                action, nbrs = get_action(pol_net, env, state, e)
+                action  = get_action(pol_net, env, state, e, all_nbrs=nbrs)
 
-            new_state, reward, done, _ = env.step(action)
-            #state = env.cat_irreps(grid_state)
-            #new_state, reward, done, _ = env.peek(grid_state, _x, _y, action)
-
+            #new_state, reward, done, _ = env.step(action)
+            state = env.cat_irreps(grid_state)
+            new_grid_state, reward, done, _ = env.peek(grid_state, _x, _y, action)
+            new_state = nbrs[action]
             if hparams['update_type'] == 1:
                 memory.push(state, action, new_state, reward, done, dist)
             else:
@@ -140,10 +163,18 @@ def main(hparams):
 
         dones.append(done)
         if e % hparams['log_int'] == 0 and e > 0:
-            log.info('Ep: {:4} | Last {} ep solves: {:.3f} | All avg Loss: {:.3f} | Exp rate: {:.4}'.format(
-                e, hparams['log_int'], np.mean(dones[-hparams['log_int']:]), np.mean(losses),
+            log.info('Ep: {:4} | Last {} avg loss: {:.3f} | Exp rate: {:.4}'.format(
+                e, hparams['log_int'], np.mean(losses[-hparams['log_int']:]),
                 exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate'])
             ))
+
+        if e % hparams['val_int'] == 0 and e > 0:
+            eval_model(pol_net, env, 100, 13)
+    try:
+        if hparams['savename']:
+            torch.save(pol_net, './irrep_models/{}.pt'.format(hparams['savename']))
+    except:
+        pdb.set_trace()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -161,11 +192,14 @@ if __name__ == '__main__':
     parser.add_argument('--reward', type=str, default='penalty')
     parser.add_argument('--nhid', type=int, default=16)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--shuffle_len', type=int, default=50)
 
     parser.add_argument('--log_int', type=int, default=100)
+    parser.add_argument('--val_int', type=int, default=100)
     parser.add_argument('--update_int', type=int, default=20)
     parser.add_argument('--target_int', type=int, default=20)
     parser.add_argument('--update_type', type=int, default=1)
+    parser.add_argument('--savename', type=str, default=None)
 
     args = parser.parse_args()
     hparams = vars(args)
