@@ -8,7 +8,7 @@ import pdb
 import sys
 sys.path.append('../')
 from utils import check_memory, get_logger
-from tile_memory import ReplayMemory, ReplayMemory2
+from tile_memory import ReplayMemory, ReplayMemory2, SimpleMemory
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,7 +21,7 @@ from tensorboardX import SummaryWriter
 
 from tile_dqn import IrrepDQN, MLP, TileBaselineQ
 
-log = get_logger(None)
+log = get_logger(None, stream=False)
 
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
@@ -57,8 +57,21 @@ def main(hparams):
 
     opt = torch.optim.Adam(pol_net.parameters(), hparams['lr'])
 
-    memory = ReplayMemory(hparams['capacity'],
-                          env.observation_space.shape[0])
+    # this is probably something each individual model should own
+    mem_dict = {
+        'onehot_state': (env.observation_space.shape[0],),
+        'next_onehot_state': (env.observation_space.shape[0],),
+        'action': (1,),
+        'reward': (1,),
+        'done': (1,),
+        'dist': (1,),
+        'scramble_dists': (1,),
+    }
+    dtype_dict = {
+        'action': int,
+        'scramble_dists': int,
+    }
+    memory = SimpleMemory(hparams['capacity'], mem_dict, dtype_dict)
     torch.manual_seed(hparams['seed'])
     np.random.seed(hparams['seed'])
     random.seed(hparams['seed'])
@@ -88,13 +101,22 @@ def main(hparams):
             #new_state, reward, done, _ = env.step(action)
             new_grid, reward, done, info = env.peek(grid_state, _x, _y, action)
             new_state = grid_to_onehot(new_grid)
-            memory.push(onehot_state, action, new_state, reward, done, 0)
+            #memory.push(onehot_state, action, new_state, reward, done, 0)
+            memory.push({
+                'onehot_state': onehot_state,
+                'action': action,
+                'reward': reward,
+                'done': done,
+                'next_onehot_state': new_state,
+                'dist': 0
+            })
             state = new_state
             iters += 1
 
             if iters % hparams['update_int'] == 0 and iters > 0:
                 batch = memory.sample(hparams['batch_size'])
-                loss = pol_net.update(targ_net, env, batch, opt, hparams['discount'], e)
+                #loss = pol_net.update(targ_net, env, batch, opt, hparams['discount'], e)
+                loss = pol_net.update_simple(targ_net, env, batch, opt, hparams['discount'], e)
                 losses.append(loss)
 
             if iters % hparams['update_int'] == 0 and e > 0:

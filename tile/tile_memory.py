@@ -4,10 +4,34 @@ import numpy as np
 Batch = namedtuple('Batch', ('state', 'action', 'next_state', 'reward', 'done', 'scramble_dist'))
 Batch2 = namedtuple('Batch2', ('state', 'nbrs', 'grid', 'reward', 'done'))
 
+class SimpleMemory(object):
+    def __init__(self, capacity, dim_dict, dtype_dict):
+        self.capacity = capacity
+        self.position = 0
+        self.filled = 0
+        self.mem = {}
+        for key, shape in dim_dict.items():
+            self.mem[key] = np.empty((capacity,) + shape, dtype=dtype_dict.get(key, np.float32))
+
+    def push(self, _dict):
+        for k, v in _dict.items():
+            self.mem[k][self.position] = v
+        self.position = (self.position + 1) % self.capacity
+        self.filled = min(self.capacity, self.filled + 1)
+
+    def sample(self, batch_size):
+        batch = {}
+        idx = np.random.choice(self.filled, batch_size)
+        for k, v in self.mem.items():
+            batch[k] = self.mem[k][idx]
+        return batch
+
+    def __len__(self):
+        return self.filled
+
 class ReplayMemory(object):
     def __init__(self, capacity, state_dim):
         self.capacity = capacity
-        self.memory = []
         self.position = 0
         self.filled = 0
 
@@ -19,11 +43,7 @@ class ReplayMemory(object):
         self.dones = np.empty([capacity, 1], np.float32)
 
     def push(self, state, action, new_state, reward, done, scramble_dist):
-        try:
-            self.states[self.position]      = state
-        except:
-            import pdb
-            pdb.set_trace()
+        self.states[self.position]      = state
         self.actions[self.position]     = action
         self.new_states[self.position]  = new_state
         self.rewards[self.position]     = reward

@@ -68,7 +68,37 @@ class TileBaselineQ(nn.Module):
         vals = self.forward(state)
         return vals.argmax(dim=1).item()
 
+    def update_simple(self, targ_net, env, batch, opt, discount, ep):
+        rewards = torch.from_numpy(batch['reward'])
+        actions = torch.from_numpy(batch['action']).long()
+        dones = torch.from_numpy(batch['done'])
+        states = torch.from_numpy(batch['onehot_state'])
+        next_states = torch.from_numpy(batch['next_onehot_state'])
+
+        pred_vals = self.forward(states)
+        vals = torch.gather(pred_vals, 1, actions)
+
+        targ_max = targ_net.forward(next_states).max(dim=1)[0]
+        targ_vals = (rewards + discount * (1 - dones) * targ_max.unsqueeze(-1)).detach()
+
+        opt.zero_grad()
+        loss = F.mse_loss(vals, targ_vals)
+        loss.backward()
+        opt.step()
+        return loss.item()
+
+
     def update(self, targ_net, env, batch, opt, discount, ep):
+        '''
+        targ_net: TileBaselineQ
+        env: TileEnv
+        batch: dictionary
+        opt: torch optimizer
+        discount: float
+        ep: int, episode number
+
+        Computes the loss and takes a gradient step.
+        '''
         rewards = torch.from_numpy(batch.reward)
         actions = torch.from_numpy(batch.action).long()
         dones = torch.from_numpy(batch.done)
