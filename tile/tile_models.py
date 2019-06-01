@@ -27,6 +27,23 @@ class IrrepDQN(nn.Module):
     def init_weights(self):
         pass
 
+    def get_action(self, env, grid_state, e, all_nbrs=None, x=None, y=None):
+        '''
+        env: TileIrrepEnv
+        state: not actually used! b/c we need to get the neighbors of the current state!
+               Well, we _could_ have the state be the grid state!
+        e: int
+        '''
+        if all_nbrs is None:
+            all_nbrs = env.all_nbrs(grid_state, x, y) # these are irreps
+
+        invalid_moves = [m for m in env.MOVES if m not in env.valid_moves(x, y)]
+        vals = self.forward(torch.from_numpy(all_nbrs).float())
+        # TODO: this is pretty hacky
+        for m in invalid_moves:
+            vals[m] = -float('inf')
+        return torch.argmax(vals).item()
+
 class IrrepDQNMLP(nn.Module):
     def __init__(self, partition, n_hid, n_out):
         super(IrrepDQNMLP, self).__init__()

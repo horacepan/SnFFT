@@ -43,15 +43,6 @@ class TileIrrepEnv(TileEnv):
                                             high=float('inf'),
                                             shape=self.irrep_shape)
 
-    '''
-    def _init_nbr_yor_cache(self):
-        irrep_shape = None
-        for i in range(self.n):
-            for j in range(self.n):
-                nbr_trans = np.zeros((len(TileEnv.MOVES),) + self.irrep_shape)
-                for idx, m in enumerate(TileEnv.MOVES):
-                    pass
-    '''
     def step(self, action):
         grid_state, reward, done, info = super(TileIrrepEnv, self).step(action)
         cat_irrep = self.cat_irreps(grid_state)
@@ -74,8 +65,8 @@ class TileIrrepEnv(TileEnv):
         else:
             return self.cat_irreps(grid_state)
 
-    def all_nbrs(self, grid):
-        nbrs = super(TileIrrepEnv, self).neighbors()
+    def all_nbrs(self, grid, x, y):
+        nbrs = super(TileIrrepEnv, self).neighbors(grid, x, y)
         # call something else instead?
         irrep_nbrs = np.zeros((len(TileIrrepEnv.MOVES),) + self.irrep_shape)
         self_irrep = None
@@ -109,8 +100,9 @@ class TileIrrepEnv(TileEnv):
         return irrep_nbrs
 
     def peek(self, grid_state, x, y, action):
-        new_state, rew, done, info = super(TileIrrepEnv, self).peek(grid_state, x, y, action)
-        irrep_state = self.cat_irreps(new_state)
+        new_grid_state, rew, done, info = super(TileIrrepEnv, self).peek(grid_state, x, y, action)
+        irrep_state = self.cat_irreps(new_grid_state)
+        info = {'grid': new_grid_state}
         return irrep_state, rew, done, info
 
 def test():

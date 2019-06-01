@@ -19,17 +19,12 @@ from tile_irrep_env import TileIrrepEnv
 from tile_env import *
 from tensorboardX import SummaryWriter
 
-from tile_dqn import IrrepDQN, MLP, TileBaselineQ
+from tile_models import IrrepDQN, MLP, TileBaselineQ
 
 log = get_logger(None, stream=False)
 
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
-
-def mlp_get_action(pol_net, env, state, e):
-    t_state = torch.from_numpy(state).float().unsqueeze(0)
-    vals = pol_net.forward(t_state)
-    return torch.argmax(vals).item()
 
 def eval_model(model, env, trials, max_iters):
     successes = 0
@@ -37,7 +32,7 @@ def eval_model(model, env, trials, max_iters):
     for e in range(trials):
         state = env.reset()
         for i in range(max_iters):
-            action = mlp_get_action(model, env, state, e)
+            action = model.get_action(state)
             new_state, reward, done, _ = env.step(action)
             state = new_state
             if done:
@@ -65,11 +60,11 @@ def main(hparams):
         'reward': (1,),
         'done': (1,),
         'dist': (1,),
-        'scramble_dists': (1,),
+        'scramble_dist': (1,),
     }
     dtype_dict = {
         'action': int,
-        'scramble_dists': int,
+        'scramble_dist': int,
     }
     memory = SimpleMemory(hparams['capacity'], mem_dict, dtype_dict)
     torch.manual_seed(hparams['seed'])

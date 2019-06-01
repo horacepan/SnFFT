@@ -8,7 +8,7 @@ import pdb
 import sys
 sys.path.append('../')
 from utils import check_memory, get_logger
-from tile_memory import ReplayMemory, ReplayMemory2
+from tile_memory import ReplayMemory, ReplayMemory2, SimpleMemory
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,59 +19,46 @@ from tile_irrep_env import TileIrrepEnv
 from tile_env import TileEnv
 from tensorboardX import SummaryWriter
 
-from tile_dqn import IrrepDQN, MLP, IrrepDQNMLP
+from tile_models import IrrepDQN, MLP, IrrepDQNMLP
 
-log = get_logger(None)
+log = get_logger(None, stream=False)
 
 def eval_model(model, env, trials, max_iters):
     successes = 0
     move_cnt = []
     for e in range(trials):
         state = env.reset()
+        env.shuffle(e)
         for i in range(max_iters):
-            action = get_action(model, env, env.grid, e)
+            action = model.get_action(env, env.grid, e, x=env.x, y=env.y)
             new_state, reward, done, _ = env.step(action)
             state = new_state
             if done:
                 successes += 1
                 move_cnt.append(i + 1)
                 break
-    log.info('Validation | {} Trials | Solves: {:.2f} | LQ {:.2f} | MQ {:.2f} | UQ: {:.2f} | Max solve: {}'.format(
-        trials, successes, np.percentile(move_cnt, 25), np.percentile(move_cnt, 50),
-        np.percentile(move_cnt, 75), np.max(move_cnt)
-    ))
+    if len(move_cnt) > 0:
+        log.info('Validation | {} Trials | Solves: {:.2f} | LQ {:.2f} | MQ {:.2f} | UQ: {:.2f} | Max solve: {}'.format(
+            trials, successes, np.percentile(move_cnt, 25), np.percentile(move_cnt, 50),
+            np.percentile(move_cnt, 75), np.max(move_cnt)
+        ))
+    else:
+        log.info('Validation | {} Trials | Solves: {}'.format(trials, len(move_cnt)))
 
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
 
-def get_action(pol_net, env, state, e, all_nbrs=None):
-    '''
-    pol_net: TileDQN
-    env: TileIrrepEnv
-    state: not actually used! b/c we need to get the neighbors of the current state!
-           Well, we _could_ have the state be the grid state!
-    e: int
-    '''
-    if all_nbrs is None:
-        all_nbrs = env.all_nbrs(env.grid) # these are irreps
-
-    invalid_moves = [m for m in TileEnv.MOVES if m not in env.valid_moves()]
-    vals = pol_net.forward(torch.from_numpy(all_nbrs).float())
-    # TODO: this is pretty hacky
-    for m in invalid_moves:
-        vals[m] = -float('inf')
-    return torch.argmax(vals).item()
-
 def update2(pol_net, targ_net, env, batch, opt, discount, ep):
-    rewards = torch.from_numpy(batch.reward)
-    dones = torch.from_numpy(batch.done)
-    states = torch.from_numpy(batch.state)
-    nbrs = torch.from_numpy(batch.nbrs)
+    rewards = torch.from_numpy(batch['reward'])
+    dones = torch.from_numpy(batch['done'])
+    states = torch.from_numpy(batch['state'])
+    nbrs = torch.from_numpy(batch['nbrs'])
 
     # Recall Q(s_t, a_t) = V(s_{t+1})
     pred_vals = pol_net.forward(states)
 
     # feed ALL nbrs into this!
+    # technically we need to white out the invalid moves somehow
     irrep_dim = states.size(-1)
     n_nbrs = len(TileEnv.MOVES)
     #batch_all_nbrs = torch.FloatTensor([env.all_nbrs(grid) for grid in batch.grid]).view(-1, irrep_dim)
@@ -89,12 +76,21 @@ def update2(pol_net, targ_net, env, batch, opt, discount, ep):
     return loss.item()
 
 def update(pol_net, targ_net, env, batch, opt, discount, ep):
-    rewards = torch.from_numpy(batch.reward)
-    dones = torch.from_numpy(batch.done)
-    states = torch.from_numpy(batch.state)
-    next_states = torch.from_numpy(batch.next_state)
-    dists = torch.from_numpy(batch.scramble_dist).float()
-    pred_vals = pol_net.forward(states)
+    '''
+    s = state
+    Q(s, a) = V(next state)
+    SO we need the grid of the next state and the irrep of next state
+    We dont actually need the current state
+    Q(s, a), r + discount * best neighbor of next state
+    The grid actually gives you EVERYTHING!
+    So we should only store the grid?
+    '''
+    rewards = torch.from_numpy(batch['reward'])
+    dones = torch.from_numpy(batch['done'])
+    states = torch.from_numpy(batch['irrep_state'])
+    next_states = torch.from_numpy(batch['next_irrep_state'])
+    dists = torch.from_numpy(batch['scramble_dist']).float()
+    pred_vals = pol_net.forward(next_states)
     targ_vals = (rewards + discount * (1 - dones) * targ_net.forward(next_states))
 
     opt.zero_grad()
@@ -119,6 +115,23 @@ def main(hparams):
     if hparams['update_type'] == 1:
         memory = ReplayMemory(hparams['capacity'],
                               env.observation_space.shape[0])
+        mem_dict = {
+            # this should be?
+            'irrep_state': (env.observation_space.shape[0],),
+            'next_irrep_state': (env.observation_space.shape[0],),
+            'action': (1,),
+            'reward': (1,),
+            'done': (1,),
+            'dist': (1,),
+            'scramble_dist': (1,),
+        }
+        dtype_dict = {
+            'action': int,
+            'scramble_dist': int,
+        }
+
+        memory = SimpleMemory(hparams['capacity'], mem_dict, dtype_dict)
+
     else:
         memory2 = ReplayMemory2(hparams['capacity'],
                                 env.observation_space.shape[0],
@@ -131,26 +144,39 @@ def main(hparams):
     losses = []
     dones = []
     for e in range(hparams['epochs'] + 1):
-        #state = env.reset()
         #states = env.shuffle(hparams['shuffle_len'])
-        #for dist, (grid_state, _x, _y) in enumerate(states):
         grid_state = env.reset(output='grid') # is this a grid state?
         for i in range(hparams['max_iters']):
-            nbrs = env.all_nbrs(grid_state)
-            if random.random() < exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']):
-                # we compute neighbors b/c we need to cache this?
-                action = random.choice(env.valid_moves())
-            else:
-                action  = get_action(pol_net, env, grid_state, e, all_nbrs=nbrs)
+        #for dist, (grid_state, _x, _y) in enumerate(states):
+            # we compute neighbors b/c we need to cache this?
+            nbrs = env.all_nbrs(grid_state, env.x, env.y)
+            #nbrs = env.all_nbrs(grid_state, _x, _y)
 
-            #new_state, reward, done, _ = env.step(action)
+            if random.random() < exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']):
+                did_rand = 1
+                #action = random.choice(env.valid_moves(_x, _y))
+                action = random.choice(env.valid_moves(env.x, env.y))
+            else:
+                did_rand = 0
+                #action  = pol_net.get_action(env, grid_state, e, all_nbrs=nbrs, x=_x, y=_y)
+                action  = pol_net.get_action(env, grid_state, e, all_nbrs=nbrs, x=env.x, y=env.y)
+
+            new_state, reward, done, _ = env.step(action)
             state = env.cat_irreps(grid_state)
-            # TODO: how do we parameterize this
-            #new_grid_state, reward, done, _ = env.peek(grid_state, _x, _y, action)
-            new_grid_state, reward, done, _ = env.step(action)
+            #new_irrep_state, reward, done, _ = env.peek(grid_state, _x, _y, action)
+            #new_grid_state, reward, done, _ = env.step(action)
             new_state = nbrs[action]
+
             if hparams['update_type'] == 1:
-                memory.push(state, action, new_state, reward, done, 0)
+                memory.push({
+                    'irrep_state': state,
+                    'action': action,
+                    'reward': reward,
+                    'done': done,
+                    'next_irrep_state': new_state,
+                    'dist': 0
+                })
+
             else:
                 memory2.push(state, nbrs, env.grid, reward, done) # only need the new state
             state = new_state
