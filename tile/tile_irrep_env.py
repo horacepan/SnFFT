@@ -46,6 +46,7 @@ class TileIrrepEnv(TileEnv):
     def step(self, action):
         grid_state, reward, done, info = super(TileIrrepEnv, self).step(action)
         cat_irrep = self.cat_irreps(grid_state)
+        info['grid'] = grid_state
         return cat_irrep, reward, done, info
 
     # TODO: maybe manually get the pinv here?
@@ -65,7 +66,20 @@ class TileIrrepEnv(TileEnv):
         else:
             return self.cat_irreps(grid_state)
 
-    def all_nbrs(self, grid, x, y):
+    def all_nbrs(self, grid, x=None, y=None, verbose=False):
+        if x  is None:
+            n = grid.shape[0]
+            empty_loc = np.where(grid == (n * n))
+            x, y = empty_loc[0][0], empty_loc[1][0]
+        else:
+            n = grid.shape[0]
+            empty_loc = np.where(grid == (n * n))
+            _x, _y = empty_loc[0][0], empty_loc[1][0]
+            try:
+                assert (_x == x) and (_y == y)
+            except:
+                pdb.set_trace()
+
         nbrs = super(TileIrrepEnv, self).neighbors(grid, x, y)
         # call something else instead?
         irrep_nbrs = np.zeros((len(TileIrrepEnv.MOVES),) + self.irrep_shape)
@@ -73,7 +87,7 @@ class TileIrrepEnv(TileEnv):
 
         for move in TileEnv.MOVES:
             if move not in nbrs and self_irrep is None:
-                self_irrep = self.cat_irreps(self.grid)
+                self_irrep = self.cat_irreps(grid)
                 irrep_nbrs[move] = self_irrep
             elif move not in nbrs:
                 irrep_nbrs[move] = self_irrep
@@ -88,11 +102,11 @@ class TileIrrepEnv(TileEnv):
             irrep_nbrs.append(self.cat_irreps(n))
         return irrep_nbrs
 
-    def neighbors(self):
+    def neighbors_dict(self, grid=None, x=None, y=None):
         '''
         Returns neighboring puzzle states' irrep vector
         '''
-        nbrs = super(TileIrrepEnv, self).neighbors()
+        nbrs = super(TileIrrepEnv, self).neighbors(grid, x, y)
         irrep_nbrs = {}
         for a, nb_grid in nbrs.items():
             irrep_nbrs[a] = self.cat_irreps(nb_grid)
@@ -110,7 +124,7 @@ def test():
     partitions = [(9,), (8, 1)]
     env = TileIrrepEnv(n, partitions)
     irrep_state = env.reset()
-    nbrs = env.neighbors()
+    nbrs = env.neighbors_dict()
 
 if __name__ == '__main__':
     test()

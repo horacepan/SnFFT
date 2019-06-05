@@ -1,3 +1,4 @@
+import pdb
 from collections import namedtuple
 import numpy as np
 
@@ -28,6 +29,11 @@ class SimpleMemory(object):
 
     def __len__(self):
         return self.filled
+
+    def prefill(self, dic):
+        for k, v in dic.items():
+            for i in range(self.capacity):
+                self.mem[k][i] = v
 
 class ReplayMemory(object):
     def __init__(self, capacity, state_dim):

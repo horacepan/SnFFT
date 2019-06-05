@@ -26,6 +26,15 @@ log = get_logger(None, stream=False)
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
 
+def mlp_get_action(model, env, state, e):
+        '''
+        state: 1 x n_in tensor
+        Returns int of the argmax
+        '''
+        state = torch.from_numpy(state).float().unsqueeze(0)
+        vals = model.forward(state)
+        return vals.argmax(dim=1).item()
+
 def eval_model(model, env, trials, max_iters):
     successes = 0
     move_cnt = []
@@ -39,9 +48,13 @@ def eval_model(model, env, trials, max_iters):
                 successes += 1
                 move_cnt.append(i + 1)
                 break
-    print('Validation | {} Trials | Solves: {:.2f} | LQ: {:.2f} | Avg Solve: {:.2f}  | UQ: {:2f}'.format(
-        trials, successes, np.percentile(move_cnt, 25), np.mean(move_cnt), np.percentile(move_cnt, 75)
-    ))
+    if len(move_cnt) > 0:
+        print('Validation | {} Trials | Solves: {:.2f} | LQ: {:.2f} | Avg Solve: {:.2f}  | UQ: {:2f}'.format(
+            trials, successes, np.percentile(move_cnt, 25), np.mean(move_cnt), np.percentile(move_cnt, 75)
+        ))
+    else:
+        print('Validation | {} Trials | Solves: 0')
+
 
 def main(hparams):
     partitions = eval(hparams['partitions'])
@@ -79,24 +92,22 @@ def main(hparams):
     dones = []
     tot_dists = []
     for e in range(hparams['epochs'] + 1):
-        #state = env.reset()
-        states = env.shuffle(hparams['shuffle_len'])
-        # are the shuffles grids or one hots?
-
-        #for i in range(hparams['max_iters']):
+        onehot_state = env.reset()
+        #states = env.shuffle(hparams['shuffle_len'])
+        for i in range(hparams['max_iters']):
         # states are onehot vectors
-        for dist, (grid_state, _x, _y) in enumerate(states):
-            onehot_state = grid_to_onehot(grid_state)
+        #for dist, (grid_state, _x, _y) in enumerate(states):
+            #onehot_state = grid_to_onehot(grid_state)
+            _x, _y = env.x, env.y
             if random.random() < exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']):
-                action = random.choice(env.valid_moves())
+                action = random.choice(env.valid_moves(_x, _y))
             else:
                 action = pol_net.get_action(onehot_state)
 
             # need option to do peek instead of step if we want to use a shuffle trajectory!
-            #new_state, reward, done, _ = env.step(action)
-            new_grid, reward, done, info = env.peek(grid_state, _x, _y, action)
-            new_state = grid_to_onehot(new_grid)
-            #memory.push(onehot_state, action, new_state, reward, done, 0)
+            new_state, reward, done, _ = env.step(action)
+            #new_grid, reward, done, info = env.peek(grid_state, _x, _y, action)
+            #new_state = grid_to_onehot(new_grid)
             memory.push({
                 'onehot_state': onehot_state,
                 'action': action,
@@ -106,6 +117,7 @@ def main(hparams):
                 'dist': 0
             })
             state = new_state
+            onehot_state = new_state
             iters += 1
 
             if iters % hparams['update_int'] == 0 and iters > 0:
@@ -117,7 +129,7 @@ def main(hparams):
             if iters % hparams['update_int'] == 0 and e > 0:
                 targ_net.load_state_dict(pol_net.state_dict())
 
-        tot_dists.append(dist)
+        #tot_dists.append(dist)
 
         if e % hparams['log_int'] == 0 and e > 0:
             _k = 100
@@ -126,13 +138,14 @@ def main(hparams):
                 exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate'])
             ))
 
-    eval_model(pol_net, env, 100, 100)
     try:
         if not (hparams['savename'] is None):
             log.info('Saving model to: {}'.format(hparams['savename']))
             torch.save(pol_net, './models/{}.pt'.format(hparams['savename']))
     except:
         pdb.set_trace()
+    eval_model(pol_net, env, 100, 100)
+    check_memory()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

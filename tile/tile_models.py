@@ -1,5 +1,6 @@
 import sys
 sys.path.append('../')
+import math
 from young_tableau import FerrersDiagram
 import torch
 import torch.nn as nn
@@ -8,15 +9,22 @@ import torch.nn.functional as F
 class IrrepDQN(nn.Module):
     def __init__(self, partitions):
         super(IrrepDQN, self).__init__()
-
         n_in = 0
         for p in partitions:
             f = FerrersDiagram(p)
             n_in += (len(f.tableaux) * len(f.tableaux))
 
+        self.tile_size = sum(partitions[0])
         self.w = nn.Linear(n_in, 1)
         self.n_in = n_in
+        self.n_out = 1
         self.init_weights()
+
+    # Mostly for debugging
+    def forward_grid(self, grid, env):
+        irr = env.cat_irreps(grid)
+        th_irrep = torch.from_numpy(irr).float().unsqueeze(0)
+        return self.forward(th_irrep)
 
     def forward(self, x):
         '''
@@ -25,7 +33,11 @@ class IrrepDQN(nn.Module):
         return self.w.forward(x)
 
     def init_weights(self):
-        pass
+        self.w.weight.data.normal_(0, 1. / math.sqrt(self.n_in + self.n_out))
+        if self.tile_size == 2:
+            self.w.bias[0] = -3.0
+        elif self.tile_size == 3:
+            self.w.bias[0] = -21.97
 
     def get_action(self, env, grid_state, e, all_nbrs=None, x=None, y=None):
         '''
@@ -56,6 +68,28 @@ class IrrepDQNMLP(nn.Module):
         x: an irrep
         '''
         return self.net(x)
+
+    def get_action(self, env, grid_state, e, all_nbrs=None, x=None, y=None):
+        '''
+        env: TileIrrepEnv
+        state: not actually used! b/c we need to get the neighbors of the current state!
+               Well, we _could_ have the state be the grid state!
+        e: int
+        '''
+        if all_nbrs is None:
+            all_nbrs = env.all_nbrs(grid_state, x, y) # these are irreps
+
+        invalid_moves = [m for m in env.MOVES if m not in env.valid_moves(x, y)]
+        vals = self.forward(torch.from_numpy(all_nbrs).float())
+        # TODO: this is pretty hacky
+        for m in invalid_moves:
+            vals[m] = -float('inf')
+        return torch.argmax(vals).item()
+
+    def forward_grid(self, grid, env):
+        irr = env.cat_irreps(grid)
+        th_irrep = torch.from_numpy(irr).float().unsqueeze(0)
+        return self.forward(th_irrep)
 
 class MLP(nn.Module):
     def __init__(self, n_in, n_hid, n_out):
@@ -142,11 +176,37 @@ class TileBaselineV(nn.Module):
         super(TileBaselineV, self).__init__()
         self.net = MLP(n_in, n_hid, 1)
 
-    def get_action(self, states):
-        pass
+    def get_action(self, env, grid_state, e, all_nbrs=None, x=None, y=None):
+        # get neighbors
+        if all_nbrs is None:
+            all_nbrs = env.all_nbrs(grid_state, x, y) # these are irreps
 
-    def update(self):
-        pass
+        invalid_moves = [m for m in env.MOVES if m not in env.valid_moves(x, y)]
+        vals = self.forward(torch.from_numpy(all_nbrs).float())
+        # TODO: this is pretty hacky
+        for m in invalid_moves:
+            vals[m] = -float('inf')
+        return torch.argmax(vals).item()
+
+    def update(self, targ_net, env, batch, opt, discount, ep):
+        rewards = torch.from_numpy(batch['reward'])
+        dones = torch.from_numpy(batch['done'])
+        states = torch.from_numpy(batch['irrep_state'])
+        next_states = torch.from_numpy(batch['next_irrep_state'])
+        dists = torch.from_numpy(batch['scramble_dist']).float()
+        pred_vals = pol_net.forward(next_states)
+        targ_vals = (rewards + discount * (1 - dones) * targ_net.forward(next_states))
+
+        opt.zero_grad()
+        #errors = (1 / (dists + 1.)) * (pred_vals - targ_vals.detach()).pow(2)
+        #errors = (pred_vals - targ_vals.detach()).pow(2)
+        #loss = errors.sum() / len(targ_vals)
+        loss = F.mse_loss(pred_vals, targ_vals.detach())
+        loss.backward()
+        opt.step()
+        return loss.item()
+
+
 
 def test():
     partitions = [(8, 1)]
