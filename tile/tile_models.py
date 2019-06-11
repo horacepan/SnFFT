@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class IrrepDQN(nn.Module):
+class IrrepDVN(nn.Module):
     def __init__(self, partitions):
-        super(IrrepDQN, self).__init__()
+        super(IrrepDVN, self).__init__()
         n_in = 0
         for p in partitions:
             f = FerrersDiagram(p)
@@ -55,6 +55,121 @@ class IrrepDQN(nn.Module):
         for m in invalid_moves:
             vals[m] = -float('inf')
         return torch.argmax(vals).item()
+
+    def mem_dict(self, env):
+        return {
+            'grid_state': env.grid.shape,
+            'next_grid_state': env.grid.shape,
+            'irrep_state': (env.observation_space.shape[0],),
+            'irrep_nbrs': (4, env.observation_space.shape[0]),
+            'next_irrep_state': (env.observation_space.shape[0],),
+            'action': (1,),
+            'reward': (1,),
+            'done': (1,),
+            'dist': (1,),
+            'scramble_dist': (1,),
+        }
+
+    def dtype_dict(self):
+        return {
+            'action': int,
+            'scramble_dist': int,
+        }
+
+    def update(self, targ_net, env, batch, opt, discount, ep):
+        rewards = torch.from_numpy(batch['reward'])
+        dones = torch.from_numpy(batch['done'])
+        states = torch.from_numpy(batch['irrep_state'])
+        nbrs = torch.from_numpy(batch['irrep_nbrs'])
+        grids = torch.from_numpy(batch['grid_state'])
+
+        # Recall Q(s_t, a_t) = V(s_{t+1})
+        pred_vals = self.forward(states)
+
+        irrep_dim = states.size(-1)
+        batch_all_nbrs = nbrs.view(-1, irrep_dim)
+        all_next_vals = targ_net.forward(batch_all_nbrs)
+        all_next_vals = all_next_vals.view(len(states), -1)
+        best_vals = all_next_vals.max(dim=1)[0]
+        targ_vals = rewards + discount * (1 - dones) * best_vals
+
+        opt.zero_grad()
+        loss = F.mse_loss(pred_vals, targ_vals.detach())
+        loss.backward()
+        opt.step()
+        return loss.item()
+
+class IrrepDQN(nn.Module):
+    def __init__(self, partitions, nactions):
+        super(IrrepDQN, self).__init__()
+        n_in = 0
+        for p in partitions:
+            f = FerrersDiagram(p)
+            n_in += (len(f.tableaux) * len(f.tableaux))
+
+        self.tile_size = sum(partitions[0])
+        self.w = nn.Linear(n_in, 1)
+        self.n_in = n_in
+        self.n_out = nactions
+        self.init_weights()
+
+    # Mostly for debugging
+    def forward_grid(self, grid, env):
+        irr = env.cat_irreps(grid)
+        th_irrep = torch.from_numpy(irr).float().unsqueeze(0)
+        return self.forward(th_irrep)
+
+    def forward(self, x):
+        '''
+        Assumption is that x has already been raveled/concattenated so x is of dim: batch x n_in
+        '''
+        return self.w.forward(x)
+
+    def init_weights(self):
+        self.w.weight.data.normal_(0, 1. / math.sqrt(self.n_in + self.n_out))
+        if self.tile_size == 2:
+            self.w.bias[0] = -3.0
+        elif self.tile_size == 3:
+            self.w.bias[0] = -21.97
+
+    def get_action_grid(self, grid, env):
+        irrep = env.cat_irreps(grid)
+        return self.get_action(irrep)
+
+    def get_action_irrep(self, state):
+        '''
+        state: 1 x n_in tensor
+        Returns int of the argmax
+        '''
+        state = torch.from_numpy(state).float().unsqueeze(0)
+        vals = self.forward(state)
+        return vals.argmax(dim=1).item()
+
+    def mem_dict(self, env):
+        '''
+        env: TileIrrepEnv
+        Assumption: The TileIrrepEnv's observation space will be the dimension of
+        the irrep size.
+        Returns a dictionary containing the sizes of the stuff the ReplayMemory has to store.
+        '''
+        return {
+            'grid_state': env.grid.shape,
+            'next_grid_state': env.grid.shape,
+            'irrep_state': (env.observation_space.shape[0],),
+            'irrep_nbrs': (4, env.observation_space.shape[0]),
+            'next_irrep_state': (env.observation_space.shape[0],),
+            'action': (1,),
+            'reward': (1,),
+            'done': (1,),
+            'dist': (1,),
+            'scramble_dist': (1,),
+        }
+
+    def dtype_dict(self):
+        return {
+            'action': int,
+            'scramble_dist': int,
+        }
 
 class IrrepDQNMLP(nn.Module):
     def __init__(self, partition, n_hid, n_out):
@@ -194,7 +309,7 @@ class TileBaselineV(nn.Module):
         states = torch.from_numpy(batch['irrep_state'])
         next_states = torch.from_numpy(batch['next_irrep_state'])
         dists = torch.from_numpy(batch['scramble_dist']).float()
-        pred_vals = pol_net.forward(next_states)
+        pred_vals = self.forward(next_states)
         targ_vals = (rewards + discount * (1 - dones) * targ_net.forward(next_states))
 
         opt.zero_grad()

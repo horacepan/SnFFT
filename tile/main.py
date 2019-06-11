@@ -8,7 +8,7 @@ import pdb
 import sys
 sys.path.append('../')
 from utils import check_memory, get_logger
-from tile_memory import ReplayMemory, ReplayMemory2, SimpleMemory
+from tile_memory import SimpleMemory
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,7 +19,7 @@ from tile_irrep_env import TileIrrepEnv
 from tile_env import TileEnv
 from tensorboardX import SummaryWriter
 
-from tile_models import IrrepDQN, MLP, IrrepDQNMLP
+from tile_models import IrrepDVN, IrrepDQN, IrrepDQNMLP
 
 log = get_logger(None, stream=False)
 
@@ -83,104 +83,24 @@ def eval_model(model, env, trials, max_iters):
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
 
-def update2(pol_net, targ_net, env, batch, opt, discount, ep):
-    rewards = torch.from_numpy(batch['reward'])
-    dones = torch.from_numpy(batch['done'])
-    states = torch.from_numpy(batch['irrep_state'])
-    nbrs = torch.from_numpy(batch['irrep_nbrs'])
-    grids = torch.from_numpy(batch['grid_state'])
-
-    # Recall Q(s_t, a_t) = V(s_{t+1})
-    pred_vals = pol_net.forward(states)
-
-    irrep_dim = states.size(-1)
-    batch_all_nbrs = nbrs.view(-1, irrep_dim)
-    all_next_vals = targ_net.forward(batch_all_nbrs)
-    all_next_vals = all_next_vals.view(len(states), -1)
-    best_vals = all_next_vals.max(dim=1)[0]
-    targ_vals = rewards + discount * (1 - dones) * best_vals
-
-    opt.zero_grad()
-    loss = F.mse_loss(pred_vals, targ_vals.detach())
-    loss.backward()
-    opt.step()
-    if loss.item() < 0.0001:
-        print('Super small loss!')
-    return loss.item()
-
-def update(pol_net, targ_net, env, batch, opt, discount, ep):
-    '''
-    s = state
-    Q(s, a) = V(next state)
-    SO we need the grid of the next state and the irrep of next state
-    We dont actually need the current state
-    Q(s, a), r + discount * best neighbor of next state
-    The grid actually gives you EVERYTHING!
-    So we should only store the grid?
-    '''
-    rewards = torch.from_numpy(batch['reward'])
-    dones = torch.from_numpy(batch['done'])
-    states = torch.from_numpy(batch['irrep_state'])
-    next_states = torch.from_numpy(batch['next_irrep_state'])
-    dists = torch.from_numpy(batch['scramble_dist']).float()
-    pred_vals = pol_net.forward(next_states)
-    targ_vals = (rewards + discount * (1 - dones) * targ_net.forward(next_states))
-
-    opt.zero_grad()
-    loss = F.mse_loss(pred_vals, targ_vals.detach())
-    loss.backward()
-    opt.step()
-    return loss.item()
 
 def main(hparams):
     partitions = eval(hparams['partitions'])
 
-    if hparams['update_type'] == 1:
-        pol_net = IrrepDQN(partitions)
-        targ_net = IrrepDQN(partitions)
-    else:
-        pol_net = IrrepDQNMLP(partitions[0], hparams['nhid'], 1)
-        targ_net = IrrepDQNMLP(partitions[0], hparams['nhid'], 1)
+    if hparams['model_type'] == 'IrrepDVN':
+        pol_net = IrrepDVN(partitions)
+        targ_net = IrrepDVN(partitions)
+    elif hparams['model_type'] == 'IrrepDQN':
+        pol_net = IrrepDQN(partitions, nactions=4)
+        targ_net = IrrepDQN(partitions, nactions=4)
 
     env = TileIrrepEnv(hparams['tile_size'], partitions, hparams['reward'])
     opt = torch.optim.Adam(pol_net.parameters(), hparams['lr'])
-
-    if hparams['update_type'] < 3:
-        mem_dict = {
-            # this should be?
-            'grid_state': env.grid.shape,
-            'next_grid_state': env.grid.shape,
-            'irrep_state': (env.observation_space.shape[0],),
-            'irrep_nbrs': (4, env.observation_space.shape[0]),
-            'next_irrep_state': (env.observation_space.shape[0],),
-            'action': (1,),
-            'reward': (1,),
-            'done': (1,),
-            'dist': (1,),
-            'scramble_dist': (1,),
-        }
-        dtype_dict = {
-            'action': int,
-            'scramble_dist': int,
-        }
-
-        memory = SimpleMemory(hparams['capacity'], mem_dict, dtype_dict)
-        print('Made simple memory')
+    memory = SimpleMemory(hparams['capacity'], pol_net.mem_dict(env), pol_net.dtype_dict())
 
     torch.manual_seed(hparams['seed'])
     np.random.seed(hparams['seed'])
     random.seed(hparams['seed'])
-    if hparams['prefill'] and hparams['update_type'] == 1:
-        init_grid=  np.array(range(1, env.n * env.n + 1)).reshape(env.n, env.n)
-        init_irrep = env.cat_irreps(init_grid)
-        memory.prefill({
-            'grid_state': init_grid,
-            'irrep_state': init_irrep,
-            'irrep_nbrs': env.all_nbrs(init_grid, env.n - 1, env.n - 1),
-            'reward': 0,
-            'done': 1,
-            'dist': 0,
-        })
 
     n_updates = 0
     iters = 0
@@ -219,12 +139,9 @@ def main(hparams):
             iters += 1
             if iters % hparams['update_int'] == 0 and iters > 0:
                 batch = memory.sample(hparams['batch_size'])
-                loss = update2(pol_net, targ_net, env, batch, opt, hparams['discount'], e)
+                loss = pol_net.update(targ_net, env, batch, opt, hparams['discount'], e)
                 n_updates += 1
-                #batch2 = memory2.sample(hparams['batch_size'])
-                #loss = update2(pol_net, targ_net, env, batch2, opt, hparams['discount'], e)
                 losses.append(loss)
-
             if done:
                 break
 
@@ -272,18 +189,17 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--discount', type=float, default=0.9)
     parser.add_argument('--reward', type=str, default='penalty')
-    parser.add_argument('--nhid', type=int, default=16)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--shuffle_len', type=int, default=50)
     parser.add_argument('--shuffle_min', type=int, default=20)
     parser.add_argument('--shuffle_max', type=int, default=80)
-    parser.add_argument('--prefill', action='store_true')
 
     parser.add_argument('--log_int', type=int, default=100)
-    parser.add_argument('--val_int', type=int, default=100)
+    parser.add_argument('--val_int', type=int, default=10000)
     parser.add_argument('--update_int', type=int, default=20)
     parser.add_argument('--target_int', type=int, default=20)
     parser.add_argument('--update_type', type=int, default=1)
+    parser.add_argument('--model_type', type=str, default='IrrepDVN')
     parser.add_argument('--savename', type=str, default=None)
 
     args = parser.parse_args()
