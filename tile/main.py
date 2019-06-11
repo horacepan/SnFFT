@@ -188,7 +188,8 @@ def main(hparams):
     dones = []
     rews = set()
     for e in range(hparams['epochs'] + 1):
-        states = env.shuffle(hparams['shuffle_len'])
+        shuffle_len = random.randint(hparams['shuffle_min'], hparams['shuffle_max'])
+        states = env.shuffle(shuffle_len)
         #grid_state = env.reset(output='grid') # is this a grid state?
         #for i in range(hparams['max_iters']):
         for dist, (grid_state, _x, _y) in enumerate(states):
@@ -274,6 +275,8 @@ if __name__ == '__main__':
     parser.add_argument('--nhid', type=int, default=16)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--shuffle_len', type=int, default=50)
+    parser.add_argument('--shuffle_min', type=int, default=20)
+    parser.add_argument('--shuffle_max', type=int, default=80)
     parser.add_argument('--prefill', action='store_true')
 
     parser.add_argument('--log_int', type=int, default=100)

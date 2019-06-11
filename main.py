@@ -134,9 +134,15 @@ def main(hparams):
     rewards = np.zeros(hparams['logint'])
 
     log.info('Before any training:')
-    val_avg, val_prop, val_time = val_model(pol_net, env, hparams)
+    val_avg, val_prop, val_time, solve_lens = val_model(pol_net, env, hparams)
     log.info('Validation | avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
         val_avg, val_prop, val_time
+    ))
+    log.info('Validation | LQ: {:.3f} | MQ: {:.3f} | UQ: {:.3f} | Max: {}'.format(
+        np.percentile(solve_lens, 25),
+        np.percentile(solve_lens, 50),
+        np.percentile(solve_lens, 75),
+        max(solve_lens)
     ))
     scramble_lens = []
     for e in range(hparams['epochs']):
@@ -177,7 +183,7 @@ def main(hparams):
         logger.add_scalar('reward', epoch_rews, e)
 
         if e % hparams['logint'] == 0 and e > 0:
-            val_avg, val_prop, val_time = val_model(pol_net, env, hparams)
+            val_avg, val_prop, val_time, _ = val_model(pol_net, env, hparams)
             logger.add_scalar('last_{}_solved'.format(hparams['logint']), len(solved_lens) / hparams['logint'], e)
             if len(solved_lens) > 0:
                 logger.add_scalar('last_{}_solved_len'.format(hparams['logint']), np.mean(solved_lens), e)
@@ -208,7 +214,7 @@ def main(hparams):
     check_memory()
 
     hparams['val_size'] = 10 * hparams['val_size']
-    val_avg, val_prop, val_time = val_model(pol_net, env, hparams)
+    val_avg, val_prop, val_time, _ = val_model(pol_net, env, hparams)
     log.info('Validation avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
         val_avg, val_prop, val_time
     ))
@@ -233,7 +239,8 @@ def val_model(pol_net, env, hparams):
     avg_solve = -1 if len(solved_lens) == 0 else np.mean(solved_lens)
     prop_solve = len(solved_lens) / hparams['val_size']
     elapsed = time.time() - start
-    return avg_solve, prop_solve, elapsed
+
+    return avg_solve, prop_solve, elapsed, solved_lens
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -242,7 +249,7 @@ if __name__ == '__main__':
     parser.add_argument('--explore_proportion', type=float, default=0.2)
     parser.add_argument('--eps_min', type=float, default=0.05)
     parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--maxsteps', type=int, default=30)
+    parser.add_argument('--maxsteps', type=int, default=15)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--update_int', type=int, default=50)
