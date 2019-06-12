@@ -145,6 +145,9 @@ class IrrepDQN(nn.Module):
         vals = self.forward(state)
         return vals.argmax(dim=1).item()
 
+    def update(self):
+        pass
+
     def mem_dict(self, env):
         '''
         env: TileIrrepEnv

@@ -11,10 +11,8 @@ from utils import check_memory, get_logger
 from tile_memory import SimpleMemory
 
 import numpy as np
-import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from tile_irrep_env import TileIrrepEnv
 from tile_env import TileEnv
 from tensorboardX import SummaryWriter
@@ -40,10 +38,6 @@ def t2_grid():
     }
     return grids
 
-def show_vals(pol_net, env):
-    for k, v in t2_grid().items():
-        print('{} | {}'.format(k, pol_net.forward_grid(v, env).item()))
-
 def get_action(model, env, grid_state, e, all_nbrs=None, x=None, y=None):
     if all_nbrs is None:
         all_nbrs = env.all_nbrs(grid_state, x, y) # these are irreps
@@ -54,6 +48,10 @@ def get_action(model, env, grid_state, e, all_nbrs=None, x=None, y=None):
     for m in invalid_moves:
         vals[m] = -float('inf')
     return torch.argmax(vals).item()
+
+def show_vals(pol_net, env):
+    for k, v in t2_grid().items():
+        print('{} | {}'.format(k, pol_net.forward_grid(v, env).item()))
 
 def eval_model(model, env, trials, max_iters):
     successes = 0
@@ -82,7 +80,6 @@ def eval_model(model, env, trials, max_iters):
 
 def exp_rate(explore_epochs, epoch_num, eps_min):
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
-
 
 def main(hparams):
     partitions = eval(hparams['partitions'])
@@ -123,7 +120,18 @@ def main(hparams):
             new_irrep_state, reward, done, info = env.peek(grid_state, _x, _y, action)
             rews.add(reward)
             #new_irrep_state, reward, done, info = env.step(action) # c
-            if hparams['update_type'] < 3:
+            if hparams['model_type'] == 'IrrepDVN':
+                memory.push({
+                    'grid_state': grid_state,
+                    'irrep_state': env.cat_irreps(grid_state),
+                    'irrep_nbrs': nbrs,
+                    'action': action,
+                    'reward': reward,
+                    'done': done,
+                    'next_irrep_state': new_irrep_state,
+                    'dist': iters
+                })
+            elif hparams['model_type'] == 'IrrepDQN':
                 memory.push({
                     'grid_state': grid_state,
                     'irrep_state': env.cat_irreps(grid_state),
