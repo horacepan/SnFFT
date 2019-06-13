@@ -4,7 +4,7 @@ sys.path.append('../')
 from young_tableau import FerrersDiagram
 from yor import yor
 from perm2 import Perm2, sn
-from tile_env import TileEnv, neighbors, env_neighbors
+from tile_env import TileEnv, neighbors, env_neighbors, grid_to_onehot
 import numpy as np
 from gym import spaces
 
@@ -83,7 +83,9 @@ class TileIrrepEnv(TileEnv):
         nbrs = super(TileIrrepEnv, self).neighbors(grid, x, y)
         # call something else instead?
         irrep_nbrs = np.zeros((len(TileIrrepEnv.MOVES),) + self.irrep_shape)
+        onehot_nbrs = np.zeros((len(TileIrrepEnv.MOVES),) + self.onehot_shape) # size of onehot?
         self_irrep = None
+        self_onehot = grid_to_onehot(grid)
 
         for move in TileEnv.MOVES:
             if move not in nbrs and self_irrep is None:
@@ -93,7 +95,13 @@ class TileIrrepEnv(TileEnv):
                 irrep_nbrs[move] = self_irrep
             else:
                 irrep_nbrs[move] = self.cat_irreps(nbrs[move])
-        return irrep_nbrs
+
+            if move not in nbrs:
+                onehot_nbrs[move] = self_onehot
+            else:
+                onehot_nbrs[move] = grid_to_onehot(nbrs[move])
+
+        return irrep_nbrs, onehot_nbrs
 
     def get_all_nbrs(grid):
         nbrs = neighbors(grid)

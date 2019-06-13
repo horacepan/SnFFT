@@ -14,10 +14,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 from tile_irrep_env import TileIrrepEnv
-from tile_env import TileEnv
+from tile_env import TileEnv, grid_to_onehot
 from tensorboardX import SummaryWriter
 
-from tile_models import IrrepDVN, IrrepDQN, IrrepDQNMLP
+from tile_models import IrrepDVN, IrrepDQN, IrrepDQNMLP, IrrepOnehotDVN
 
 log = get_logger(None, stream=False)
 
@@ -51,7 +51,7 @@ def get_action(model, env, grid_state, e, all_nbrs=None, x=None, y=None):
 
 def show_vals(pol_net, env):
     for k, v in t2_grid().items():
-        print('{} | {}'.format(k, pol_net.forward_grid(v, env).item()))
+        print('{} | {}'.format(k, pol_net.forward_grid(v, env).max().item()))
 
 def eval_model(model, env, trials, max_iters):
     successes = 0
@@ -60,7 +60,13 @@ def eval_model(model, env, trials, max_iters):
         state = env.reset()
         env.shuffle(100)
         for i in range(max_iters):
-            action = model.get_action(env, env.grid, e, x=env.x, y=env.y)
+            if isinstance(model, IrrepDVN):
+                action = model.get_action(env, env.grid, e, x=env.x, y=env.y)
+            elif isinstance(model, IrrepDQN):
+                action = model.get_action_grid(env, env.grid, x=env.x, y=env.y)
+            elif isinstance(model, IrrepOnehotDVN):
+                action = model.get_action(env, env.grid, x=env.x, y=env.y)
+
             new_state, reward, done, _ = env.step(action)
             state = new_state
             if done:
@@ -75,7 +81,7 @@ def eval_model(model, env, trials, max_iters):
     else:
         log.info('Validation | {} Trials | Solves: {}'.format(trials, len(move_cnt)))
 
-    if successes == trials:
+    if env.n == 2 and successes == trials:
         show_vals(model, env)
 
 def exp_rate(explore_epochs, epoch_num, eps_min):
@@ -83,15 +89,21 @@ def exp_rate(explore_epochs, epoch_num, eps_min):
 
 def main(hparams):
     partitions = eval(hparams['partitions'])
+    env = TileIrrepEnv(hparams['tile_size'], partitions, hparams['reward'])
 
     if hparams['model_type'] == 'IrrepDVN':
+        log.info('Making IrrepDVN')
         pol_net = IrrepDVN(partitions)
         targ_net = IrrepDVN(partitions)
     elif hparams['model_type'] == 'IrrepDQN':
+        log.info('Making IrrepDQN')
         pol_net = IrrepDQN(partitions, nactions=4)
         targ_net = IrrepDQN(partitions, nactions=4)
+    elif hparams['model_type'] == 'IrrepOnehotDVN':
+        log.info('Making IrrepOnehotDVN')
+        pol_net = IrrepOnehotDVN(env.onehot_shape, env.irrep_shape, hparams['n_hid'], partitions)
+        targ_net = IrrepOnehotDVN(env.onehot_shape, env.irrep_shape, hparams['n_hid'], partitions)
 
-    env = TileIrrepEnv(hparams['tile_size'], partitions, hparams['reward'])
     opt = torch.optim.Adam(pol_net.parameters(), hparams['lr'])
     memory = SimpleMemory(hparams['capacity'], pol_net.mem_dict(env), pol_net.dtype_dict())
 
@@ -111,11 +123,15 @@ def main(hparams):
         #for i in range(hparams['max_iters']):
         for dist, (grid_state, _x, _y) in enumerate(states):
             #_x, _y = env.x, env.y # C
-            nbrs = env.all_nbrs(grid_state, _x, _y)
+            nbrs, onehot_nbrs = env.all_nbrs(grid_state, _x, _y)
             if random.random() < exp_rate(hparams['max_exp_epochs'], e, hparams['min_exp_rate']):
                 action = random.choice(env.valid_moves(_x, _y))
             else:
-                action  = pol_net.get_action(env, grid_state, e, all_nbrs=nbrs, x=_x, y=_y)
+                if hparams['model_type'] == 'IrrepDVN':
+                    action  = pol_net.get_action(env, grid_state, e, all_nbrs=nbrs, x=_x, y=_y)
+                elif hparams['model_type'] == 'IrrepDQN':
+                    action  = pol_net.get_action_grid(env, grid_state, x=_x, y=_y)
+
 
             new_irrep_state, reward, done, info = env.peek(grid_state, _x, _y, action)
             rews.add(reward)
@@ -142,14 +158,38 @@ def main(hparams):
                     'next_irrep_state': new_irrep_state,
                     'dist': iters
                 })
+            elif hparams['model_type'] == 'IrrepOnehotDVN':
+                memory.push({
+                    #'grid_state': grid_state,
+                    'onehot_state': grid_to_onehot(grid_state),
+                    'irrep_state': env.cat_irreps(grid_state),
+                    'irrep_nbrs': nbrs,
+                    'onehot_nbrs': onehot_nbrs,
+                    'action': action,
+                    'reward': reward,
+                    'done': done,
+                    'next_irrep_state': new_irrep_state,
+                    'dist': iters
+                })
 
             #grid_state = info['grid'] # c
             iters += 1
             if iters % hparams['update_int'] == 0 and iters > 0:
-                batch = memory.sample(hparams['batch_size'])
-                loss = pol_net.update(targ_net, env, batch, opt, hparams['discount'], e)
-                n_updates += 1
-                losses.append(loss)
+                if hparams['model_type'] == 'IrrepDVN':
+                    batch = memory.sample(hparams['batch_size'])
+                    loss = pol_net.update(targ_net, env, batch, opt, hparams['discount'], e)
+                    n_updates += 1
+                    losses.append(loss)
+                elif hparams['model_type'] == 'IrrepDQN':
+                    batch = memory.sample(hparams['batch_size'])
+                    loss = pol_net.update(targ_net, env, batch, opt, hparams['discount'], e)
+                    n_updates += 1
+                    losses.append(loss)
+                elif hparams['model_type'] == 'IrrepOnehotDVN':
+                    batch = memory.sample(hparams['batch_size'])
+                    loss = pol_net.update(targ_net, env, batch, opt, hparams['discount'], e)
+                    n_updates += 1
+                    losses.append(loss)
             if done:
                 break
 
@@ -176,12 +216,12 @@ def main(hparams):
             torch.save(pol_net, './irrep_models/{}.pt'.format(hparams['savename']))
     except:
         log.info('Cant save')
-        #pdb.set_trace()
 
     if hparams['tile_size'] == 2:
         show_vals(pol_net, env)
     check_memory()
     log.info('Rewards seed: {}'.format(rews))
+    eval_model(pol_net, env, 200, 8)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -198,6 +238,7 @@ if __name__ == '__main__':
     parser.add_argument('--discount', type=float, default=0.9)
     parser.add_argument('--reward', type=str, default='penalty')
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--n_hid', type=int, default=16)
     parser.add_argument('--shuffle_len', type=int, default=50)
     parser.add_argument('--shuffle_min', type=int, default=20)
     parser.add_argument('--shuffle_max', type=int, default=80)
