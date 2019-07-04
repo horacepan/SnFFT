@@ -4,7 +4,6 @@ import pdb
 from functools import reduce
 from itertools import permutations
 import time
-from perm import Perm
 
 SN_CACHE = {}
 SN_IDMAP = {}
@@ -205,6 +204,7 @@ def sn(n, prefix='/local/hopan/'):
 
     return perms
 
+'''
 def test():
     for n in range(2,11):
         print('n = {}'.format(n))
@@ -230,6 +230,7 @@ def test():
     #    p = reduce(f, ps)
     #end = time.time()
     #print('Time for orginal perm 2nd time: {:.2f}'.format(end - start))
+'''
 
 def mult_table(n, inv_save, table_save):
     _sn = sn(n)
