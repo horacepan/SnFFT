@@ -94,6 +94,7 @@ class FerrersDiagram:
             print(ta)
             print('======')
 
+    # TODO: A LOT of room here for optimization!
     def gen_tableaux(self, perms=None):
         '''
         Returns: sorted list of the YoungTableau of the given shape/partition.

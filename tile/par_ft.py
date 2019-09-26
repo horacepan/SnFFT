@@ -74,7 +74,7 @@ if __name__ == '__main__':
     print(args)
 
     start =time.time()
-    res = par_ft(args.partition, args.fname, args.savedir, 2)
+    res = par_ft(args.partition, args.fname, args.savedir, args.ncpu)
     print('Done | Fourier matrix size: {}'.format(res.shape))
     end = time.time()
     print('Elapsed time: {:.2f}s'.format(end - start))
