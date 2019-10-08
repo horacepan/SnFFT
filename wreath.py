@@ -190,9 +190,8 @@ def young_subgroup_yor(alpha, _parts, prefix='/local/hopan/irreps/'):
         alpha = (2, 3, 0)
         parts = [(2,0), (2,1), ()]
     '''
-    assert len(alpha) == 3, 'alpha must be length 3'
-    #assert sum(alpha) == 8, 'alpha must be a partition of 8'
-    #assert (alpha[1] * 1 + alpha[2] * 2) % 3 == 0, 'alpha must be a valid configuration'
+    #assert len(alpha) == 3, 'alpha must be length 3'
+    assert sum(alpha) == sum(map(sum, _parts)), 'alpha must be length 3'
 
     wreath_dict = {}
     # load the irreps for each partition
@@ -318,6 +317,7 @@ def get_mat(g, yor_dict, block_scalars=None):
     block_size = vs[0].shape[0]
     size = len(yg) * block_size
     mat = np.zeros((size, size), dtype=np.complex64)
+    #mat = np.zeros((size, size))
 
     for (i, j), v in yg.items():
         x1, x2 = (block_size*i, block_size*i+block_size)
