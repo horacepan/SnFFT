@@ -10,7 +10,7 @@ from wreath import young_subgroup_yor, wreath_yor_par, block_cyclic_irreps, dot_
 from coset_utils import tup_set, coset_reps, young_subgroup_perm, young_subgroup
 from perm2 import sn
 from utils import check_memory
-from px_wreath import pyraminx_dists
+from px_utils import pyraminx_dists
 
 def fourier_transform(irrep_dict, dist_dict):
     mat = None

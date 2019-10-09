@@ -6,10 +6,11 @@ import os
 from itertools import product
 import numpy as np
 import sys
+from tqdm import tqdm
 
 sys.path.append('../')
 from utils import partitions, weak_partitions
-from px_wreath import pyraminx_dists
+from px_utils import *
 
 PX_GROUP_SIZE = 11520 * 4
 
@@ -67,7 +68,19 @@ def inv_fft_check(nsample):
     end = time.time() 
     print('Elapsed: {:.2f}s'.format(end - start))
     print('All same: {}'.format(np.allclose(ft_sum, true_sum)))
-    pdb.set_trace()
 
+def inv_fft_check2():
+    df = dist_df('dists.txt')
+    dists_np = df[2].values
+    ift = np.zeros(dists_np.shape)
+    res = {}
+    for alpha, parts in tqdm(alpha_parts()):
+        ift_mat = load_mat_ift(alpha, parts)
+        res[(alpha, parts)] = ift_mat
+        ift += ift_mat
+
+    print('Same: {}'.format(np.allclose(ift, dists_np)))
+     
 if __name__ == '__main__':
-    inv_fft_check(100)
+    #inv_fft_check(100)
+    inv_fft_check2() 

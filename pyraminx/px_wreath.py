@@ -10,22 +10,9 @@ from wreath import young_subgroup_yor, wreath_yor_par, block_cyclic_irreps, dot_
 from coset_utils import tup_set, coset_reps, young_subgroup_perm, young_subgroup
 from perm2 import sn
 from utils import check_memory
-
+from px_utils import pyraminx_dists
 YOUNG_SUBGROUP_CACHE = {}
 COSET_REPS_CACHE = {}
-
-def pyraminx_dists(fname):
-    dist_dict = {}
-
-    with open(fname, 'r') as f:
-        for line in f.readlines():
-            opart, ppart, dist = line.strip().split(',')
-            otup = tuple(int(x) for x in opart)
-            perm = tuple(int(x) for x in ppart)
-            dist = int(dist)
-            dist_dict[(otup, perm)] = dist
-
-    return dist_dict
 
 def cyc_irr_func(weak_partition):
     idx0 = weak_partition[0]
