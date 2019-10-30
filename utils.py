@@ -92,6 +92,12 @@ def partition_parts(partition):
     indiv_partitions = [partitions(p) for p in partition]
     return product(*indiv_partitions)
 
+def size_partition(weak_parts):
+    cnt = 1
+    for p in weak_parts:
+        cnt *= len(partitions(p))
+    return cnt
+
 def cube2_alphas():
     '''
     Returns the list of weak partitions of 8 into 3 buckets.

@@ -6,6 +6,7 @@ import time
 import numpy as np
 import pandas as pd
 from mpi4py import MPI
+import argparse
 
 from multiprocessing import Pool
 from tqdm import tqdm
@@ -32,12 +33,12 @@ def load_csv():
 def par_cube_ft(rank, size, alpha, parts):
     start = time.time()
     try:
-        df = load_df()
-        irrep_dict = load_irrep('/local/hopan/cube/', alpha, parts)
-    except:
         df = load_df('/scratch/hopan/cube/')
         irrep_dict = load_irrep('/scratch/hopan/cube/', alpha, parts)
-    print('rank {:2d} | load irrep: {:.2f}s'.format(rank, time.time() - start))
+    except Exception as e:
+        print('rank {} | memory usg: {} | exception {}'.format(rank, check_memory(verbose=False), e))
+
+    print('Rank {:3d} / {} | load irrep: {:.2f}s | mem: {}mb'.format(rank, size, time.time() - start, check_memory(verbose=False)))
 
     cos_reps = coset_reps(sn(8), young_subgroup_perm(alpha))
     save_dict = {}
@@ -45,6 +46,10 @@ def par_cube_ft(rank, size, alpha, parts):
 
     chunk_size = len(df) // size
     start_idx  = chunk_size * rank
+    #print('Rank {} | {:7d}-{:7d}'.format(rank, start_idx, start_idx + chunk_size))
+    if rank == 0:
+        print('Rank {} | elapsed: {:.2f}s | {:.2f}mb | done load'.format(rank, time.time() - start, check_memory(verbose=False)))
+
     for idx in range(start_idx, start_idx + chunk_size):
         row = df.loc[idx]
         otup = tuple(int(i) for i in row[0])
@@ -55,33 +60,57 @@ def par_cube_ft(rank, size, alpha, parts):
         block_cyclic_rep = block_cyclic_irreps(otup, cos_reps, cyc_irrep_func)
         mult_yor_block(perm_rep, dist, block_cyclic_rep, save_dict)
 
+    if rank == 0:
+        print('Rank {} | elapsed: {:.2f}s | {:.2f}mb | done add'.format(rank, time.time() - start, check_memory(verbose=False)))
+
+    del irrep_dict
     block_size = wreath_dim(parts)
     n_cosets = coset_size(alpha)
     mat = convert_yor_matrix(save_dict, block_size, n_cosets)
+    if rank == 0:
+        print('Rank {} | elapsed: {:.2f}s | {:.2f}mb | done matrix conversion'.format(rank, time.time() - start, check_memory(verbose=False)))
+
     return mat 
 
-def mpi_main():
+def mpi_main(alpha, parts):
+    savename = '/scratch/hopan/cube/fourier/{}/{}'.format(alpha, parts)
+    if os.path.exists(savename):
+        print('File {} exists! Skipping'.format(savename))
+        exit()
+        #print('File {} exists! Running anyway!'.format(savename))
+
     comm = MPI.COMM_WORLD
     size = MPI.COMM_WORLD.Get_size()
     rank = MPI.COMM_WORLD.Get_rank()
     name = MPI.Get_processor_name()
+    if rank == 0:
+        print('starting {} | {}'.format(alpha, parts))
 
     _start = time.time()
-    alpha = (8, 0, 0)
-    parts = ((5, 3), (), ())
-
     start = time.time()
     # mat = par_cube_ft(alpha, parts, irrep_dict, lst)
     mat = par_cube_ft(rank, size, alpha, parts)
-
-    start = time.time()
-    all_mats = comm.gather(mat, root=0)
+    #all_mats = comm.gather(mat, root=0)
     if rank == 0:
-        print('Elapsed for gather: {:.2f}s'.format(time.time() - start))
+        print('post par cube ft: {:.2f}s | mem: {:.2f}mb'.format(time.time() - start, check_memory(verbose=False)))
 
-    res_mat = np.sum(all_mats, axis=0)
+    sendmat = mat
+    recvmat = None
     if rank == 0:
-        print('All done | {:.2f}s | shape {}'.format(time.time() - _start, res_mat.shape))
+        recvmat = np.empty([size, *sendmat.shape], dtype=sendmat.dtype)
+    comm.Gather(sendmat, recvmat, root=0)
+
+    if rank == 0:
+        print('Elapsed for gather: {:.2f}s | mem {:.2f}mb'.format(time.time() - start, check_memory(verbose=False)))
+        res_mat = np.sum(recvmat, axis=0)
+        print('All done | {:.2f}s | shape {} | mem {:.2f}mb'.format(time.time() - _start, res_mat.shape, check_memory(verbose=False)))
+
+        # save dir
+        if not os.path.exists('/scratch/hopan/cube/fourier/{}'.format(alpha)):
+            os.makedirs('/scratch/hopan/cube/fourier/{}'.format(alpha))
+        savename = '/scratch/hopan/cube/fourier/{}/{}'.format(alpha, parts)
+        np.save(savename, res_mat)
+        print('Done saving in {}!'.format(savename))
 
 def test():
     start = time.time()
@@ -93,4 +122,10 @@ def test():
     check_memory()
 
 if __name__ == '__main__':
-    mpi_main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--alpha', type=str, default='(8, 0, 0)')
+    parser.add_argument('--parts', type=str, default='((7,1),(),())')
+    args = parser.parse_args()
+    alpha = eval(args.alpha)
+    parts = eval(args.parts)
+    mpi_main(alpha, parts)

@@ -16,7 +16,7 @@ from coset_utils import young_subgroup_perm, coset_reps
 
 TWO_CUBE_SIZE = 88179840
 def clean_line(line):
-    ostr, pstr, dist = line.split(',')
+    ostr, pstr, dist = line.strip().split(',')
     otup = tuple(map(int, ostr))
     ptup = tuple(map(int, pstr))
     dist = int(dist)
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     parser.add_argument('--pkldir', type=str, default='/local/hopan/cube/pickles')
     parser.add_argument('--splitdir', type=str, default='/local/hopan/cube/split_unmod')
     parser.add_argument('--savedir', type=str, default='/local/hopan/cube/fourier')
-    parser.add_argument('--alpha', type=str, default='(8, 0, 0)')
+    parser.add_argument('--alpha', type=str, default='(9, 0, 0)')
     parser.add_argument('--parts', type=str, default='((7,1),(),())')
     parser.add_argument('--par', type=int, default=1, help='Amount of parallelism')
     parser.add_argument('--suffix', type=str, default='split', help='special suffix for split files')
