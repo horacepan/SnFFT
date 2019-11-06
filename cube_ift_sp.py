@@ -17,6 +17,18 @@ from young_tableau import wreath_dim
 from perm2 import sn
 from coset_utils import young_subgroup_perm, coset_reps
 from multi import mult_yor_block, coset_size, convert_yor_matrix, clean_line
+import torch
+from itertools import product
+
+def all_cyc_irreps(cos_reps, cyc_irrep_func):
+    otups = []
+    irreps = {}
+    xs = [(0, 1, 2) for _ in range(8)]
+    opts = product(*xs)
+    opts = [o for o in opts if sum(o) % 3 == 0]
+    for otup in opts:
+        irreps[otup] = block_cyclic_irreps(otup, cos_reps, cyc_irrep_func)
+    return irreps
 
 def load_np_data():
     fname = '/local/hopan/cube/cube_sym_mod_tup.npy'
@@ -151,12 +163,19 @@ def test_main(alpha, parts):
 
     cyc_irrep_func = cyclic_irreps(alpha)
     cos_reps = coset_reps(sn(8), young_subgroup_perm(alpha))
+    st =  time.time()
+    cyc_irrs = all_cyc_irreps(cos_reps, cyc_irrep_func)
+    print('Time to compute all cyc irreps: {:.5f}s'.format(time.time() - st))
+
     sp_times = []
     sp_mult_times = []
     sp_results = np.zeros(len(df), dtype=np.complex128)
 
+    coo_times = []
+    th_sp_times = []
     times = []
     mult_times = []
+    z3_irreps = []
     results = np.zeros(len(df), dtype=np.complex128)
     fhat_t_ravel = fhat.T.ravel()
     loop_start = time.time()
@@ -175,12 +194,11 @@ def test_main(alpha, parts):
         wmat_inv = wmat.conj().T
         feval = np.dot(fhat_t_ravel, wmat_inv.ravel())
         reg_mult_time = time.time() - st
-        #results.append(feval)
         results[idx] = feval
 
         # compute sparse wreath rep
         st = time.time()
-        wmat_sp = wreath_rep_sp(otup, perm_tup, sp_irrep_dict, cos_reps, cyc_irrep_func)
+        wmat_sp = wreath_rep_sp(otup, perm_tup, sp_irrep_dict, cos_reps, cyc_irrep_func, cyc_irrs)
         sp_time = time.time() - st
 
         if not np.allclose(wmat, wmat_sp.todense()):
@@ -192,27 +210,45 @@ def test_main(alpha, parts):
         wmat_inv_sp = wmat_sp.conj().T
         feval_sp = (wmat_inv_sp.multiply(fhat.T)).sum()
         sp_mult_time = time.time() - st
-        #sp_results.append(feval_sp)
-        sp_results[idx] = feval
+        sp_results[idx] = feval_sp
 
         times.append(reg_time)
         sp_times.append(sp_time)
         mult_times.append(reg_mult_time)
         sp_mult_times.append(sp_mult_time)
 
-        if idx > 100:
+        st = time.time()
+        coo = wmat_sp.tocoo()
+        end = time.time()
+        coo_times.append(end - st)
+
+        st = time.time()
+        ix = torch.LongTensor([coo.row, coo.col])
+        th_sp_re = torch.sparse.FloatTensor(ix, torch.FloatTensor(coo.data.real), torch.Size(coo.shape))
+        th_sp_cplx = torch.sparse.FloatTensor(ix, torch.FloatTensor(coo.data.imag), torch.Size(coo.shape))
+        end = time.time()
+        th_sp_times.append(end - st)
+
+
+        st = time.time()
+        block_scalars = block_cyclic_irreps(otup, cos_reps, cyc_irrep_func)
+        end = time.time()
+        z3_irreps.append(end - st) 
+        if idx > 200:
             break
 
     print('Normal time: {:.6f}s | Sparse time: {:.6f}s'.format(np.mean(times), np.mean(sp_times)))
     print('Mult time:   {:.6f}s | Spmult time: {:.6f}s'.format(np.mean(mult_times), np.mean(sp_mult_times)))
-    assert np.allclose(sp_results, results)
+    print('To coo time: {:.6f}s | Torchsptime: {:.6f}s'.format(np.mean(coo_times), np.mean(th_sp_times)))
+    print('irrep time:  {:.6f}s'.format(np.mean(z3_irreps)))
     print('Loop time: {:.2f}s'.format(time.time() - loop_start))
     print('Total time: {:.2f}s'.format(time.time() - _start))
+    #assert np.allclose(sp_results, results)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--alpha', type=str, default='(2, 3, 3)')
-    parser.add_argument('--parts', type=str, default='((1, 1), (2, 1), (2, 1))')
+    parser.add_argument('--parts', type=str, default='((2,), (1, 1, 1), (2, 1))')
     args = parser.parse_args()
     alpha = eval(args.alpha)
     parts = eval(args.parts)

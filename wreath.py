@@ -382,9 +382,13 @@ def wreath_rep(cyc_tup, perm, yor_dict, cos_reps, cyc_irrep_func=None, alpha=Non
     block_scalars = block_cyclic_irreps(cyc_tup, cos_reps, cyc_irrep_func)
     return get_mat(perm, yor_dict, block_scalars)
 
-def wreath_rep_sp(cyc_tup, perm_tup, sp_irrep_dict, cos_reps, cyc_irrep_func):
+def wreath_rep_sp(cyc_tup, perm_tup, sp_irrep_dict, cos_reps, cyc_irrep_func, cyc_irr_dict=None):
     # i actually want these block scalars ordered ...
-    block_scalars = block_cyclic_irreps(cyc_tup, cos_reps, cyc_irrep_func)
+    if cyc_irr_dict is None:
+        block_scalars = block_cyclic_irreps(cyc_tup, cos_reps, cyc_irrep_func)
+    else:
+        block_scalars = cyc_irr_dict[cyc_tup]
+
     # block multiply
     nblocks = len(cos_reps)
     # TODO: this is a hack
