@@ -6,6 +6,7 @@ from functools import reduce
 import pdb
 from yor import load_yor
 import numpy as np
+from scipy.sparse import csr_matrix
 from utils import check_memory, chunk
 import perm2
 from coset_utils import coset_reps, young_subgroup_perm, young_subgroup, tup_set
@@ -380,6 +381,23 @@ def wreath_rep(cyc_tup, perm, yor_dict, cos_reps, cyc_irrep_func=None, alpha=Non
 
     block_scalars = block_cyclic_irreps(cyc_tup, cos_reps, cyc_irrep_func)
     return get_mat(perm, yor_dict, block_scalars)
+
+def wreath_rep_sp(cyc_tup, perm_tup, sp_irrep_dict, cos_reps, cyc_irrep_func):
+    # i actually want these block scalars ordered ...
+    block_scalars = block_cyclic_irreps(cyc_tup, cos_reps, cyc_irrep_func)
+    # block multiply
+    nblocks = len(cos_reps)
+    # TODO: this is a hack
+    block_size = sp_irrep_dict[(1,2,3,4,5,6,7,8)].shape[0] // nblocks
+    sp_mat = sp_irrep_dict[perm_tup]
+
+    new_data = np.zeros(sp_mat.data.shape, dtype=np.complex128)
+    for idx, c in enumerate(block_scalars):
+        st = sp_mat.indptr[idx * block_size]
+        end = sp_mat.indptr[idx * block_size + block_size]
+        new_data[st: end] = c * sp_mat.data[st: end]
+
+    return csr_matrix((new_data, sp_mat.indices, sp_mat.indptr), shape=sp_mat.shape)
 
 if __name__ == '__main__':
     pass
