@@ -55,41 +55,39 @@ def par_cube_ift(rank, size, alpha, parts):
     print('Rank {:3d} / {} | load irrep: {:.2f}s | mem: {:.2f}mb | {} {}'.format(rank, size, time.time() - start, check_memory(verbose=False), alpha, parts))
 
     cos_reps = coset_reps(sn(8), young_subgroup_perm(alpha))
-    save_dict = {}
     cyc_irrep_func = cyclic_irreps(alpha)
+    cyc_irrs = all_cyc_irreps(cos_reps, cyc_irrep_func)
 
     chunk_size = len(df) // size
-    start_idx  = chunk_size * rank
+    start_idx = chunk_size * rank
     mat = np.zeros(chunk_size, dtype=fhat.dtype)
     fhat_t_ravel = fhat.T.ravel()
     #print('Rank {} | {:7d}-{:7d}'.format(rank, start_idx, start_idx + chunk_size))
     if rank == 0:
         print('Rank {} | elapsed: {:.2f}s | {:.2f}mb | mat shape: {} | done load | {} {}'.format(rank, time.time() - start, check_memory(verbose=False), fhat.shape, alpha, parts))
 
+    st = time.time()
     for idx in range(start_idx, start_idx + chunk_size):
         row = df.loc[idx]
         otup = tuple(int(i) for i in row[0])
         perm_tup = tuple(int(i) for i in row[1])
         #dist = int(row[2])
         # actually want the inverse
-        wmat = wreath_rep(otup, perm_tup, sp_irrep_dict, cos_reps, cyc_irrep_func)
-        wmat_sp = wreath_rep_sp(otup, perm_tup, sp_irrep_dict, cos_reps, cyc_irrep_func)
-        # rewrite wreath rep to return sparse!
-        wmat_inv = wmat.conj().T
+
+        wmat_sp = wreath_rep_sp(otup, perm_tup, sp_irrep_dict, cos_reps, cyc_irrep_func, cyc_irrs)
         wmat_inv_sp = wmat_sp.conj().T
         # trace(rho(ginv) fhat) = trace(fhat rho(ginv)) = vec(fhat.T).dot(vec(rho(ginv)))
         #feval = np.dot(fhat.T.ravel(), wmat_inv.ravel())
         #feval = np.dot(fhat_t_ravel, wmat_inv.ravel())
-        feval = wmat_inv.multiply(fhat)
-
         feval_sp = (wmat_inv_sp.multiply(fhat.T)).sum()
-        #mat[idx - start_idx] = fhat.shape[0] * feval
         mat[idx - start_idx] = fhat.shape[0] * feval_sp
 
     if rank == 0:
-        print('Rank {} | elapsed: {:.2f}s | {:.2f}mb | done add'.format(rank, time.time() - start, check_memory(verbose=False)))
+        elapsed = time.time() - st
+        avg_t = elapsed / chunk_size
+        print('Rank {} | elapsed: {:.2f}s | {:.2f}mb | done add | ift time: {:.2f}s | avg time: {:.6f}s'.format(rank, time.time() - start, check_memory(verbose=False), elapsed, avg_t))
 
-    del irrep_dict
+    del sp_irrep_dict
     if rank == 0:
         print('Rank {} | elapsed: {:.2f}s | {:.2f}mb | done matrix conversion'.format(rank, time.time() - start, check_memory(verbose=False)))
 
@@ -126,7 +124,7 @@ def mpi_main(alpha, parts):
 
     if rank == 0:
         print('Elapsed for gather: {:.2f}s | mem {:.2f}mb'.format(time.time() - start, check_memory(verbose=False)))
-        res_mat = np.sum(recvmat, axis=0)
+        #res_mat = np.sum(recvmat, axis=0)
         res_mat = recvmat.reshape(-1)
         print('All done | {:.2f}s | shape {} | mem {:.2f}mb'.format(time.time() - _start, res_mat.shape, check_memory(verbose=False)))
 
@@ -163,7 +161,7 @@ def test_main(alpha, parts):
 
     cyc_irrep_func = cyclic_irreps(alpha)
     cos_reps = coset_reps(sn(8), young_subgroup_perm(alpha))
-    st =  time.time()
+    st = time.time()
     cyc_irrs = all_cyc_irreps(cos_reps, cyc_irrep_func)
     print('Time to compute all cyc irreps: {:.5f}s'.format(time.time() - st))
 
@@ -252,6 +250,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     alpha = eval(args.alpha)
     parts = eval(args.parts)
-    test_main(alpha, parts)
-
-    #mpi_main(alpha, parts)
+    #test_main(alpha, parts)
+    mpi_main(alpha, parts)

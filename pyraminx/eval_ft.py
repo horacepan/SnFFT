@@ -76,10 +76,7 @@ def eval_subsampled_ft(ap, nsample):
     ft = load_ft_sample(alpha, parts, nsample) # this should load the subsampled_ft
     reps = load_rep_mat(alpha, parts)
 
-    # if we load the subsampled fourier transform, we need to divide by the number
-    # of samples, NOT the group size!
-    # we can only get this from the prefix!
-    scale = ft.shape[0] / nsample
+    scale = ft.shape[0] / (nsample * 4)
     ift = np.trace(np.matmul(ft.T, reps), axis1=1, axis2=2) * scale
 
     savepref = '/local/hopan/pyraminx/fourier_eval_sample/{}/'.format(nsample)
@@ -118,14 +115,14 @@ def par_ft_sample_eval(ncpu, nsample):
     chunk_size = len(aps) // ncpu
     args = [(ap, nsample) for ap in aps]
     with Pool(ncpu) as p:
-        p.starmap(eval_subsampled_ft, args, chunk_size)
+        p.starmap(eval_subsampled_ft, args)
 
 if __name__ == '__main__':
     np.random.seed(26)
     ncpu = 16
     #par_ft_eval(ncpu)
 
-    samples = [100, 200, 400, 800, 1600, 3200, 6400]
+    samples = [11000, 10000, 9000]
     for nsample in samples:
         start = time.time()
         par_ft_sample_eval(ncpu, nsample)

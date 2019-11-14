@@ -106,7 +106,7 @@ def mpi_main(alpha, parts):
 
     if rank == 0:
         print('Elapsed for gather: {:.2f}s | mem {:.2f}mb'.format(time.time() - start, check_memory(verbose=False)))
-        res_mat = np.sum(recvmat, axis=0)
+        #res_mat = np.sum(recvmat, axis=0)
         res_mat = recvmat.reshape(-1)
         print('All done | {:.2f}s | shape {} | mem {:.2f}mb'.format(time.time() - _start, res_mat.shape, check_memory(verbose=False)))
 

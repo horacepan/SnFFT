@@ -49,3 +49,7 @@ def load_mat_ift(alpha, parts, prefix='/local/hopan/pyraminx/fourier_eval/'):
 def load_ft_sample(alpha, parts, nsample, prefix='/local/hopan/pyraminx/fourier_sample/'):
     fname = os.path.join(prefix, str(nsample), str(alpha), str(parts) + '.npy')
     return np.load(fname)
+
+def load_mat_ift_sample(alpha, parts, nsample, prefix='/local/hopan/pyraminx/fourier_eval_sample'):
+    fname = os.path.join(prefix, str(nsample), str(alpha), str(parts) + '.npy')
+    return np.load(fname)

@@ -8,7 +8,7 @@ import numpy as np
 import sys
 from tqdm import tqdm
 
-sys.path.append('../')
+sys.path.append('/home/hopan/github/SnFFT/')
 from utils import partitions, weak_partitions
 from px_utils import *
 
@@ -30,17 +30,20 @@ def load_all():
 
     for alpha in weak_partitions(6, 2):
         for parts in product(partitions(alpha[0]), partitions(alpha[1])):
-            print(alpha, parts)
+            #print(alpha, parts)
             mat = load_ft(alpha, parts)
             max_dim = max(max_dim, mat.shape[0])
             fts[(alpha, parts)] = mat
             tot += (mat.shape[0] ** 2)
 
-    print('max dim: {}'.format(max_dim))
-    print('Dim', tot)
+    #print('max dim: {}'.format(max_dim))
+    #print('Dim', tot)
     return fts
 
 def ift(g, wreath_dict, fourier_mat):
+    # trace(A^T B) = vec(A).dot(vec(B))
+    # trace(rho(g inv) fhat) = trace(fhat rho(ginv)) = trace(fhat.T rho(g))
+    # we can do rho(g inv).T = rho(g) in this situation because real reps
     rep = wreath_dict[g]
     dim = fourier_mat.shape[0]
     return dim * fourier_mat.T.ravel().dot(rep.ravel()) / PX_GROUP_SIZE
@@ -80,6 +83,16 @@ def inv_fft_check2():
         ift += ift_mat
 
     print('Same: {}'.format(np.allclose(ift, dists_np)))
+
+def inv_fft_sample(nsample):
+    ift = np.zeros(11520)
+    res = {}
+    for alpha, parts in tqdm(alpha_parts()):
+        ift_mat = load_mat_ift_sample(alpha, parts, nsample)
+        res[(alpha, parts)] = ift_mat
+        ift += ift_mat
+
+    return ift
      
 if __name__ == '__main__':
     #inv_fft_check(100)

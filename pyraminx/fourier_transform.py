@@ -38,10 +38,13 @@ def subsample_ft(alpha_parts, nsample):
     df = dist_df('/local/hopan/pyraminx/dists.txt')
     rep_mat = load_rep_mat(alpha, parts)
 
-    sampled_idx = np.random.choice(len(df), size=nsample)
+    if nsample == 11520:
+        sampled_idx = np.arange(11520)
+    else:
+        sampled_idx = np.random.choice(len(df), size=nsample, replace=False)
     sampled_dists = df.loc[sampled_idx][DIST_COL].values.reshape(nsample, 1, 1)
     sampled_reps = rep_mat[sampled_idx, :, :]
-    ft = np.sum(sampled_dists * sampled_reps, axis=0) / nsample
+    ft = np.sum(sampled_dists * sampled_reps, axis=0)
 
     savepref = '/local/hopan/pyraminx/fourier_sample/{}/'.format(nsample)
     savedir = os.path.join(savepref, str(alpha))
@@ -65,7 +68,7 @@ def par_sample(ncpu, sample):
 
 def par_sample_main():
     ncpu = 16
-    samples = [100, 200, 400, 800, 1600, 3200, 6400]
+    samples = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 11520]
     for s in samples:
         start = time.time()
         par_sample(ncpu, s)
