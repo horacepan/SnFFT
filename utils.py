@@ -200,6 +200,11 @@ def load_irrep(prefix, alpha, parts):
     print("Could not load: {}".format(irrep_path))
     return None
 
+def cube2_orientations():
+    for tup in product(*[(0, 1, 2) for _ in range(8)]):
+        if (sum(tup) % 3 == 0):
+            yield tup
+
 def tf(f, args=None):
     if args is None:
         args = []

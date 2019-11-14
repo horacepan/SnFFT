@@ -6,11 +6,9 @@ from perm2 import sn
 from coset_utils import young_subgroup_perm, coset_reps
 from wreath import wreath_rep, get_mat, cyclic_irreps, block_cyclic_irreps, get_sparse_mat, WreathCycSn
 from utils import load_pkl, load_sparse_pkl
-from yor import yor
 from young_tableau import wreath_dim
 import time
 import torch
-from tqdm import tqdm
 sys.path.append('./cube/')
 from str_cube import get_wreath, init_2cube, render, scramble
 from cube_utils import cube2_orientations
