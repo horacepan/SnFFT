@@ -46,6 +46,9 @@ def chunk(lst, n):
             output[d].append(lst[-(d+1)])
         return output
 
+def sorted_partitions(n):
+    return sorted(partitions, reverse=True)
+
 def partitions(n, start=1):
     '''
     Generate all the partitions of n
