@@ -53,6 +53,15 @@ class IrrepLinregNP:
         res = np.sum(irrep_mat.T * self.weight)
         return res.real, res.imag
 
+class IrrepLinregSp(nn.Module):
+    def __init__(self, n_in):
+        super(IrrepLinreg, self).__init__()
+        self.wr = nn.Parameter(torch.rand(n_in, 1))
+        self.wi = nn.Parameter(torch.rand(n_in, 1))
+        self.br = nn.Parameter(torch.zeros(1))
+        self.bi = nn.Parameter(torch.zeros(1))
+        self.zero_weights()
+
 class IrrepLinreg(nn.Module):
     '''
     This is a simple linear regression. Input xs will be in
@@ -112,8 +121,8 @@ class IrrepLinreg(nn.Module):
             self.zero_weights()
 
     def normal_init(self):
-        nn.init.normal_(self.wr, 0, 0.01)
-        nn.init.normal_(self.wi, 0, 0.01)
+        nn.init.normal_(self.wr, 0, 0.015)
+        nn.init.normal_(self.wi, 0, 0.015)
 
     def uniform_init(self):
         nn.init.uniform_(self.wr, -0.01, 0.01)
@@ -125,7 +134,7 @@ class IrrepLinreg(nn.Module):
     def loadnp(self, fname, transpose=True):
         mat = np.load(fname)
         if transpose:
-            print('Doing transpose')
+            #print('Doing transpose')
             mat_re = mat.real.astype(np.float32).T
             mat_im = mat.imag.astype(np.float32).T
         else:
@@ -137,7 +146,7 @@ class IrrepLinreg(nn.Module):
         self.wi.data = torch.from_numpy(mat_im.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
 
     def setnp(self, mat):
-        print('Doing transpose in setnp')
+        #print('Doing transpose in setnp')
         mat_re = mat.real.astype(np.float32).T
         mat_im = mat.imag.astype(np.float32).T
         size = mat_re.shape[0]

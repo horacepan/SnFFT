@@ -27,9 +27,11 @@ class S8CubeEnv(gym.Env):
     def __init__(self,
                  nvecs,
                  evec_loc='/local/hopan/s8cube/lap_eigvecs.npy',
-                 idx_pkl_loc='/local/hopan/s8cube/idx_dict.pkl'):
+                 idx_pkl_loc='/local/hopan/s8cube/idx_dict.pkl',
+                 dist_loc='/local/hopan/s8cube/dist.npy'):
         self.eigvecs = np.load(evec_loc)
         self.idx_dict = pickle.load(open(idx_pkl_loc, 'rb'))
+        self.true_dist = np.load(dist_loc)
         self.nvecs = nvecs
         self.action_space = spaces.Discrete(6)
 
@@ -47,6 +49,13 @@ class S8CubeEnv(gym.Env):
     def state(self):
         idx = self.idx_dict[self.tup_state]
         return self.eigvecs[idx, :self.nvecs]
+
+    @property
+    def idx_state(self):
+        return self.idx_dict[self.tup_state]
+
+    def get_idx_state(self, state):
+        return self.idx_dict[state]
 
     def neighbors(self, ptup):
         return [px_mult(g, ptup) for g in GENERATORS]
@@ -70,6 +79,16 @@ class S8CubeEnv(gym.Env):
         for _ in range(1000):
             self.step(random.choice(actions))
         return self.state
+
+    def get_vecs(self, idxs):
+        return self.eigvecs[idxs.astype(int), :self.nvecs]
+
+    def get_true_dists(self, idxs):
+        return self.true_dist[idxs.astype(int)]
+
+    def get_opt_action(self, state, theta):
+        nbrs_vec = self.neighbors_vec(state)
+        return np.argmax(nbrs_vec.dot(theta)) 
 
 def test():
     env = S8CubeEnv(10)
