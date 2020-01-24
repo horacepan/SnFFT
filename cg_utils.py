@@ -19,6 +19,19 @@ def block_rep(mat, mult):
         blocked[i*n: i*n + n, i*n: i*n+n] = mat
     return blocked
 
+def sparse_block_rep(spmat, mult):
+    '''
+    spmat: sparse matrix
+    mult: num times to direct sum the matrix
+    '''
+    def none_idxed(mat, index, size):
+        vec = [None] * size
+        vec[index] = mat
+        return vec
+
+    matrices = [none_idxed(spmat, i, mult) for i in range(mult)]
+    return sparse.bmat(matrices)
+
 def sparse_null_space(mat, dims):
     '''
     Returns the {dims} sized basis of the null space of mat
@@ -153,38 +166,3 @@ def intertwine_sparse(trep1, trep2, irrep1, irrep2, mult, verbose=False):
         print('rrt is commutant 1?', np.allclose(np.matmul(RRT, bxrep1), np.matmul(bxrep1, RRT)))
         print('rrt is commutant 2?', np.allclose(np.matmul(RRT, bxrep2), np.matmul(bxrep2, RRT)))
     return output 
-
-def get_nullable(shape, dim_null):
-    n, _ = shape
-    x = np.random.random((n, n - dim_null))
-    
-    extras = []
-    for _ in range(dim_null):
-        y = np.random.random(x.shape[1])
-        extras.append((x*y).sum(axis=1, keepdims=True))
-    extras.append(x)
-    return np.concatenate(extras, axis=1)
-
-def test_sp():
-    k = 10
-    nulls = 5
-    shape = (22, 20)
-
-    z = sparse.coo_matrix(get_nullable(shape, nulls))
-    zd = z.toarray()
-    um, s, vh = splinalg.svds(z, k=k, which='SM')
-    am, b, ch = np.linalg.svd(zd)
-    nsp = linalg.null_space(zd)
-    for i in range(k):
-        print(f'Null Sparse {i}: {in_null(zd, vh[i, :])} | Dense {in_null(zd, ch[-i - 1, :])}')
-
-    rd = (am[:, -nulls:] @ np.diag(b[-nulls:]) @ ch[-nulls:, :])
-    rs = (um @ np.diag(s) @ vh)
-
-    for i in range(nulls):
-        print('dense: ',  np.allclose(zd @ ch[-i - 1, :].reshape(-1, 1), 0), 
-              '| sparse: ', np.allclose(zd @ vh[-i - 1, :].reshape(-1, 1), 0))
-
-if __name__ == '__main__':
-    np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
-    test_sp()
