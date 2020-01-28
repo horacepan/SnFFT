@@ -19,4 +19,3 @@ def get_logger(fname):
     logger.addHandler(sh)
 
     return logger
-

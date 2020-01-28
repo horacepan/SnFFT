@@ -90,6 +90,24 @@ class Perm2:
         return perm
 
     @staticmethod
+    def swap(n, a, b):
+        tup = [i for i in range(1, n + 1)]
+        tup[a - 1] = b
+        tup[b - 1] = a
+        tup = tuple(tup)
+        return Perm2.from_tup(tup)
+
+    @staticmethod
+    def cont_cycle(n, a, b):
+        cyc = [i for i in range(1, n+1)]
+        for i in range(a, b):
+            cyc[i - 1] = i + 1
+        cyc[b-1] = a
+        cyc = tuple(cyc)
+
+        return Perm2.from_tup(cyc)
+
+    @staticmethod
     def from_trans(trans, n):
         lst = [i for i in range(1, n+1)]
         lst[trans[0] - 1] = trans[1]
