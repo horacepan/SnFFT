@@ -1,3 +1,4 @@
+import os
 import time
 import pickle
 import numpy as np
@@ -9,8 +10,11 @@ from pymanopt.solvers import SteepestDescent, TrustRegions
 from yor import yor
 from perm2 import Perm2
 from young_tableau import FerrersDiagram
+from utils import check_memory
 from cg_utils import block_rep
 from char_utils import get_char_decomp
+PREFIX = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'
+print(PREFIX)
 
 def pymanopt_intertwiner(parts1, parts2, parts3, mult, n):
     '''
@@ -58,18 +62,22 @@ def tostr(p):
 
 def compute_cg(topk):
     st = time.time()
-    s8chars = pickle.load(open('/scratch/hopan/irreps/s_8/char_dict.pkl', 'rb'))
+    s8chars = pickle.load(open('/{}/hopan/irreps/s_8/char_dict.pkl'.format(PREFIX), 'rb'))
 
     for p1 in topk:
         for p2 in topk:
             mult_dict = get_char_decomp(s8chars, s8chars[p1] * s8chars[p2])
             for p3 in topk:
+                fname = '/{}/hopan/irreps/s_8/cg/{}_{}_{}.npy'.format(PREFIX, tostr(p1), tostr(p2), tostr(p3))
+                if os.path.exists(fname):
+                    print('Skipping {}'.format(fname))
+                    continue
                 mult = mult_dict[p3]
                 _st = time.time()
                 print('Starting for {} | {} | {}'.format(p1, p2, p3))
                 intw = pymanopt_intertwiner(p1, p2, p3, mult, n=8)
-                print('Elapsed {:.2f}min | Shape {}'.format((time.time() - _st) / 60., intw.shape))
-                np.save('/scratch/hopan/irreps/s_8/cg/{}_{}_{}.npy'.format(tostr(p1), tostr(p2), tostr(p3)), intw)
+                print('Elapsed {:.2f}min | Shape {} | {}'.format((time.time() - _st) / 60., intw.shape, check_memory(verbose=False)))
+                np.save(fname, intw)
                 del intw
     print('Done')
 
@@ -77,5 +85,7 @@ if __name__ == '__main__':
     topk = [
         (3, 2, 2, 1),
         (4, 2, 2),
+        (4, 2, 1, 1),
+        (3, 3, 1, 1),
     ]
     compute_cg(topk)
