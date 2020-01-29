@@ -31,7 +31,6 @@ class FourierPolicy:
         self.irreps = irreps
         self.model = LinearRegression(normalize=True)
         self.yors = {irr: load_yor(irr, prefix) for irr in irreps}
-        self.fmats = {}
 
         total_size = 0
         for parts, pdict in self.yors.items():
@@ -62,10 +61,8 @@ class FourierPolicy:
         '''
         gtup: perm tuple
         '''
-        val = 0
-        for mat in self.fmats:
-            val += mat.shape[0] * self.yors[gtup].dot(mat)
-        return val
+        vec = self.to_irrep(gtup)
+        return vec.dot(self.w)
 
     def to_irrep(self, gtup):
         '''
@@ -80,6 +77,10 @@ class FourierPolicy:
             irrep_vecs.append(vec)
         irrep_vecs.append(np.array([[1]]))
         return np.hstack(irrep_vecs)
+
+    def eval(self, gtups):
+        vecs = np.hstack([self.to_irrep(g) for g in gtups])
+        return vecs.dot(self.w)
 
 class LoadedFourierPolicy(FourierPolicy):
     def __init__(self, irreps, yor_prefix, fhat_prefix):
