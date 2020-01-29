@@ -22,15 +22,10 @@ def main(args):
     irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1), (3, 3, 1, 1)]
 
     perm_df = PermDF(args.fname, nbrs)
-    log.info('Splitting data')
+    log.info('Using irreps: {}'.format(irreps[:args.topk]))
     train_p, train_y, test_p, test_y = perm_df.train_test_split(args.testratio)
-    log.info('Test ratio: {} | Test items: {}'.format(len(test_p) / len(perm_df.df), len(test_p)))
-
-    random_correct = perm_df.benchmark(test_p)
-    log.info('Random policy prop correct: {}'.format(random_correct))
-
+    log.info('Test ratio: {:.4f} | Test items: {}'.format(len(test_p) / len(perm_df.df), len(test_p)))
     policy = FourierPolicy(irreps[:args.topk], args.pklprefix)
-    log.info('Starting the fit | Fitting {} perms'.format(len(train_p)))
 
     losses = []
     for e in range(args.maxiters + 1):
@@ -39,23 +34,17 @@ def main(args):
         losses.append(loss)
         # summary writer write
         if e % args.logiters == 0 and e > 0:
-            log.info(f'Train iter {e:3d}: batch mse: {loss:.4f}')
+            test_score = perm_df.benchmark_policy(test_p, policy)
+            log.info(f'Train iter {e:3d}: batch mse: {loss:.4f} | Policy test score: {test_score:.4f}')
 
-    #policy.fit_perms(train_p, train_y)
-    log.info('Done fitting')
-
-    ncorrect = 0
-    for gtup in tqdm(test_p):
-        ncorrect += int(perm_df.opt_nbr(gtup, policy))
-    log.info('Correct rate: {} / {} | {}'.format(ncorrect, len(test_p), ncorrect / len(test_p)))
-
-    ncorrect = 0
-    for gtup in tqdm(train_p):
-        ncorrect += int(perm_df.opt_nbr(gtup, policy))
-    log.info('Correct rate: {} / {} | {}'.format(ncorrect, len(train_p), ncorrect / len(train_p)))
-    log.info('Random policy prop correct: {}'.format(perm_df.benchmark(test_p)))
-    log.info(f'Mem footprint: {check_memory()}')
-    pdb.set_trace()
+    log.info('Done training')
+    train_score = perm_df.benchmark_policy(train_p, policy)
+    test_score = perm_df.benchmark_policy(test_p, policy)
+    log.info('Train Correct rate: {:.4f} | Size: {}'.format(train_score, len(train_p)))
+    log.info('Test Correct rate:  {:.4f} | Size: {}'.format(test_score, len(test_p)))
+    log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
+    log.info(f'Mem footprint: {check_memory()}mb')
+    log.info(f'Log saved: {args.logfile}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

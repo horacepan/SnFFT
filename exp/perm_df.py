@@ -95,6 +95,12 @@ class PermDF:
         test_p, test_y = zip(*test_dict.items())
         return list(train_p), list(train_y), list(test_p), list(test_y)
 
+    def benchmark_policy(self, gtups, policy):
+        ncorrect = 0
+        for g in gtups:
+            ncorrect += int(self.opt_nbr(g, policy))
+        return ncorrect / len(gtups)
+
 def px_mult(p1, p2):
     return tuple([p1[p2[x] - 1] for x in range(len(p1))])
 
