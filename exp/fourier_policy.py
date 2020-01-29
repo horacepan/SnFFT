@@ -1,9 +1,9 @@
 import pdb
+from tqdm import tqdm
 import time
 import os
 import pickle
 import numpy as np
-from sklearn.linear_model import LinearRegression
 
 import torch
 import torch.nn as nn
@@ -29,8 +29,10 @@ class FourierPolicy:
         Setup
         '''
         self.irreps = irreps
-        self.model = LinearRegression(normalize=True)
-        self.yors = {irr: load_yor(irr, prefix) for irr in irreps}
+        self.yors = {}
+        for irr in tqdm(irreps):
+            self.yors[irr] = load_yor(irr, prefix)
+        #self.yors = {irr: load_yor(irr, prefix) for irr in irreps}
 
         total_size = 0
         for parts, pdict in self.yors.items():
@@ -40,14 +42,6 @@ class FourierPolicy:
 
         self.w = np.random.normal(scale=0.2, size=(total_size + 1, 1))
         self.w[-1] = 4.5
-
-    def fit_perms(self, perms, y):
-        '''
-        perms: list of permutation tuples
-        y: list/numpy array of distances
-        '''
-        X = np.vstack([self.to_irrep(p) for p in perms])
-        self.model.fit(X, y)
 
     def train_batch(self, perms, y, lr):
         X = np.vstack([self.to_irrep(p) for p in perms])
@@ -71,9 +65,9 @@ class FourierPolicy:
         '''
         irrep_vecs = []
         for irr in self.irreps:
-            rep = self.yors[irr][gtup].T
+            rep = self.yors[irr][gtup]
             dim = rep.shape[0]
-            vec = rep.reshape(1, -1) #* np.sqrt(dim)
+            vec = rep.reshape(1, -1) * np.sqrt(dim)
             irrep_vecs.append(vec)
         irrep_vecs.append(np.array([[1]]))
         return np.hstack(irrep_vecs)
@@ -82,10 +76,34 @@ class FourierPolicy:
         vecs = np.hstack([self.to_irrep(g) for g in gtups])
         return vecs.dot(self.w)
 
-class LoadedFourierPolicy(FourierPolicy):
-    def __init__(self, irreps, yor_prefix, fhat_prefix):
-        super(LoadedFourierPolicy, self).__init__(irreps, yor_prefix)
-        self.fhats = {irr: load_np(irr, fhat_prefix) for irr in irreps}
+    def set_w(self, fhat_prefix):
+        self.fhats = {irr: load_np(irr, fhat_prefix) for irr in self.irreps}
+        group_size = 40320
+        mean = 5.328571428571428
+        vecs = []
+        for irr in self.irreps:
+            mat = self.fhats[irr]
+            coef =  (mat.shape[1] ** 0.5)/ group_size
+            vecs.append(coef * mat.reshape(-1, 1))
+        self.w = np.vstack(vecs + [[1]])
+        self.w[-1] = mean
+
+class FourierPolicyTorch(FourierPolicy):
+    def __init__(self, irreps, prefix, lr):
+        super(FourierPolicyTorch, self).__init__(irreps, prefix)
+        self.w_torch = nn.Parameter(torch.from_numpy(self.w))
+        self.optim = torch.optim.Adam([self.w_torch], lr=lr)
+
+    def train_batch(self, perms, y, **kwargs):
+        self.optim.zero_grad()
+        X = np.vstack([self.to_irrep(p) for p in perms])
+        X_th = torch.from_numpy(X)
+        y_pred = X_th.matmul(self.w_torch)
+        loss = (y_pred - torch.from_numpy(y).double()).pow(2).mean()
+        loss.backward()
+        self.optim.step()
+        return loss.item()
 
     def __call__(self, gtup):
-        pass
+        vec = torch.from_numpy(self.to_irrep(gtup))
+        return vec.matmul(self.w_torch)

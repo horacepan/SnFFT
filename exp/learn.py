@@ -6,7 +6,7 @@ import argparse
 from tqdm import tqdm
 import numpy as np
 
-from fourier_policy import FourierPolicy
+from fourier_policy import FourierPolicy, FourierPolicyTorch
 from perm_df import PermDF, nbrs
 from logger import get_logger
 sys.path.append('../')
@@ -25,12 +25,18 @@ def main(args):
     log.info('Using irreps: {}'.format(irreps[:args.topk]))
     train_p, train_y, test_p, test_y = perm_df.train_test_split(args.testratio)
     log.info('Test ratio: {:.4f} | Test items: {}'.format(len(test_p) / len(perm_df.df), len(test_p)))
-    policy = FourierPolicy(irreps[:args.topk], args.pklprefix)
+
+    if args.mode == 'numpy':
+        log.info('Using numpy policy')
+        policy = FourierPolicy(irreps[:args.topk], args.pklprefix)
+    else:
+        log.info('Using torch policy')
+        policy = FourierPolicyTorch(irreps[:args.topk], args.pklprefix, lr=args.lr)
 
     losses = []
     for e in range(args.maxiters + 1):
         bx, by = get_batch(train_p, train_y, args.minibatch)
-        loss = policy.train_batch(bx, by, args.lr)
+        loss = policy.train_batch(bx, by, lr=args.lr)
         losses.append(loss)
         # summary writer write
         if e % args.logiters == 0 and e > 0:
@@ -52,12 +58,14 @@ if __name__ == '__main__':
     parser.add_argument('--testratio', type=float, default=0.05)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     parser.add_argument('--pklprefix', type=str, default='/local/hopan/irreps/s_8')
+    parser.add_argument('--fhatprefix', type=str, default='/local/hopan/s8cube/fourier/')
     parser.add_argument('--logfile', type=str, default=f'{time.time()}.log')
     parser.add_argument('--minibatch', type=int, default=128)
     parser.add_argument('--maxiters', type=int, default=1000)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--logiters', type=int, default=100)
+    parser.add_argument('--mode', type=str, default='numpy')
 
     args = parser.parse_args()
     main(args)
