@@ -11,6 +11,7 @@ sys.path.append('./cube')
 
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -26,6 +27,7 @@ from memory import ReplayMemory
 
 IRREP_SIZE = {
     ((2, 3, 3), ((2,), (1, 1, 1), (1, 1, 1))): 560,
+    ((2, 3, 3), ((1, 1), (3,), (3,))): 560,
     ((2, 3, 3), ((2,), (2, 1), (2, 1))): 2240,
     ((2, 3, 3), ((1, 1), (2, 1), (2, 1))): 2240,
     ((4, 2, 2), ((4,), (1, 1), (1, 1))) : 420,
@@ -64,6 +66,16 @@ def init_memory(memory, env):
     done = True
     for _ in range(memory.capacity):
         memory.push(state, action, ns, rew, done)
+
+def train_states(max_len, env):
+    states = []
+    env.reset_solved()
+    actions = [i for i in range(1, 7)]
+    for _ in range(max_len):
+        action = random.choice(actions)
+        ns, _, _, _ = env.step(action)
+        states.append(ns)
+    return states
 
 def main(hparams):
     logfname = get_logdir(hparams['logdir'], hparams['savename'])
@@ -138,12 +150,15 @@ def main(hparams):
     log.info('Validation | avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
         val_avg, val_prop, val_time
     ))
-    log.info('Validation | LQ: {:.3f} | MQ: {:.3f} | UQ: {:.3f} | Max: {}'.format(
-        np.percentile(solve_lens, 25),
-        np.percentile(solve_lens, 50),
-        np.percentile(solve_lens, 75),
-        max(solve_lens)
-    ))
+    if len(solve_lens) > 0:
+        log.info('Validation | LQ: {:.3f} | MQ: {:.3f} | UQ: {:.3f} | Max: {}'.format(
+            np.percentile(solve_lens, 25),
+            np.percentile(solve_lens, 50),
+            np.percentile(solve_lens, 75),
+            max(solve_lens)
+        ))
+    else:
+        log.info('Validation | No solves!')
     scramble_lens = []
     for e in range(hparams['epochs']):
         if hparams['curric']:
@@ -153,7 +168,11 @@ def main(hparams):
         state = env.reset_fixed(max_dist=dist)
         epoch_rews = 0
         scramble_lens.append(dist)
+        states = train_states(hparams['max_dist'], env)
 
+        #for state in states:
+        # if we're doing this we need a way to set the state to env so that we can extract the next state
+        #env.set_state(state)
         for i in range(hparams['maxsteps']):
             if hparams['norandom']:
                 action = get_action(env, pol_net, state)
@@ -225,7 +244,7 @@ def val_model(pol_net, env, hparams):
     '''
     start = time.time()
     solved_lens = []
-    for e in range(hparams['val_size']):
+    for e in tqdm(range(hparams['val_size'])):
         state = env.reset_fixed(max_dist=hparams['max_dist'])
         for i in range(hparams['maxsteps']):
             action = get_action(env, pol_net, state)
@@ -245,7 +264,7 @@ def val_model(pol_net, env, hparams):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--max_dist', type=int, default=100)
-    parser.add_argument('--val_size', type=int, default=1000)
+    parser.add_argument('--val_size', type=int, default=200)
     parser.add_argument('--explore_proportion', type=float, default=0.2)
     parser.add_argument('--eps_min', type=float, default=0.05)
     parser.add_argument('--epochs', type=int, default=10000)
@@ -272,8 +291,8 @@ if __name__ == '__main__':
     parser.add_argument('--curric', action='store_true')
     parser.add_argument('--meminit', action='store_true')
     parser.add_argument('--solve_rew', type=int, default=1)
-    parser.add_argument('--alpha', type=str, default='(8, 0, 0)')
-    parser.add_argument('--parts', type=str, default='((8,), (), ())')
+    parser.add_argument('--alpha', type=str, default='(2, 3, 3)')
+    parser.add_argument('--parts', type=str, default='((2,), (2, 1), (2, 1))')
     args = parser.parse_args()
     hparams = vars(args)
 

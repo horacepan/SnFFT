@@ -1,6 +1,8 @@
 import sys
 import time
 import pdb
+import pickle
+
 sys.path.append('./cube/')
 from str_cube import *
 from cube_env import CubeEnv
@@ -27,6 +29,11 @@ class Cube2IrrepEnv(CubeEnv):
         self.parts = parts
         self.sparse = sparse
         self._cubeirrep = Cube2Irrep(alpha, parts, numpy=numpy, sparse=sparse)
+        self._distances = pickle.load(open('/local/hopan/cube/cube_sym_mod.pkl', 'rb'))
+
+    def reset_solved(self):
+        state = super(Cube2IrrepEnv, self).reset(0)
+        return 0
 
     def reset(self, max_dist=100):
         state = super(Cube2IrrepEnv, self).reset(max_dist)
@@ -97,6 +104,9 @@ class Cube2IrrepEnv(CubeEnv):
         xr = torch.cat(xr, dim=0)
         xi = torch.cat(xi, dim=0)
         return xr, xi
+
+    def distance(self, cube):
+        return self._distances[cube]
 
 def test(ntrials=100):
     start = time.time()

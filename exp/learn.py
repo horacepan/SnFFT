@@ -59,7 +59,7 @@ if __name__ == '__main__':
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     parser.add_argument('--pklprefix', type=str, default='/local/hopan/irreps/s_8')
     parser.add_argument('--fhatprefix', type=str, default='/local/hopan/s8cube/fourier/')
-    parser.add_argument('--logfile', type=str, default=f'{time.time()}.log')
+    parser.add_argument('--logfile', type=str, default=f'/logs/{time.time()}.log')
     parser.add_argument('--minibatch', type=int, default=128)
     parser.add_argument('--maxiters', type=int, default=1000)
     parser.add_argument('--lr', type=float, default=1e-3)

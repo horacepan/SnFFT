@@ -7,18 +7,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-
-def load_yor(irrep, prefix):
-    '''
-    Loads the given irreps
-    '''
-    fname = os.path.join(prefix, '_'.join(str(i) for i in irrep) + '.pkl')
-    pkl = pickle.load(open(fname, 'rb'))
-    return pkl
-
-def load_np(irrep, prefix):
-    fname = os.path.join(prefix, str(irrep) + '.npy')
-    return np.load(fname)
+from utility import load_yor, load_np
 
 class FourierPolicy:
     '''
@@ -46,7 +35,7 @@ class FourierPolicy:
     def train_batch(self, perms, y, lr):
         X = np.vstack([self.to_irrep(p) for p in perms])
         y_pred = X@self.w
-        grad = X.T@(X@self.w) - X.T@y
+        grad = X.T@y_pred - X.T@y
         self.w -= lr * grad
         loss = np.mean(np.square((y - y_pred)))
         return loss
@@ -72,6 +61,11 @@ class FourierPolicy:
         irrep_vecs.append(np.array([[1]]))
         return np.hstack(irrep_vecs)
 
+    def forward(self, perms):
+        X = np.vstack([self.to_irrep(p) for p in perms])
+        y_pred = X@self.w
+        return y_pred
+
     def eval(self, gtups):
         vecs = np.hstack([self.to_irrep(g) for g in gtups])
         return vecs.dot(self.w)
@@ -96,14 +90,23 @@ class FourierPolicyTorch(FourierPolicy):
 
     def train_batch(self, perms, y, **kwargs):
         self.optim.zero_grad()
-        X = np.vstack([self.to_irrep(p) for p in perms])
-        X_th = torch.from_numpy(X)
-        y_pred = X_th.matmul(self.w_torch)
+        y_pred = self.forward(perms)
         loss = (y_pred - torch.from_numpy(y).double()).pow(2).mean()
         loss.backward()
         self.optim.step()
         return loss.item()
 
+    def forward(self, perms):
+        X = np.vstack([self.to_irrep(p) for p in perms])
+        X_th = torch.from_numpy(X)
+        y_pred = X_th.matmul(self.w_torch)
+        return y_pred
+
     def __call__(self, gtup):
         vec = torch.from_numpy(self.to_irrep(gtup))
         return vec.matmul(self.w_torch)
+
+
+class FourierPolicyCG(FourierPolicyTorch):
+    def __init__(self, irreps, prefix, lr):
+        pass

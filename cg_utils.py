@@ -112,7 +112,7 @@ def intertwine(trep1, trep2, irrep1, irrep2, mult, verbose=False):
     dnu = irrep1.shape[0]
     bxrep1 = block_rep(irrep1, mult)
     bxrep2 = block_rep(irrep2, mult)
-    
+
     k1 = np.kron(np.eye(d), bxrep1) - np.kron(trep1.T, np.eye(mult * dnu))
     k2 = np.kron(np.eye(d), bxrep2) - np.kron(trep2.T, np.eye(mult * dnu))
     k = np.concatenate([k1, k2], axis=0)
@@ -125,7 +125,7 @@ def intertwine(trep1, trep2, irrep1, irrep2, mult, verbose=False):
     _, evecs = np.linalg.eig(M)
     S = np.kron(evecs, np.eye(dnu))
     output = normalize_rows(np.matmul(S.T, R))
- 
+
     if verbose:
         print('rand null in null', in_null(k, rand_null))
         print('R intertwines g1?', np.allclose(np.matmul(R, trep1), np.matmul(bxrep1, R)))
@@ -133,14 +133,14 @@ def intertwine(trep1, trep2, irrep1, irrep2, mult, verbose=False):
         print('rrt is commutant?', np.allclose(np.matmul(RRT, bxrep1), np.matmul(bxrep1, RRT)))
         print('rrt is commutant 1?', np.allclose(np.matmul(RRT, bxrep1), np.matmul(bxrep1, RRT)))
         print('rrt is commutant 2?', np.allclose(np.matmul(RRT, bxrep2), np.matmul(bxrep2, RRT)))
-    return output 
+    return output
 
 def intertwine_sparse(trep1, trep2, irrep1, irrep2, mult, verbose=False):
     d = trep1.shape[0]
     dnu = irrep1.shape[0]
     bxrep1 = block_rep(irrep1, mult)
     bxrep2 = block_rep(irrep2, mult)
-   
+
     id_d = sparse.identity(d)
     id_mdnu = sparse.identity(mult * dnu)
     k1 = sparse.kron(id_d, bxrep1) - sparse.kron(trep1.T, id_mdnu)
@@ -157,7 +157,7 @@ def intertwine_sparse(trep1, trep2, irrep1, irrep2, mult, verbose=False):
     _, evecs = np.linalg.eig(M)
     S = np.kron(evecs, np.eye(dnu))
     output = normalize_rows(np.matmul(S.T, R))
- 
+
     if verbose:
         print('rand null in null', in_null(k, rand_null))
         print('R intertwines g1?', np.allclose(np.matmul(R, trep1), np.matmul(bxrep1, R)))
@@ -165,4 +165,4 @@ def intertwine_sparse(trep1, trep2, irrep1, irrep2, mult, verbose=False):
         print('rrt is commutant?', np.allclose(np.matmul(RRT, bxrep1), np.matmul(bxrep1, RRT)))
         print('rrt is commutant 1?', np.allclose(np.matmul(RRT, bxrep1), np.matmul(bxrep1, RRT)))
         print('rrt is commutant 2?', np.allclose(np.matmul(RRT, bxrep2), np.matmul(bxrep2, RRT)))
-    return output 
+    return output

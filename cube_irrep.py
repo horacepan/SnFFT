@@ -105,11 +105,21 @@ class Cube2Irrep(object):
         return rep
 
     def tup_to_irrep_th(self, otup, ptup):
+        '''
+        otup: int tuple of the orientations
+        ptup: permutation tuple
+        First cmpus n
+        '''
         block_scalars = block_cyclic_irreps(otup, self.cos_reps, self.cyc_irrep_func)
         rep_re, rep_im = get_sparse_mat(ptup, self.np_yor_dict, block_scalars)
         return rep_re, rep_im
 
     def str_to_irrep_sp(self, cube_str):
+        '''
+        cube_str: string of cube
+        This is only useable if the irrep was loaded with the sparse pickle dict. This means
+        that the keys to this dict are tuples and the values are sparse matrices
+        '''
         otup, gtup = get_wreath(cube_str)
         re = self.yor_dict[gtup]
         rem = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[otup], re.size()))
