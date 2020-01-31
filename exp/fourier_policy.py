@@ -7,8 +7,11 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from utility import load_yor, load_np
+from utility import load_yor, load_np, S8_GENERATORS
+from cg_utility import cg_loss
+from logger import get_logger
 
+#log = get_logger(name=__name__)
 class FourierPolicy:
     '''
     Wrapper class for fourier linear regression
@@ -17,6 +20,7 @@ class FourierPolicy:
         '''
         Setup
         '''
+        self.size = sum(irreps[0])
         self.irreps = irreps
         self.yors = {}
         for irr in tqdm(irreps):
@@ -32,7 +36,7 @@ class FourierPolicy:
         self.w = np.random.normal(scale=0.2, size=(total_size + 1, 1))
         self.w[-1] = 4.5
 
-    def train_batch(self, perms, y, lr):
+    def train_batch(self, perms, y, lr, **kwargs):
         X = np.vstack([self.to_irrep(p) for p in perms])
         y_pred = X@self.w
         grad = X.T@y_pred - X.T@y
@@ -89,9 +93,10 @@ class FourierPolicyTorch(FourierPolicy):
         self.optim = torch.optim.Adam([self.w_torch], lr=lr)
 
     def train_batch(self, perms, y, **kwargs):
+        st = time.time()
         self.optim.zero_grad()
         y_pred = self.forward(perms)
-        loss = (y_pred - torch.from_numpy(y).double()).pow(2).mean()
+        loss = nn.functional.mse_loss(y_pred, torch.from_numpy(y).double())
         loss.backward()
         self.optim.step()
         return loss.item()
@@ -109,4 +114,37 @@ class FourierPolicyTorch(FourierPolicy):
 
 class FourierPolicyCG(FourierPolicyTorch):
     def __init__(self, irreps, prefix, lr):
-        pass
+        super(FourierPolicyCG, self).__init__(irreps, prefix, lr=lr)
+        self.minibatch_cnt = 0
+
+    def _reshaped_mats(self):
+        ident_tup = tuple(i for i in range(1, self.size+1))
+        idx = 0
+        fhats = {}
+
+        for irr in self.irreps:
+            size = self.yors[irr][ident_tup].shape[0]
+            mat = self.w_torch[idx: idx + (size * size)]
+            fhats[irr] = mat.reshape(size, size)
+            idx += size * size
+        return fhats
+
+    #def train_batch(self, perms, y, **kwargs):
+    #    loss = super(FourierPolicyCG, self).train_batch(perms, y, **kwargs)
+    #        pass
+    #    loss += self.train_cg_loss(S8_GENERATORS)
+    #    self.minibatch_cnt += 1
+    #    return loss
+
+    def train_cg_loss(self, generators):
+        st = time.time()
+        self.optim.zero_grad()
+        fhats = self._reshaped_mats()
+        loss = 0
+        for base_p in self.irreps:
+            for g in generators:
+                loss += cg_loss(base_p, self.irreps, g, fhats)
+
+        loss.backward()
+        self.optim.step()
+        return loss.item()

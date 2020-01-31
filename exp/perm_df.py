@@ -1,15 +1,7 @@
 import pdb
 import numpy as np
 import pandas as pd
-
-GENS_RED = [
-    (8, 1, 3, 4, 5, 6, 2, 7),
-    (2, 7, 3, 4, 5, 6, 8, 1),
-    (2, 3, 4, 1, 5, 6, 7, 8),
-    (4, 1, 2, 3, 5, 6, 7, 8),
-    (1, 2, 3, 4, 7, 5, 8, 6),
-    (1, 2, 3, 4, 6, 8, 5, 7)
-]
+from utility import S8_GENERATORS
 
 def str2ptup(s):
     return tuple(int(i) for i in s)
@@ -37,6 +29,9 @@ class PermDF:
         return self.dist_dict[gtup]
 
     def benchmark(self, gtups):
+        if len(gtups) == 0:
+            return None
+
         probs = []
         for p in gtups:
             true_vals = self.nbr_values(p)
@@ -95,7 +90,20 @@ class PermDF:
         test_p, test_y = zip(*test_dict.items())
         return list(train_p), list(train_y), list(test_p), list(test_y)
 
+    def train_test(self, test_ratio):
+        perms = list(self.dist_dict.keys())
+        np.random.shuffle(perms)
+        k = int(test_ratio * len(self.dist_dict))
+        test_perms = perms[:k]
+        train_perms = perms[k:]
+        test_y = [self.dist_dict[p] for p in test_perms]
+        train_y = [self.dist_dict[p] for p in train_perms]
+        return train_perms, train_y, test_perms, test_y
+
     def benchmark_policy(self, gtups, policy):
+        if len(gtups) == 0:
+            return -1
+
         ncorrect = 0
         for g in gtups:
             ncorrect += int(self.opt_nbr(g, policy))
@@ -105,7 +113,7 @@ def px_mult(p1, p2):
     return tuple([p1[p2[x] - 1] for x in range(len(p1))])
 
 def nbrs(p):
-    return [px_mult(g, p) for g in GENS_RED]
+    return [px_mult(g, p) for g in S8_GENERATORS]
 
 def test():
     fname = '/home/hopan/github/idastar/s8_dists_red.txt'

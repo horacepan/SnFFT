@@ -1,6 +1,6 @@
 import logging
 
-def get_logger(fname):
+def get_logger(fname=None):
     '''
     fname: file location to store the log file
     '''
