@@ -5,8 +5,9 @@ import time
 import argparse
 from tqdm import tqdm
 import numpy as np
+import torch
 
-from fourier_policy import FourierPolicy, FourierPolicyTorch, FourierPolicyCG
+from fourier_policy import FourierPolicyTorch, FourierPolicyCG
 from perm_df import PermDF, nbrs
 from logger import get_logger
 sys.path.append('../')
@@ -20,22 +21,17 @@ def get_batch(xs, ys, size):
 
 def main(args):
     log = get_logger(f'./{args.logfile}')
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
     irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1), (3, 3, 1, 1)]
 
     perm_df = PermDF(args.fname, nbrs)
     log.info('Using irreps: {}'.format(irreps[:args.topk]))
-
-    if args.splitmode == 'train_test':
-        log.info('Using split func: train_test')
-        train_p, train_y, test_p, test_y = perm_df.train_test(args.testratio)
-    else:
-        train_p, train_y, test_p, test_y = perm_df.train_test_split(args.testratio)
-
+    # TODO: this is not a proper way of producing train/test split
+    train_p, train_y, test_p, test_y = perm_df.train_test(args.testratio)
     log.info('Test ratio: {:.4f} | Test items: {}'.format(len(test_p) / len(perm_df.df), len(test_p)))
-    if args.mode == 'numpy':
-        log.info('Using numpy policy')
-        policy = FourierPolicy(irreps[:args.topk], args.pklprefix)
-    elif args.mode == 'cg':
+
+    if args.mode == 'cg':
         log.info('Using cg torch policy')
         policy = FourierPolicyCG(irreps[:args.topk], args.pklprefix, lr=args.lr)
     else:
@@ -57,19 +53,23 @@ def main(args):
 
         if e % args.logiters == 0:
             train_score = perm_df.benchmark_policy(train_p, policy)
-            log.info(f'Train iter {e:3d}: batch mse: {loss:.4f} | Policy test score: {train_score:.4f} | last loss: {loss:.5f}')
+            log.info(f'Train iter {e:3d}: batch mse: {loss:.4f} | Policy train score: {train_score:.4f} | last loss: {loss:.5f}')
 
 
     log.info('Done training')
+    pdb.set_trace()
     train_score = perm_df.benchmark_policy(train_p, policy)
     test_score = perm_df.benchmark_policy(test_p, policy)
+    vals = policy.forward(train_p)
+    true_vals = torch.DoubleTensor([perm_df[p] for p in train_p]).unsqueeze(-1)
+    train_mse = (true_vals - vals).pow(2).mean()
+
     log.info('Train Correct rate: {:.4f} | Size: {}'.format(train_score, len(train_p)))
     log.info('Test Correct rate:  {:.4f} | Size: {}'.format(test_score, len(test_p)))
+    log.info('Train MSE: {:.4f}'.format(train_mse.item()))
     log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
     log.info(f'Mem footprint: {check_memory()}mb')
     log.info(f'Log saved: {args.logfile}')
-    # inspect policy's w[-1]
-    pdb.set_trace()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

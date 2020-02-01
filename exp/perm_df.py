@@ -30,7 +30,7 @@ class PermDF:
 
     def benchmark(self, gtups):
         if len(gtups) == 0:
-            return None
+            return -1
 
         probs = []
         for p in gtups:
@@ -70,26 +70,7 @@ class PermDF:
 
         return vals
 
-    def train_test_split(self, test_ratio):
-        perms = list(self.dist_dict.keys())
-        np.random.shuffle(perms)
-        test_perms = perms[: int(test_ratio * len(self.dist_dict))]
-        train_dict = {}
-        test_dict = {}
-
-        for p in test_perms:
-            vals = self.nbr_values(p)
-            vals[p] = self.dist_dict[p]
-            test_dict.update(vals)
-
-        for p, val in self.dist_dict.items():
-            if p not in test_dict:
-                train_dict[p] = val
-
-        train_p, train_y = zip(*train_dict.items())
-        test_p, test_y = zip(*test_dict.items())
-        return list(train_p), list(train_y), list(test_p), list(test_y)
-
+    # TODO: this is not a proper way doing train test split for perm problem
     def train_test(self, test_ratio):
         perms = list(self.dist_dict.keys())
         np.random.shuffle(perms)

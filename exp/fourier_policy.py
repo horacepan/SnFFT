@@ -86,6 +86,18 @@ class FourierPolicy:
         self.w = np.vstack(vecs + [[1]])
         self.w[-1] = mean
 
+    def nbr_deltas(self, gtups, nbr_func):
+        nbrs = []
+        len_nbrs = len(nbr_func(gtups[0]))
+
+        for g in gtups:
+            for n in nbr_func(g):
+                nbrs.append(n)
+
+        y_pred = self.forward(nbrs)
+        y_nbrs = y_pred.reshape(-1, len_nbrs)
+        return y_nbrs
+
 class FourierPolicyTorch(FourierPolicy):
     def __init__(self, irreps, prefix, lr):
         super(FourierPolicyTorch, self).__init__(irreps, prefix)
@@ -111,12 +123,6 @@ class FourierPolicyTorch(FourierPolicy):
         vec = torch.from_numpy(self.to_irrep(gtup))
         return vec.matmul(self.w_torch)
 
-
-class FourierPolicyCG(FourierPolicyTorch):
-    def __init__(self, irreps, prefix, lr):
-        super(FourierPolicyCG, self).__init__(irreps, prefix, lr=lr)
-        self.minibatch_cnt = 0
-
     def _reshaped_mats(self):
         ident_tup = tuple(i for i in range(1, self.size+1))
         idx = 0
@@ -129,12 +135,10 @@ class FourierPolicyCG(FourierPolicyTorch):
             idx += size * size
         return fhats
 
-    #def train_batch(self, perms, y, **kwargs):
-    #    loss = super(FourierPolicyCG, self).train_batch(perms, y, **kwargs)
-    #        pass
-    #    loss += self.train_cg_loss(S8_GENERATORS)
-    #    self.minibatch_cnt += 1
-    #    return loss
+class FourierPolicyCG(FourierPolicyTorch):
+    def __init__(self, irreps, prefix, lr):
+        super(FourierPolicyCG, self).__init__(irreps, prefix, lr=lr)
+        self.minibatch_cnt = 0
 
     def train_cg_loss(self, generators):
         st = time.time()

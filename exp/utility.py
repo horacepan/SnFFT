@@ -12,6 +12,10 @@ S8_GENERATORS = [
     (1, 2, 3, 4, 6, 8, 5, 7)
 ]
 
+def get_batch(xs, ys, size):
+    idx = np.random.choice(len(xs), size=size)
+    return [xs[i] for i in idx], np.array([ys[i] for i in idx]).reshape(-1, 1)
+
 def load_yor(irrep, prefix):
     '''
     irrep: tuple
