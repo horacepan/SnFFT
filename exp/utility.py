@@ -1,4 +1,5 @@
 import os
+import psutil
 import pickle
 import numpy as np
 import torch
@@ -53,3 +54,11 @@ def th_kron(a, b):
     res = a.unsqueeze(-1).unsqueeze(-3) * b.unsqueeze(-2).unsqueeze(-4)
     siz0 = res.shape[:-4]
     return res.reshape(siz0 + siz1)
+
+def check_memory(verbose=True):
+    # return the memory usage in MB
+    process = psutil.Process(os.getpid())
+    mem = process.memory_info()[0] / float(2 ** 20)
+    if verbose:
+        print("Consumed {:.2f}mb memory".format(mem))
+    return mem
