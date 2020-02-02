@@ -1,5 +1,4 @@
 import pdb
-from tqdm import tqdm
 import time
 import os
 import pickle
@@ -22,19 +21,15 @@ class FourierPolicy:
         '''
         self.size = sum(irreps[0])
         self.irreps = irreps
-        self.yors = {}
-        for irr in tqdm(irreps):
-            self.yors[irr] = load_yor(irr, prefix)
-        #self.yors = {irr: load_yor(irr, prefix) for irr in irreps}
+        self.yors = {irr: load_yor(irr, prefix) for irr in irreps}
 
         total_size = 0
         for parts, pdict in self.yors.items():
             # sort of hacky but w/e
             # want to grab the size of this thing
-            total_size += pdict[(1,2,3,4,5,6,7,8)].shape[0] ** 2
+            total_size += pdict[(1, 2, 3, 4, 5, 6, 7, 8)].shape[0] ** 2
 
         self.w = np.random.normal(scale=0.2, size=(total_size + 1, 1))
-        self.w[-1] = 4.5
 
     def train_batch(self, perms, y, lr, **kwargs):
         X = np.vstack([self.to_irrep(p) for p in perms])
@@ -43,6 +38,10 @@ class FourierPolicy:
         self.w -= lr * grad
         loss = np.mean(np.square((y - y_pred)))
         return loss
+
+    def eval_batch(self, perms, y):
+        y_pred = self.forward(perms)
+        return np.mean(np.square(y - y_pred))
 
     def __call__(self, gtup):
         '''
@@ -118,6 +117,10 @@ class FourierPolicyTorch(FourierPolicy):
         X_th = torch.from_numpy(X)
         y_pred = X_th.matmul(self.w_torch)
         return y_pred
+
+    def compute_loss(self, perms, y):
+        y_pred = self.forward(perms)
+        return nn.functional.mse_loss(y_pred, torch.from_numpy(y).double()).item()
 
     def __call__(self, gtup):
         vec = torch.from_numpy(self.to_irrep(gtup))
