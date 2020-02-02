@@ -52,34 +52,51 @@ def main(args):
         losses.append(loss)
 
         if args.mode == 'cg' and e % args.cgiters == 0 and e > 0:
+            cgst = time.time()
             cg_loss = policy.train_cg_loss(S8_GENERATORS)
-            train_score = perm_df.benchmark_policy(train_p, policy)
-            log.info(f'|    Train iter {e:3d}: batch mse: {loss:.4f} | Policy train score: {train_score:.4f} | CG loss: {cg_loss:.5f}')
+            cgt = (time.time() - cgst) / 60.
+            test_score = perm_df.benchmark_policy(test_p, policy)
+            log.info(f'|    Iter {e:5d}: batch mse: {loss:.2f} | Policy test score: {test_score:.2f} | CG loss: {cg_loss:.2f} | cg time: {cgt:.2f}min')
             cg_losses.append(cg_loss)
 
         if e % args.logiters == 0:
             #train_score = perm_df.benchmark_policy(train_p, policy)
-            train_score = 0
+            test_score = perm_df.benchmark_policy(test_p, policy)
             tpred = policy.forward(test_p)
-            log.info(f'Train iter {e:3d}: batch mse: {loss:.4f} | Policy train score: {train_score:.4f} | ' + \
-                     f'Test loss: {loss:.5f} | Test mean: {tpred.mean().item():.2f} | std: {tpred.std().item():.2f}')
+
+            tpred, tnbrs = policy.nbr_deltas(test_p)
+            nbr_deltas = tnbrs - tpred
+            nbr_delta_means = nbr_deltas.abs().mean(dim=1)
+            nbr_deltas_std = nbr_deltas.abs().std(dim=1)
+
+            log.info(f'Iter {e:5d}: batch mse: {loss:.2f} | Policy test score: {test_score:.2f} | ' + \
+                     f'Test loss: {loss:.2f} | Test mean: {tpred.mean().item():.2f} | std: {tpred.std().item():.2f} | ' + \
+                      'Test Nbr abs diff mean: {:.2f} | std: {:.2f}'.format(nbr_deltas.abs().mean().item(), nbr_deltas.abs().std()))
 
     total = (time.time() - _st) / 60.
     train_t = (time.time() - st) / 60.
     log.info('Done training | elapsed: {:.2f}mins | train time: {:.2f}mins'.format(total, train_t))
 
-    train_score = perm_df.benchmark_policy(train_p, policy)
-    test_score = perm_df.benchmark_policy(test_p, policy)
-    vals = policy.forward(train_p)
-    tvals = policy.forward(test_p)
-    true_train_vals = torch.DoubleTensor([perm_df[p] for p in train_p]).unsqueeze(-1)
-    true_test_vals = torch.DoubleTensor([perm_df[p] for p in test_p]).unsqueeze(-1)
-    train_mse = (true_train_vals - vals).pow(2).mean()
-    test_mse = (true_test_vals - tvals).pow(2).mean()
+    if args.fulldebug:
+        train_score = perm_df.benchmark_policy(train_p, policy)
+        test_score = perm_df.benchmark_policy(test_p, policy)
+        vals = policy.forward(train_p)
+        tvals = policy.forward(test_p)
+        true_train_vals = torch.DoubleTensor([perm_df[p] for p in train_p]).unsqueeze(-1)
+        true_test_vals = torch.DoubleTensor([perm_df[p] for p in test_p]).unsqueeze(-1)
+        train_mse = (true_train_vals - vals).pow(2).mean()
+        test_mse = (true_test_vals - tvals).pow(2).mean()
+        log.info('Train Correct rate: {:.4f} | Size: {}'.format(train_score, len(train_p)))
+        log.info('Test Correct rate:  {:.4f} | Size: {}'.format(test_score, len(test_p)))
+        log.info('Train MSE: {:.4f} | Test MSE: {:.4f}'.format(train_mse.item(), test_mse.item()))
+        log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
 
-    log.info('Train Correct rate: {:.4f} | Size: {}'.format(train_score, len(train_p)))
-    log.info('Test Correct rate:  {:.4f} | Size: {}'.format(test_score, len(test_p)))
-    log.info('Train MSE: {:.4f} | Test MSE: {:.4f}'.format(train_mse.item(), test_mse.item()))
+    tpred, tnbrs = policy.nbr_deltas(test_p)
+    nbr_deltas = tnbrs - tpred
+    nbr_delta_means = nbr_deltas.abs().mean(dim=1)
+    nbr_deltas_std = nbr_deltas.abs().std(dim=1)
+    log.info('Nbr abs diff mean: {:.2f} | std: {:.2f}'.format(nbr_deltas.abs().mean().item(), nbr_deltas.abs().std()))
+
     log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
     log.info(f'Mem footprint: {check_memory()}mb')
     log.info(f'Log saved: {args.logfile}')
@@ -100,6 +117,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--logiters', type=int, default=1000)
     parser.add_argument('--mode', type=str, default='torch')
+    parser.add_argument('--fulldebug', action='store_true', default=False)
 
     args = parser.parse_args()
     main(args)

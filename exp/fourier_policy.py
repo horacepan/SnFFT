@@ -6,7 +6,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from utility import load_yor, load_np, S8_GENERATORS
+from utility import load_yor, load_np, S8_GENERATORS, nbrs
 from cg_utility import cg_loss
 from logger import get_logger
 
@@ -85,17 +85,17 @@ class FourierPolicy:
         self.w = np.vstack(vecs + [[1]])
         self.w[-1] = mean
 
-    def nbr_deltas(self, gtups, nbr_func):
-        nbrs = []
-        len_nbrs = len(nbr_func(gtups[0]))
+    def nbr_deltas(self, gtups):
+        gnbrs = []
+        len_nbrs = len(nbrs(gtups[0]))
 
         for g in gtups:
-            for n in nbr_func(g):
-                nbrs.append(n)
+            for n in nbrs(g):
+                gnbrs.append(n)
 
-        y_pred = self.forward(nbrs)
-        y_nbrs = y_pred.reshape(-1, len_nbrs)
-        return y_nbrs
+        y_nbrs = self.forward(gnbrs).reshape(-1, len_nbrs)
+        y_pred = self.forward(gtups)
+        return y_pred, y_nbrs
 
 class FourierPolicyTorch(FourierPolicy):
     def __init__(self, irreps, prefix, lr):

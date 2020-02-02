@@ -12,6 +12,11 @@ S8_GENERATORS = [
     (1, 2, 3, 4, 7, 5, 8, 6),
     (1, 2, 3, 4, 6, 8, 5, 7)
 ]
+def px_mult(p1, p2):
+    return tuple([p1[p2[x] - 1] for x in range(len(p1))])
+
+def nbrs(p):
+    return [px_mult(g, p) for g in S8_GENERATORS]
 
 def get_batch(xs, ys, size):
     idx = np.random.choice(len(xs), size=size)
