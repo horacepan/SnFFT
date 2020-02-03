@@ -50,14 +50,16 @@ def main(args):
         if args.mode == 'cg' and e % args.cgiters == 0 and e > 0:
             cgst = time.time()
             cg_loss = policy.train_cg_loss_cached()
+            train_mse = policy.compute_loss(train_x, train_y)
             cgt = (time.time() - cgst) / 60.
-            bloss = policy.compute_loss(bx, by)
-            log.info(f'|    Iter {e:5d}: batch mse: {loss:.2f} | CG loss: {cg_loss:.2f} | cg time: {cgt:.2f}min | post update batch mse: {bloss:.2f}')
+            post_train_mse = policy.compute_loss(train_x, train_y)
+            log.info(f'|    Iter {e:5d}: train mse: {train_mse:.2f} | CG loss: {cg_loss:.2f} | cg time: {cgt:.2f}min | post update batch mse: {post_train_mse:.2f}')
             cg_losses.append(cg_loss)
 
         if e % args.logiters == 0:
             #train_score = perm_df.benchmark_policy(train_p, policy)
             with torch.no_grad():
+                train_mse = policy.compute_loss(train_x, train_y)
                 test_score = perm_df.benchmark_policy(test_p, policy)
                 tpred = policy.forward_dict(test_p)
 
@@ -67,13 +69,9 @@ def main(args):
                 nbr_delta_means = nbr_deltas.abs().mean(dim=1)
                 nbr_deltas_std = nbr_deltas.abs().std(dim=1)
 
-                log.info(f'Iter {e:5d}: batch mse: {loss:.2f} | Policy test score: {test_score:.2f} | ' + \
+                log.info(f'Iter {e:5d}: train mse: {train_mse:.2f} | Policy test score: {test_score:.2f} | ' + \
                          f'Test loss: {loss:.2f} | Test mean: {tpred.mean().item():.2f} | std: {tpred.std().item():.2f} | ' + \
                           'Test Nbr abs diff mean: {:.2f} | std: {:.2f}'.format(nbr_deltas.abs().mean().item(), nbr_deltas.abs().std()))
-
-    total = (time.time() - _st) / 60.
-    train_t = (time.time() - st) / 60.
-    log.info('Done training | elapsed: {:.2f}mins | train time: {:.2f}mins'.format(total, train_t))
 
     if args.fulldebug:
         train_score = perm_df.benchmark_policy(train_p, policy)
@@ -85,13 +83,13 @@ def main(args):
         log.info('Train MSE: {:.4f} | Test MSE: {:.4f}'.format(train_mse, test_mse))
         log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
 
-    tpred, tnbrs = policy.nbr_deltas(test_p, nbrs)
-    nbr_deltas = tnbrs - tpred
-    nbr_delta_means = nbr_deltas.abs().mean(dim=1)
-    nbr_deltas_std = nbr_deltas.abs().std(dim=1)
-    log.info('Nbr abs diff mean: {:.2f} | std: {:.2f}'.format(nbr_deltas.abs().mean().item(), nbr_deltas.abs().std()))
+        tpred, tnbrs = policy.nbr_deltas(test_p, nbrs)
+        nbr_deltas = tnbrs - tpred
+        nbr_delta_means = nbr_deltas.abs().mean(dim=1)
+        nbr_deltas_std = nbr_deltas.abs().std(dim=1)
+        log.info('Nbr abs diff mean: {:.2f} | std: {:.2f}'.format(nbr_deltas.abs().mean().item(), nbr_deltas.abs().std()))
 
-    log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
+    #log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
     log.info(f'Mem footprint: {check_memory()}mb')
     log.info(f'Log saved: {args.logfile}')
     pdb.set_trace()
@@ -101,7 +99,7 @@ if __name__ == '__main__':
     parser.add_argument('--topk', type=int, default=2)
     parser.add_argument('--testratio', type=float, default=0.05)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
-    parser.add_argument('--pklprefix', type=str, default='/local/hopan/irreps/s_8')
+    parser.add_argument('--pklprefix', type=str, default='/local/hopan/irreps/s_8/')
     parser.add_argument('--fhatprefix', type=str, default='/local/hopan/s8cube/fourier/')
     parser.add_argument('--logfile', type=str, default=f'/logs/{time.time()}.log')
     parser.add_argument('--minibatch', type=int, default=128)

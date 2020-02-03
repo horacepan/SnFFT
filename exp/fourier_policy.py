@@ -39,6 +39,7 @@ class FourierPolicyTorch(nn.Module):
         self.w_torch.data[-1] = 5.328571428571428 # TODO: this is a hack
         self.optim = torch.optim.Adam([self.w_torch], lr=lr)
         self.pdict = self.cache_perms(perms)
+        self.lr = lr
 
     def to_irrep(self, gtup):
         '''
@@ -100,8 +101,9 @@ class FourierPolicyTorch(nn.Module):
         y: numpy array
         Returns the MSE loss between the model evaluated on the given perms vs y
         '''
-        y_pred = self.forward_dict(perms)
-        return nn.functional.mse_loss(y_pred, torch.from_numpy(y).double()).item()
+        with torch.no_grad():
+            y_pred = self.forward_dict(perms)
+            return nn.functional.mse_loss(y_pred, torch.from_numpy(y).double()).item()
 
     def __call__(self, gtup):
         '''
@@ -154,19 +156,18 @@ class FourierPolicyTorch(nn.Module):
         y_pred = X_th.matmul(self.w_torch)
         return y_pred
 
+    def load(self, fname):
+        weight = torch.load(fname)
+        self.w_torch = nn.Parameter(weight)
+        self.optim = torch.optim.Adam(self.parameters(), lr=self.lr)
+
 class FourierPolicyCG(FourierPolicyTorch):
     def __init__(self, irreps, prefix, lr, perms):
         super(FourierPolicyCG, self).__init__(irreps, prefix, lr, perms)
-        st = time.time()
-        self.s8_chars = pickle.load(open('/local/hopan/irreps/s_8/char_dict.pkl', 'rb'))
-        print('Load chars time: {:.4f}s'.format(time.time() - st))
-        stm = time.time()
+        self.s8_chars = pickle.load(open(f'{prefix}/char_dict.pkl', 'rb'))
         self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).double()
                          for p1 in irreps for p2 in irreps for base_p in irreps}
-        print('Load cg time: {:.4f}s'.format(time.time() - stm))
-        stmm = time.time()
         self.multiplicities = self.compute_multiplicities()
-        print('Load multiplicities time: {:.4f}s'.format(time.time() - stmm))
 
         self.generators = S8_GENERATORS
 
