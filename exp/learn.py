@@ -28,50 +28,49 @@ def main(args):
     irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1), (3, 3, 1, 1)]
 
     perm_df = PermDF(args.fname, nbrs)
-    log.info('Using irreps: {}'.format(irreps[:args.topk]))
     train_p, train_y, test_p, test_y = perm_df.train_test(args.testratio)
-    log.info('Test ratio: {:.4f} | Test items: {}'.format(len(test_p) / len(perm_df.df), len(test_p)))
+    all_perms = train_p + test_p # cache these
 
+    log.info('Using irreps: {}'.format(irreps[:args.topk]))
+    log.info('Test ratio: {:.4f} | Test items: {}'.format(len(test_p) / len(perm_df.df), len(test_p)))
     if args.mode == 'cg':
-        log.info('Using cg torch policy')
-        policy = FourierPolicyCG(irreps[:args.topk], args.pklprefix, lr=args.lr)
+        log.info('Using cg policy')
+        policy = FourierPolicyCG(irreps[:args.topk], args.pklprefix, args.lr, all_perms)
     else:
         log.info('Using torch policy')
-        policy = FourierPolicyTorch(irreps[:args.topk], args.pklprefix, lr=args.lr)
+        policy = FourierPolicyTorch(irreps[:args.topk], args.pklprefix, args.lr, all_perms)
 
     st = time.time()
     losses = []
     cg_losses = []
-    n_batches = len(train_p) // args.minibatch
-    log.info(f'Num batches per epoch: {n_batches}')
-    bs = args.minibatch
 
     for e in range(args.maxiters + 1):
         bx, by = get_batch(train_p, train_y, args.minibatch)
-        loss = policy.train_batch(bx, by, lr=args.lr, epoch=e)
-        losses.append(loss)
+        loss = policy.train_batch(bx, by, epoch=e)
 
         if args.mode == 'cg' and e % args.cgiters == 0 and e > 0:
             cgst = time.time()
             cg_loss = policy.train_cg_loss(S8_GENERATORS)
             cgt = (time.time() - cgst) / 60.
-            test_score = perm_df.benchmark_policy(test_p, policy)
-            log.info(f'|    Iter {e:5d}: batch mse: {loss:.2f} | Policy test score: {test_score:.2f} | CG loss: {cg_loss:.2f} | cg time: {cgt:.2f}min')
+            bloss = policy.compute_loss(bx, by)
+            log.info(f'|    Iter {e:5d}: batch mse: {loss:.2f} | CG loss: {cg_loss:.2f} | cg time: {cgt:.2f}min | post update batch mse: {bloss:.2f}')
             cg_losses.append(cg_loss)
 
         if e % args.logiters == 0:
             #train_score = perm_df.benchmark_policy(train_p, policy)
-            test_score = perm_df.benchmark_policy(test_p, policy)
-            tpred = policy.forward(test_p)
+            with torch.no_grad():
+                test_score = perm_df.benchmark_policy(test_p, policy)
+                tpred = policy.forward_dict(test_p)
 
-            tpred, tnbrs = policy.nbr_deltas(test_p)
-            nbr_deltas = tnbrs - tpred
-            nbr_delta_means = nbr_deltas.abs().mean(dim=1)
-            nbr_deltas_std = nbr_deltas.abs().std(dim=1)
+                st = time.time()
+                tpred, tnbrs = policy.nbr_deltas(test_p, nbrs)
+                nbr_deltas = tnbrs - tpred
+                nbr_delta_means = nbr_deltas.abs().mean(dim=1)
+                nbr_deltas_std = nbr_deltas.abs().std(dim=1)
 
-            log.info(f'Iter {e:5d}: batch mse: {loss:.2f} | Policy test score: {test_score:.2f} | ' + \
-                     f'Test loss: {loss:.2f} | Test mean: {tpred.mean().item():.2f} | std: {tpred.std().item():.2f} | ' + \
-                      'Test Nbr abs diff mean: {:.2f} | std: {:.2f}'.format(nbr_deltas.abs().mean().item(), nbr_deltas.abs().std()))
+                log.info(f'Iter {e:5d}: batch mse: {loss:.2f} | Policy test score: {test_score:.2f} | ' + \
+                         f'Test loss: {loss:.2f} | Test mean: {tpred.mean().item():.2f} | std: {tpred.std().item():.2f} | ' + \
+                          'Test Nbr abs diff mean: {:.2f} | std: {:.2f}'.format(nbr_deltas.abs().mean().item(), nbr_deltas.abs().std()))
 
     total = (time.time() - _st) / 60.
     train_t = (time.time() - st) / 60.
@@ -80,18 +79,14 @@ def main(args):
     if args.fulldebug:
         train_score = perm_df.benchmark_policy(train_p, policy)
         test_score = perm_df.benchmark_policy(test_p, policy)
-        vals = policy.forward(train_p)
-        tvals = policy.forward(test_p)
-        true_train_vals = torch.DoubleTensor([perm_df[p] for p in train_p]).unsqueeze(-1)
-        true_test_vals = torch.DoubleTensor([perm_df[p] for p in test_p]).unsqueeze(-1)
-        train_mse = (true_train_vals - vals).pow(2).mean()
-        test_mse = (true_test_vals - tvals).pow(2).mean()
+        train_mse = policy.compute_loss(train_p, train_y)
+        test_mse = policy.compute_loss(test_p, test_y)
         log.info('Train Correct rate: {:.4f} | Size: {}'.format(train_score, len(train_p)))
         log.info('Test Correct rate:  {:.4f} | Size: {}'.format(test_score, len(test_p)))
-        log.info('Train MSE: {:.4f} | Test MSE: {:.4f}'.format(train_mse.item(), test_mse.item()))
+        log.info('Train MSE: {:.4f} | Test MSE: {:.4f}'.format(train_mse, test_mse))
         log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
 
-    tpred, tnbrs = policy.nbr_deltas(test_p)
+    tpred, tnbrs = policy.nbr_deltas(test_p, nbrs)
     nbr_deltas = tnbrs - tpred
     nbr_delta_means = nbr_deltas.abs().mean(dim=1)
     nbr_deltas_std = nbr_deltas.abs().std(dim=1)
@@ -100,6 +95,7 @@ def main(args):
     log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
     log.info(f'Mem footprint: {check_memory()}mb')
     log.info(f'Log saved: {args.logfile}')
+    pdb.set_trace()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

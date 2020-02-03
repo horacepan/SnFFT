@@ -1,3 +1,4 @@
+import sys
 import pdb
 import time
 import os
@@ -6,49 +7,38 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from utility import load_yor, load_np, S8_GENERATORS, nbrs
+from utility import load_yor
 from cg_utility import cg_loss
 from logger import get_logger
 
+sys.path.append('../')
+from young_tableau import FerrersDiagram
+from utils import check_memory
+
 #log = get_logger(name=__name__)
-class FourierPolicy:
+class FourierPolicyTorch(nn.Module):
     '''
     Wrapper class for fourier linear regression
     '''
-    def __init__(self, irreps, prefix):
+    def __init__(self, irreps, yor_prefix, lr, perms):
         '''
-        Setup
+        irreps: list of tuples
+        yor_prefix: directory containing yor pickles
+        lr: learning rate
+        perms: list of permutation tuples to cache
         '''
+        super(FourierPolicyTorch, self).__init__()
         self.size = sum(irreps[0])
         self.irreps = irreps
-        self.yors = {irr: load_yor(irr, prefix) for irr in irreps}
+        self.yors = {irr: load_yor(irr, yor_prefix) for irr in irreps}
+        self.ferrers = {irr: FerrersDiagram(irr) for irr in irreps}
 
-        total_size = 0
-        for parts, pdict in self.yors.items():
-            # sort of hacky but w/e
-            # want to grab the size of this thing
-            total_size += pdict[(1, 2, 3, 4, 5, 6, 7, 8)].shape[0] ** 2
-
-        self.w = np.random.normal(scale=0.2, size=(total_size + 1, 1))
-
-    def train_batch(self, perms, y, lr, **kwargs):
-        X = np.vstack([self.to_irrep(p) for p in perms])
-        y_pred = X@self.w
-        grad = X.T@y_pred - X.T@y
-        self.w -= lr * grad
-        loss = np.mean(np.square((y - y_pred)))
-        return loss
-
-    def eval_batch(self, perms, y):
-        y_pred = self.forward(perms)
-        return np.mean(np.square(y - y_pred))
-
-    def __call__(self, gtup):
-        '''
-        gtup: perm tuple
-        '''
-        vec = self.to_irrep(gtup)
-        return vec.dot(self.w)
+        total_size = sum([f.n_tabs() ** 2 for f in self.ferrers.values()])
+        self.w_torch = nn.Parameter(torch.rand(total_size + 1, 1))
+        self.w_torch.data.normal_(std=0.2)
+        self.w_torch.data[-1] = 5.328571428571428 # TODO: this is a hack
+        self.optim = torch.optim.Adam([self.w_torch], lr=lr)
+        self.pdict = self.cache_perms(perms)
 
     def to_irrep(self, gtup):
         '''
@@ -64,66 +54,60 @@ class FourierPolicy:
         irrep_vecs.append(np.array([[1]]))
         return np.hstack(irrep_vecs)
 
-    def forward(self, perms):
-        X = np.vstack([self.to_irrep(p) for p in perms])
-        y_pred = X@self.w
-        return y_pred
-
-    def eval(self, gtups):
-        vecs = np.hstack([self.to_irrep(g) for g in gtups])
-        return vecs.dot(self.w)
-
-    def set_w(self, fhat_prefix):
-        self.fhats = {irr: load_np(irr, fhat_prefix) for irr in self.irreps}
-        group_size = 40320
-        mean = 5.328571428571428
-        vecs = []
-        for irr in self.irreps:
-            mat = self.fhats[irr]
-            coef =  (mat.shape[1] ** 0.5)/ group_size
-            vecs.append(coef * mat.reshape(-1, 1))
-        self.w = np.vstack(vecs + [[1]])
-        self.w[-1] = mean
-
-    def nbr_deltas(self, gtups):
+    def nbr_deltas(self, gtups, nbrs_func):
+        '''
+        gtups: list of tuples to evaluate values of neighbors of
+        Returns: torch tensor of shape n x {num_nbrs}
+        '''
         gnbrs = []
-        len_nbrs = len(nbrs(gtups[0]))
+        len_nbrs = len(nbrs_func(gtups[0]))
 
         for g in gtups:
-            for n in nbrs(g):
+            for n in nbrs_func(g):
                 gnbrs.append(n)
 
-        y_nbrs = self.forward(gnbrs).reshape(-1, len_nbrs)
-        y_pred = self.forward(gtups)
+        y_nbrs = self.forward_dict(gnbrs).reshape(-1, len_nbrs)
+        y_pred = self.forward_dict(gtups)
         return y_pred, y_nbrs
 
-class FourierPolicyTorch(FourierPolicy):
-    def __init__(self, irreps, prefix, lr):
-        super(FourierPolicyTorch, self).__init__(irreps, prefix)
-        self.w_torch = nn.Parameter(torch.from_numpy(self.w))
-        self.optim = torch.optim.Adam([self.w_torch], lr=lr)
-
     def train_batch(self, perms, y, **kwargs):
-        st = time.time()
+        '''
+        perms: list of tuples
+        y: numpy array
+        Returns: training loss on this batch. Also takes a gradient step
+        '''
         self.optim.zero_grad()
-        y_pred = self.forward(perms)
+        y_pred = self.forward_dict(perms)
         loss = nn.functional.mse_loss(y_pred, torch.from_numpy(y).double())
         loss.backward()
         self.optim.step()
         return loss.item()
 
-    def forward(self, perms):
+    def _forward(self, perms):
+        '''
+        perms; list of tuples
+        Returns: the model evaluation on the list of perms (handles the tuple to
+        vector representation conversion).
+        '''
         X = np.vstack([self.to_irrep(p) for p in perms])
         X_th = torch.from_numpy(X)
         y_pred = X_th.matmul(self.w_torch)
         return y_pred
 
     def compute_loss(self, perms, y):
-        y_pred = self.forward(perms)
+        '''
+        perms: list of tuples
+        y: numpy array
+        Returns the MSE loss between the model evaluated on the given perms vs y
+        '''
+        y_pred = self.forward_dict(perms)
         return nn.functional.mse_loss(y_pred, torch.from_numpy(y).double()).item()
 
     def __call__(self, gtup):
-        vec = torch.from_numpy(self.to_irrep(gtup))
+        '''
+        gtup: tuple
+        '''
+        vec = self.pdict[gtup]
         return vec.matmul(self.w_torch)
 
     def _reshaped_mats(self):
@@ -138,13 +122,45 @@ class FourierPolicyTorch(FourierPolicy):
             idx += size * size
         return fhats
 
+    def to_tensor(self, perms):
+        '''
+        perms: list of tuples
+        Returns: the tensor representation of the given permutations
+        '''
+        X = torch.cat([self.pdict[p] for p in perms], dim=0)
+        return X
+
+    def forward_th(self, tensor):
+        y_pred = tensor.matmul(self.w_torch)
+        return y_pred
+
+    def loss_th(self, tensor, y):
+        y_pred = self.forward_th(tensor)
+        return nn.functional.mse_loss(y_pred, torch.from_numpy(y).double()).item()
+
+    def cache_perms(self, perms):
+        '''
+        perms: list of tuples
+        Returns a dictionary mapping tuple to its tensor representation
+        '''
+        pdict = {}
+        for p in perms:
+            pdict[p] = torch.from_numpy(self.to_irrep(p))
+        self.pdict = pdict
+        return pdict
+
+    def forward_dict(self, perms):
+        X_th = torch.cat([self.pdict[p] for p in perms], dim=0)
+        y_pred = X_th.matmul(self.w_torch)
+        return y_pred
+
 class FourierPolicyCG(FourierPolicyTorch):
     def __init__(self, irreps, prefix, lr):
         super(FourierPolicyCG, self).__init__(irreps, prefix, lr=lr)
-        self.minibatch_cnt = 0
+        # load cg matrices
+        # load multiplicies
 
     def train_cg_loss(self, generators):
-        st = time.time()
         self.optim.zero_grad()
         fhats = self._reshaped_mats()
         loss = 0

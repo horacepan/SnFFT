@@ -77,8 +77,8 @@ class PermDF:
         k = int(test_ratio * len(self.dist_dict))
         test_perms = perms[:k]
         train_perms = perms[k:]
-        test_y = [self.dist_dict[p] for p in test_perms]
-        train_y = [self.dist_dict[p] for p in train_perms]
+        test_y = np.array([self.dist_dict[p] for p in test_perms])
+        train_y = np.array([self.dist_dict[p] for p in train_perms])
         return train_perms, train_y, test_perms, test_y
 
     def benchmark_policy(self, gtups, policy):
