@@ -13,7 +13,6 @@ from perm_df import PermDF, nbrs
 from logger import get_logger
 sys.path.append('../')
 from utils import check_memory
-from utility import S8_GENERATORS
 
 # TODO: place elsewhere
 def get_batch(xs, ys, size):
@@ -50,7 +49,7 @@ def main(args):
 
         if args.mode == 'cg' and e % args.cgiters == 0 and e > 0:
             cgst = time.time()
-            cg_loss = policy.train_cg_loss(S8_GENERATORS)
+            cg_loss = policy.train_cg_loss_cached()
             cgt = (time.time() - cgst) / 60.
             bloss = policy.compute_loss(bx, by)
             log.info(f'|    Iter {e:5d}: batch mse: {loss:.2f} | CG loss: {cg_loss:.2f} | cg time: {cgt:.2f}min | post update batch mse: {bloss:.2f}')

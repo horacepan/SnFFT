@@ -7,8 +7,8 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from utility import load_yor
-from cg_utility import cg_loss
+from utility import load_yor, cg_mat, S8_GENERATORS, th_kron
+from cg_utility import cg_loss, proj, compute_rhs_block, compute_reduced_block
 from logger import get_logger
 
 sys.path.append('../')
@@ -155,19 +155,86 @@ class FourierPolicyTorch(nn.Module):
         return y_pred
 
 class FourierPolicyCG(FourierPolicyTorch):
-    def __init__(self, irreps, prefix, lr):
-        super(FourierPolicyCG, self).__init__(irreps, prefix, lr=lr)
-        # load cg matrices
-        # load multiplicies
+    def __init__(self, irreps, prefix, lr, perms):
+        super(FourierPolicyCG, self).__init__(irreps, prefix, lr, perms)
+        st = time.time()
+        self.s8_chars = pickle.load(open('/local/hopan/irreps/s_8/char_dict.pkl', 'rb'))
+        print('Load chars time: {:.4f}s'.format(time.time() - st))
+        stm = time.time()
+        self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).double()
+                         for p1 in irreps for p2 in irreps for base_p in irreps}
+        print('Load cg time: {:.4f}s'.format(time.time() - stm))
+        stmm = time.time()
+        self.multiplicities = self.compute_multiplicities()
+        print('Load multiplicities time: {:.4f}s'.format(time.time() - stmm))
 
-    def train_cg_loss(self, generators):
+        self.generators = S8_GENERATORS
+
+    def compute_multiplicities(self):
+        mults_dict = {}
+        for p1 in self.irreps:
+            for p2 in self.irreps:
+                tens_char = self.s8_chars[p1] * self.s8_chars[p2]
+                mults_dict[(p1, p2)] = proj(tens_char, self.s8_chars)
+        return mults_dict
+
+    def train_cg_loss(self):
         self.optim.zero_grad()
         fhats = self._reshaped_mats()
         loss = 0
         for base_p in self.irreps:
-            for g in generators:
+            for g in self.generators:
                 loss += cg_loss(base_p, self.irreps, g, fhats)
 
         loss.backward()
         self.optim.step()
         return loss.item()
+
+    def train_cg_loss_cached(self):
+        self.optim.zero_grad()
+        fhats = self._reshaped_mats()
+        loss = 0
+
+        kron_mats = {(p1, p2): th_kron(fhats[p1], fhats[p2]) for p1 in self.irreps for p2 in self.irreps}
+        for base_p in self.irreps:
+            for g in self.generators:
+                loss += self.cg_loss(base_p, g, fhats, kron_mats)
+
+        loss.backward()
+        self.optim.step()
+        return loss.item()
+
+    def cg_loss(self, base_p, gelement, fhats, kron_mats):
+        '''
+        base_p: partition
+        gelement: tuple of a generator of the group
+        fhats: torch tensors
+        '''
+
+        g_size = 1 # should really be size of the group but doesnt matter much
+        dbase = self.ferrers[base_p].n_tabs()
+        rho1 = torch.from_numpy(self.yors[base_p][gelement])
+        lmat = rho1 + torch.eye(dbase).double()
+
+        lhs = torch.zeros((dbase, dbase)).double()
+        rhs = torch.zeros((dbase, dbase)).double()
+
+        for p1 in self.irreps:
+            f1 = self.ferrers[p1]
+            fhat1 = fhats[p1]
+            rhog = torch.from_numpy(self.yors[p1][gelement]).double()
+
+            for p2 in self.irreps:
+                f2 = self.ferrers[p2]
+                mult = self.multiplicities[(p1, p2)][base_p]
+
+                fhat2 = fhats[p2]
+                rho_f1 = rhog.matmul(fhat1)
+                cgmat = self.cg_mats[(p1, p2, base_p)] # d x drho zrho
+                reduced_block = compute_reduced_block(p1, p2, cgmat, mult, kron_mats)
+
+                coeff = (f1.n_tabs() * f2.n_tabs()) / dbase
+                lhs += coeff * lmat @ reduced_block
+                rhs += 2 * coeff * compute_rhs_block(fhat1, fhat2, cgmat, mult, rhog)
+
+        return ((lhs - rhs).pow(2)).mean()

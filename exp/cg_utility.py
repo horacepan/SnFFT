@@ -34,14 +34,15 @@ def kron_mults(irreps, basep, char_dict):
             mults[(p1, p2)] = mult_dict[basep]
     return mults
 
-def compute_reduced_block(fhat1, fhat2, cg, mult):
+def compute_reduced_block(p1, p2, cg, mult, kron_mats):
     '''
     fhat1: nn.Parameter(matrix)
     fhat2: nn.Parameter(matrix)
     cg: cg matrix
     mult: int
+    kron_mats: dict mapping tuples of tuples -> tensor
     '''
-    kron = th_kron(fhat1, fhat2)
+    kron = kron_mats[(p1, p2)]
     mat = cg.t() @ kron @ cg
     block = cg.shape[1] // mult
     output = torch.zeros((block, block)).double()
