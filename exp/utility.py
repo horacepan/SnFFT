@@ -19,6 +19,13 @@ def px_mult(p1, p2):
 def nbrs(p):
     return [px_mult(g, p) for g in S8_GENERATORS]
 
+def s8_move(ptup, gidx):
+    '''
+    Returns g \dot ptup, where g is the group element correspondig to gidx
+    '''
+    g = S8_GENERATORS[gidx]
+    return px_mult(g, ptup)
+
 def get_batch(xs, ys, size):
     idx = np.random.choice(len(xs), size=size)
     return [xs[i] for i in idx], np.array([ys[i] for i in idx]).reshape(-1, 1)

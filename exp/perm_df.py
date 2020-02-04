@@ -40,7 +40,7 @@ class PermDF:
             probs.append(len(opt_nbrs) / len(true_vals))
         return np.mean(probs)
 
-    def opt_nbr(self, gtup, policy):
+    def opt_nbr(self, gtup, policy, rev=False):
         '''
         See if the optimal move given by the policy coicides with the trust
         dist's optimal move
@@ -50,7 +50,10 @@ class PermDF:
         opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
 
         pol_vals = self.nbr_values(gtup, policy)
-        opt_pol_nbr = min(pol_vals, key=pol_vals.get)
+        if rev:
+            opt_pol_nbr = max(pol_vals, key=pol_vals.get)
+        else:
+            opt_pol_nbr = min(pol_vals, key=pol_vals.get)
         return opt_pol_nbr in opt_nbrs
 
     '''
@@ -81,14 +84,17 @@ class PermDF:
         train_y = np.array([self.dist_dict[p] for p in train_perms])
         return train_perms, train_y, test_perms, test_y
 
-    def benchmark_policy(self, gtups, policy):
+    def benchmark_policy(self, gtups, policy, rev=False):
         if len(gtups) == 0:
             return -1
 
         ncorrect = 0
         for g in gtups:
-            ncorrect += int(self.opt_nbr(g, policy))
+            ncorrect += int(self.opt_nbr(g, policy, rev))
         return ncorrect / len(gtups)
+
+    def opt_move_tup(self, tup):
+        dist = self.dist_dict[tup]
 
 def px_mult(p1, p2):
     return tuple([p1[p2[x] - 1] for x in range(len(p1))])

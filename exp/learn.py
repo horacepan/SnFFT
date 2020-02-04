@@ -50,16 +50,16 @@ def main(args):
         if args.mode == 'cg' and e % args.cgiters == 0 and e > 0:
             cgst = time.time()
             cg_loss = policy.train_cg_loss_cached()
-            train_mse = policy.compute_loss(train_x, train_y)
+            train_mse = policy.compute_loss(train_p, train_y)
             cgt = (time.time() - cgst) / 60.
-            post_train_mse = policy.compute_loss(train_x, train_y)
+            post_train_mse = policy.compute_loss(train_p, train_y)
             log.info(f'|    Iter {e:5d}: train mse: {train_mse:.2f} | CG loss: {cg_loss:.2f} | cg time: {cgt:.2f}min | post update batch mse: {post_train_mse:.2f}')
             cg_losses.append(cg_loss)
 
         if e % args.logiters == 0:
             #train_score = perm_df.benchmark_policy(train_p, policy)
             with torch.no_grad():
-                train_mse = policy.compute_loss(train_x, train_y)
+                train_mse = policy.compute_loss(train_p, train_y)
                 test_score = perm_df.benchmark_policy(test_p, policy)
                 tpred = policy.forward_dict(test_p)
 

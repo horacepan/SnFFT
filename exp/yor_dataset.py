@@ -79,7 +79,7 @@ class YorConverter:
         '''
         pdict = {}
         for p in perms:
-            pdict[p] = torch.from_numpy(self.to_irrep(p))
+            pdict[p] = torch.from_numpy(self.to_irrep(p)).float()
         self.pdict = pdict
         return pdict
 
