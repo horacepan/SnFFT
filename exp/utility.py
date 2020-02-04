@@ -1,3 +1,4 @@
+import pdb
 import os
 import psutil
 import pickle
@@ -67,3 +68,41 @@ def check_memory(verbose=True):
     if verbose:
         print("Consumed {:.2f}mb memory".format(mem))
     return mem
+
+def perm_onehot(perm, batchdim=True):
+    n = len(perm)
+    tensor = torch.zeros(n*n)
+    k = 0
+    for i in perm:
+        tensor[i + k - 1] = 1
+        k += n
+
+    if batchdim:
+        return tensor.unsqueeze(0)
+    return tensor
+
+class ReplayBuffer:
+    def __init__(self, state_size, capacity):
+        self.states = torch.zeros(capacity, state_size)
+        self.next_states = torch.zeros(capacity, state_size)
+        self.rewards = torch.zeros(capacity, 1)
+        self.dones = torch.zeros(capacity, 1)
+        self.capacity = capacity
+        self.filled = 0
+        self._idx = 0
+
+    def push(self, state, next_state, reward, done):
+        self.states[self._idx] = state
+        self.next_states[self._idx] = next_state
+        self.rewards[self._idx] = reward
+        self.dones[self._idx] = done
+        self.filled = min(self.capacity, self.filled + 1)
+        self._idx = (self._idx + 1) % self.capacity
+
+    def sample(self, batch_size):
+        '''
+        Returns a tuple of the state, next state, reward, dones
+        '''
+        size = min(self.filled, batch_size)
+        idxs = np.random.choice(self.filled, size=size)
+        return (self.states[idxs], self.next_states[idxs], self.rewards[idxs], self.dones[idxs])

@@ -64,11 +64,46 @@ def train_test_datasets(df_fname, yor_prefix, irreps, test_ratio):
     test_dataset = TensorDataset(test_x, test_y)
     return train_dataset, test_dataset
 
+
+class YorConverter:
+    def __init__(self, irreps, yor_prefix, perms):
+        self.irreps = irreps
+        self.yors = {irr: load_yor(irr, yor_prefix) for irr in irreps}
+        self.pdict = self.cache_perms(perms)
+        self.dim = self.pdict[tuple(i for i in range(1, 1+ sum(irreps[0])))]
+
+    def cache_perms(self, perms):
+        '''
+        perms: list of tuples
+        Returns a dictionary mapping tuple to its tensor representation
+        '''
+        pdict = {}
+        for p in perms:
+            pdict[p] = torch.from_numpy(self.to_irrep(p))
+        self.pdict = pdict
+        return pdict
+
+    def to_irrep(self, gtup):
+        '''
+        Loop over irreps -> cat the irrep (via the yor dicts) -> reshape
+        gtup: perm tuple
+        '''
+        irrep_vecs = []
+        for irr in self.irreps:
+            rep = self.yors[irr][gtup]
+            dim = rep.shape[0]
+            vec = rep.reshape(1, -1) * np.sqrt(dim)
+            irrep_vecs.append(vec)
+        irrep_vecs.append(np.array([[1]]))
+        return np.hstack(irrep_vecs)
+
+    def __call__(self, perm):
+        return self.pdict[perm]
+
+    def __getitem__(self, perm):
+        return self.pdict[perm]
+
 if __name__ == '__main__':
-    st = time.time()
-    irreps = [(3, 2, 2, 1), (8,), (4, 2, 2)]
-    #irreps = [(8,)]
-    yor_pref = '/local/hopan/irreps/s_8/'
-    df_fname = '/home/hopan/github/idastar/s8_dists_red.txt'
-    tdataset = yor_tensor_dataset(df_fname, irreps, yor_pref)
-    check_memory()
+    perms = list(permutations((1,2,3,4,5,6,7,8)))
+    tens = YorConverter([(3,2,2,1)], '/local/hopan/irreps/s_8', perms)
+    print(tens[perms[3]])
