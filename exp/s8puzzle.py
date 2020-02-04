@@ -70,7 +70,7 @@ class S8Puzzle:
 
     @staticmethod
     def random_walk(length):
-        states = [random.choice(S8Puzzle.start_states)]
+        states = [random.choice(S8Puzzle._start_states)]
         s = states[0]
         for _ in range(length - 1):
             s = S8Puzzle.random_step(s)

@@ -8,14 +8,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 from utility import load_yor, cg_mat, S8_GENERATORS, th_kron
-from cg_utility import cg_loss, proj, compute_rhs_block, compute_reduced_block
+from cg_utility import proj, compute_rhs_block, compute_reduced_block
 from logger import get_logger
 
 sys.path.append('../')
 from young_tableau import FerrersDiagram
-from utils import check_memory
 
-#log = get_logger(name=__name__)
 class FourierPolicyTorch(nn.Module):
     '''
     Wrapper class for fourier linear regression
@@ -178,18 +176,6 @@ class FourierPolicyCG(FourierPolicyTorch):
                 tens_char = self.s8_chars[p1] * self.s8_chars[p2]
                 mults_dict[(p1, p2)] = proj(tens_char, self.s8_chars)
         return mults_dict
-
-    def train_cg_loss(self):
-        self.optim.zero_grad()
-        fhats = self._reshaped_mats()
-        loss = 0
-        for base_p in self.irreps:
-            for g in self.generators:
-                loss += cg_loss(base_p, self.irreps, g, fhats)
-
-        loss.backward()
-        self.optim.step()
-        return loss.item()
 
     def train_cg_loss_cached(self):
         self.optim.zero_grad()
