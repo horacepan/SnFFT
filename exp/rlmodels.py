@@ -1,3 +1,5 @@
+import pdb
+import sys
 import torch
 import torch.nn as nn
 
@@ -9,23 +11,23 @@ class RlPolicy(nn.Module):
         self.net = nn.Linear(nin, nout)
         self.to_tensor = to_tensor
 
-    def forward(self, x):
+    def forward_th(self, x):
         return self.net(x)
 
     def opt_move(self, x):
         output = self.forward(x)
-        return output.argmax(dim=1).item()
+        return output.argmax()
 
     def reset_parameters(self):
         self.net.weight.data.normal(std=0.1)
 
     def forward_tup(self, tup):
         tens = self.to_tensor(tup)
-        return self.net(tens)
+        return self.forward(tens)
 
-    def opt_move_tup(self, tups):
-        tens = torch.cat([self.to_tensor(t) for t in tups], dim=0)
-        return self
+    def opt_move_tup(self, tup_nbrs):
+        tens_nbrs = torch.cat([self.to_tensor(tup) for tup in tup_nbrs], dim=0)
+        return self.opt_move(tens_nbrs)
 
 class MLP(nn.Module):
     def __init__(self, nin, nhid, nout, to_tensor):
@@ -42,6 +44,34 @@ class MLP(nn.Module):
         )
         self.to_tensor = to_tensor
 
+    def forward_th(self, x):
+        return self.net(x)
+
+    def forward_tup(self, tup):
+        tens = self.to_tensor(tup)
+        return self.forward(tens)
+
+    def opt_move(self, x):
+        output = self.forward(x)
+        return output.argmax()
+
+    def opt_move_tup(self, tup_nbrs):
+        tens_nbrs = torch.cat([self.to_tensor(tup) for tup in tup_nbrs], dim=0)
+        return self.opt_move(tens_nbrs)
+
+class MLPMini(nn.Module):
+    def __init__(self, nin, nhid, nout, to_tensor):
+        super(MLPMini, self).__init__()
+        self.nin = nin
+        self.nhid = nhid
+        self.nout = nout
+        self.net = nn.Sequential(
+            nn.Linear(nin, nhid),
+            nn.ReLU(),
+            nn.Linear(nhid, nout),
+        )
+        self.to_tensor = to_tensor
+
     def forward(self, x):
         return self.net(x)
 
@@ -53,6 +83,6 @@ class MLP(nn.Module):
         output = self.forward(x)
         return output.argmax()
 
-    def opt_move_tup(self, tup):
-        tens = self.to_tensor(tup)
-        return self.opt_move(tens)
+    def opt_move_tup(self, tup_nbrs):
+        tens_nbrs = torch.cat([self.to_tensor(tup) for tup in tup_nbrs], dim=0)
+        return self.opt_move(tens_nbrs)

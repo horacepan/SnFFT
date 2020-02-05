@@ -13,6 +13,7 @@ from perm_df import PermDF, nbrs
 from logger import get_logger
 sys.path.append('../')
 from utils import check_memory
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # TODO: place elsewhere
 def get_batch(xs, ys, size):

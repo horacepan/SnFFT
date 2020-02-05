@@ -46,6 +46,9 @@ def load_np(irrep, prefix):
     return np.load(fname)
 
 def cg_mat(p1, p2, p3, prefix='/local/hopan/irreps/s_8/cg'):
+    if not os.path.exists('/local/hopan/irreps/s_8/cg'):
+        prefix = '/scratch/hopan/irreps/s_8/cg'
+
     def sflat(tup):
         return ''.join(str(x) for x in tup)
     fname = os.path.join(prefix, '{}_{}_{}.npy'.format(

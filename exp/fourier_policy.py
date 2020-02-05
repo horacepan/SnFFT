@@ -13,6 +13,8 @@ from logger import get_logger
 
 sys.path.append('../')
 from young_tableau import FerrersDiagram
+from utils import check_memory
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class FourierPolicyTorch(nn.Module):
     '''
@@ -77,7 +79,8 @@ class FourierPolicyTorch(nn.Module):
         '''
         self.optim.zero_grad()
         y_pred = self.forward_dict(perms)
-        loss = nn.functional.mse_loss(y_pred, torch.from_numpy(y).double())
+        y = torch.from_numpy(y).float()
+        loss = nn.functional.mse_loss(y_pred, y)
         loss.backward()
         self.optim.step()
         return loss.item()
@@ -89,7 +92,7 @@ class FourierPolicyTorch(nn.Module):
         vector representation conversion).
         '''
         X = np.vstack([self.to_irrep(p) for p in perms])
-        X_th = torch.from_numpy(X)
+        X_th = torch.from_numpy(X).float()
         y_pred = X_th.matmul(self.w_torch)
         return y_pred
 
@@ -101,7 +104,7 @@ class FourierPolicyTorch(nn.Module):
         '''
         with torch.no_grad():
             y_pred = self.forward_dict(perms)
-            return nn.functional.mse_loss(y_pred, torch.from_numpy(y).double()).item()
+            return nn.functional.mse_loss(y_pred, torch.from_numpy(y).float()).item()
 
     def __call__(self, gtup):
         '''
@@ -136,7 +139,7 @@ class FourierPolicyTorch(nn.Module):
 
     def loss_th(self, tensor, y):
         y_pred = self.forward_th(tensor)
-        return nn.functional.mse_loss(y_pred, torch.from_numpy(y).double()).item()
+        return nn.functional.mse_loss(y_pred, torch.from_numpy(y).float()).item()
 
     def cache_perms(self, perms):
         '''
@@ -145,12 +148,12 @@ class FourierPolicyTorch(nn.Module):
         '''
         pdict = {}
         for p in perms:
-            pdict[p] = torch.from_numpy(self.to_irrep(p))
+            pdict[p] = torch.from_numpy(self.to_irrep(p)).float()
         self.pdict = pdict
         return pdict
 
     def forward_dict(self, perms):
-        X_th = torch.cat([self.pdict[p] for p in perms], dim=0)
+        X_th = torch.cat([self.pdict[p] for p in perms], dim=0).to(device)
         y_pred = X_th.matmul(self.w_torch)
         return y_pred
 
@@ -163,7 +166,7 @@ class FourierPolicyCG(FourierPolicyTorch):
     def __init__(self, irreps, prefix, lr, perms):
         super(FourierPolicyCG, self).__init__(irreps, prefix, lr, perms)
         self.s8_chars = pickle.load(open(f'{prefix}/char_dict.pkl', 'rb'))
-        self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).double()
+        self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).float().to(device)
                          for p1 in irreps for p2 in irreps for base_p in irreps}
         self.multiplicities = self.compute_multiplicities()
 
@@ -181,8 +184,8 @@ class FourierPolicyCG(FourierPolicyTorch):
         self.optim.zero_grad()
         fhats = self._reshaped_mats()
         loss = 0
-
         kron_mats = {(p1, p2): th_kron(fhats[p1], fhats[p2]) for p1 in self.irreps for p2 in self.irreps}
+
         for base_p in self.irreps:
             for g in self.generators:
                 loss += self.cg_loss(base_p, g, fhats, kron_mats)
@@ -200,23 +203,22 @@ class FourierPolicyCG(FourierPolicyTorch):
 
         g_size = 1 # should really be size of the group but doesnt matter much
         dbase = self.ferrers[base_p].n_tabs()
-        rho1 = torch.from_numpy(self.yors[base_p][gelement])
-        lmat = rho1 + torch.eye(dbase).double()
+        rho1 = torch.from_numpy(self.yors[base_p][gelement]).float().to(device)
+        lmat = rho1 + torch.eye(dbase).to(device)
 
-        lhs = torch.zeros((dbase, dbase)).double()
-        rhs = torch.zeros((dbase, dbase)).double()
+        lhs = 0
+        rhs = 0
 
         for p1 in self.irreps:
             f1 = self.ferrers[p1]
             fhat1 = fhats[p1]
-            rhog = torch.from_numpy(self.yors[p1][gelement]).double()
+            rhog = torch.from_numpy(self.yors[p1][gelement]).float().to(device)
 
             for p2 in self.irreps:
                 f2 = self.ferrers[p2]
                 mult = self.multiplicities[(p1, p2)][base_p]
 
                 fhat2 = fhats[p2]
-                rho_f1 = rhog.matmul(fhat1)
                 cgmat = self.cg_mats[(p1, p2, base_p)] # d x drho zrho
                 reduced_block = compute_reduced_block(p1, p2, cgmat, mult, kron_mats)
 
@@ -225,3 +227,15 @@ class FourierPolicyCG(FourierPolicyTorch):
                 rhs += 2 * coeff * compute_rhs_block(fhat1, fhat2, cgmat, mult, rhog)
 
         return ((lhs - rhs).pow(2)).mean()
+
+    def opt_move(self, x):
+        output = self.forward(x)
+        return output.argmax()
+
+    def opt_move_tup(self, tup_nbrs):
+        tens_nbrs = torch.cat([self.pdict[(tup)] for tup in tup_nbrs], dim=0).to(device)
+        return self.opt_move(tens_nbrs)
+
+    def forward(self, tensor):
+        y_pred = tensor.matmul(self.w_torch)
+        return y_pred

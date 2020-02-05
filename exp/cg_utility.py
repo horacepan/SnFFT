@@ -8,7 +8,7 @@ import torch
 sys.path.append('../')
 from young_tableau import FerrersDiagram
 from utility import load_yor, cg_mat, th_kron
-torch.set_default_tensor_type(torch.DoubleTensor)
+torch.set_default_tensor_type(torch.FloatTensor)
 
 def proj(c1, all_chars):
     mults = {}
@@ -45,7 +45,7 @@ def compute_reduced_block(p1, p2, cg, mult, kron_mats):
     kron = kron_mats[(p1, p2)]
     mat = cg.t() @ kron @ cg
     block = cg.shape[1] // mult
-    output = torch.zeros((block, block)).double()
+    output = 0
 
     for i in range(mult):
         output += mat[i*block: i*block + block, i*block: i*block + block]
@@ -56,7 +56,7 @@ def compute_rhs_block(fhat1, fhat2, cg, mult, rho):
     kron = th_kron(rho.matmul(fhat1), fhat2)
     mat = cg.t() @ kron @ cg
     block = cg.shape[1] // mult
-    output = torch.zeros((block, block)).double()
+    output = 0
 
     for i in range(mult):
         output += mat[i*block: i*block + block, i*block: i*block + block]
@@ -72,34 +72,39 @@ def cg_loss(base_p, partitions, gelement, fhats):
     Compute the lhs and rhs of the fourier equality after fourier transforming:
     (f(\tau \sigma) - f(\sigma))^2 = 1
     '''
-    s8_chars = pickle.load(open('/local/hopan/irreps/s_8/char_dict.pkl', 'rb'))
-    cg_mats = {(p1, p2): torch.from_numpy(cg_mat(p1, p2, base_p)).double() for p1 in partitions for p2 in partitions}
-    yors = {p: load_yor(p, '/local/hopan/irreps/s_8') for p in partitions}
+    if os.path.exists('/local/hopan/irreps/'):
+        prefix = 'local'
+    else:
+        prefix = 'scratch'
+    s8_chars = pickle.load(open(f'/{prefix}/hopan/irreps/s_8/char_dict.pkl', 'rb'))
+    cg_mats = {(p1, p2): torch.from_numpy(cg_mat(p1, p2, base_p)).float() for p1 in partitions for p2 in partitions}
+    yors = {p: load_yor(p, f'/{prefix}/hopan/irreps/s_8') for p in partitions}
 
     g_size = 40320
     g_size = 1
     dbase = FerrersDiagram(base_p).n_tabs()
-    rho1 = torch.from_numpy(yors[base_p][gelement])
-    lmat = rho1 + torch.eye(dbase).double()
+    rho1 = torch.from_numpy(yors[base_p][gelement]).float()
+    lmat = rho1 + torch.eye(dbase)
 
-    lhs = torch.zeros((dbase, dbase)).double()
-    rhs = torch.zeros((dbase, dbase)).double()
+    lhs = 0
+    rhs = 0
 
     for p1 in partitions:
         f1 = FerrersDiagram(p1)
+        fhat1 = fhats[p1]
+        rhog = torch.from_numpy(yors[p1][gelement]).float()
         for p2 in partitions:
             f2 = FerrersDiagram(p2)
             tens_char = s8_chars[p1] * s8_chars[p2]
             mult_dict = proj(tens_char, s8_chars)
             mult = mult_dict[base_p]
 
-            fhat1 = fhats[p1]
             fhat2 = fhats[p2]
             cgmat = cg_mats[(p1, p2)] # d x drho zrho
             reduced_block = compute_reduced_block(fhat1, fhat2, cgmat, mult)
 
             coeff = (f1.n_tabs() * f2.n_tabs()) / (g_size * dbase)
             lhs += coeff * lmat @ reduced_block
-            rhs += 2 * coeff * compute_rhs_block(fhat1, fhat2, cgmat, mult, torch.from_numpy(yors[p1][gelement]).double())
+            rhs += 2 * coeff * compute_rhs_block(fhat1, fhat2, cgmat, mult, rhog)
 
     return ((lhs - rhs).pow(2)).mean()

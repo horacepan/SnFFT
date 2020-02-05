@@ -20,7 +20,7 @@ def gtup_to_vec(gtup, yor_dicts, irreps):
     vecs = []
     for irr in irreps:
         mat = yor_dicts[irr][gtup]
-        vecs.append(torch.from_numpy(mat.reshape(1, -1)) * math.sqrt(mat.shape[0]))
+        vecs.append(torch.from_numpy(mat.reshape(1, -1)).float() * math.sqrt(mat.shape[0]))
     return torch.cat(vecs, dim=1).float()
 
 def yor_tensor(irreps, yor_prefix, gtups):
