@@ -1,4 +1,5 @@
 import pdb
+import os
 import time
 import random
 from itertools import permutations
@@ -12,11 +13,16 @@ import torch.nn.functional as F
 
 from perm_df import PermDF
 from yor_dataset import YorConverter
-from rlmodels import MLP, RlPolicy
+from rlmodels import MLP, RlPolicy, MLPMini
+from fourier_policy import FourierPolicyCG
 from utility import nbrs, perm_onehot, ReplayBuffer
 from s8puzzle import S8Puzzle
 from logger import get_logger
+import sys
+sys.path.append('../')
+from utils import check_memory
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def get_start_states():
     df = pd.read_csv('/home/hopan/github/idastar/s8_dists_red.txt', header=None,
                      dtype={0: str, 1: int}, nrows=24)
@@ -41,14 +47,15 @@ def can_solve(state, policy, max_moves):
     '''
     curr_state = state
     for _ in range(max_moves):
-        opt_move = policy.opt_move_tup(curr_state)
+        neighbors = S8Puzzle.nbrs(curr_state)
+        opt_move = policy.opt_move_tup(neighbors)
         curr_state = S8Puzzle.step(curr_state, opt_move)
         if S8Puzzle.is_done(curr_state):
             return True
 
     return False
 
-def val_model(policy, max_dist, max_moves, cnt=100):
+def val_model(policy, max_dist, max_moves, cnt=100, rev=False):
     '''
     To validate a model need:
     - transition function
@@ -72,45 +79,59 @@ def main(args):
     log = get_logger(args.logfile)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
+    random.seed(args.seed)
+
     perms = list(permutations(tuple(i for i in range(1, 9))))
-    tens = perm_onehot
+    irreps = [(3, 2, 2, 1), (4, 2, 2)]
+
     if args.convert == 'onehot':
-        tens = perm_onehot
+        to_tensor = perm_onehot
     elif args.convert == 'irrep':
-        irreps = [(3, 2, 2, 1)]
-        tens = YorConverter(irreps, args.yorprefix, perms)
+        #to_tensor = YorConverter(irreps[:args.topk], args.yorprefix, perms)
+        to_tensor = None
+    else:
+        raise Exception('Must pass in convert string')
 
     if args.model == 'linear':
-        policy = RlPolicy(tens(perms[0]).numel(), 1, tens)
+        log.info('Using linear policy on irreps with cg iterations: {}'.format(args.docg))
+        policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms)
+        to_tensor = lambda g: policy.to_tensor(g)
     elif args.model == 'mlp':
-        policy = MLP(tens(perms[0]).numel(), 32, 1, tens)
+        log.info('Using MLP')
+        policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
+    elif args.model == 'mini':
+        log.info('Using Mini MLP')
+        policy = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
 
+    policy.to(device)
     perm_df = PermDF(args.fname, nbrs)
-    optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
+    if hasattr(policy, 'optim'):
+        optim = policy.optim
+    else:
+        optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     start_states = S8Puzzle.start_states()
-    done_states = set(start_states)
 
-    val_results = val_model(policy, 5, 10)
-    log.info('Validation results: {}'.format(val_results))
-    replay = ReplayBuffer(tens(perms[0]).numel(), args.capacity)
-    for _ in range(args.capacity):
-        st1 = tens(random.choice(start_states))
-        st2 = tens(random.choice(start_states))
-        replay.push(st1, st2, 10, 1) # this is sort of hacky
+    #val_results = val_model(policy, args.valmaxdist, args.valmaxmoves)
+    #log.info('Validation results: {}'.format(val_results))
+
+    replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
+    for i in range(args.capacity):
+        st1 = to_tensor([random.choice(start_states)])
+        st2 = to_tensor([random.choice(start_states)])
+        replay.push(st1, get_reward(True), 10, 1) # this is sort of hacky
+
     icnt = 0
-    wins = 0
     losses = []
-
-    for e in range(args.epochs):
+    cglosses = []
+    for e in range(args.epochs + 1):
         states = S8Puzzle.random_walk(args.eplen)
-
         for state in states:
             _nbrs = S8Puzzle.nbrs(state)
-            if random.random() < get_exp_rate(e, args.epochs / 4, args.minexp):
+            if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
                 move = S8Puzzle.random_move()
             else:
-                nbrs_tens = torch.cat([tens(n) for n in _nbrs], dim=0).float()
-                move = policy.opt_move(nbrs_tens)
+                nbrs_tens = to_tensor(_nbrs).to(device)
+                move = policy.forward(nbrs_tens).argmax().item()
             next_state = _nbrs[move]
 
             # reward is pretty flexible though
@@ -121,66 +142,74 @@ def main(args):
 
             # this is sort of a hack
             if curr_done:
-                replay.push(tens(state), tens(next_state), curr_rew, curr_done)
+                replay.push(to_tensor([state]), to_tensor([next_state]), curr_rew, curr_done)
             else:
-                replay.push(tens(state), tens(next_state), reward, done)
+                replay.push(to_tensor([state]), to_tensor([next_state]), reward, done)
 
             icnt += 1
-            if done:
-                wins += 1
-
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
                 bs, bns, br, bd = replay.sample(args.minibatch)
-                # assumption is that the reward will always be -1 for nonfinished state
-                loss = F.mse_loss(policy(bs), (1 - bd) * policy(bns) + br)
+                bs = bs.to(device)
+                bns = bns.to(device)
+                br = br.to(device)
+                bd = bd.to(device)
+
+                loss = F.mse_loss(policy.forward(bs), (1 - bd) * policy.forward(bns).detach() + br)
                 loss.backward()
                 losses.append(loss.item())
                 optim.step()
 
-            if icnt % args.logiters == 0 and icnt > 0:
-                wins = 0
-                avg_loss = np.mean(losses)
-                loss = np.mean(losses[-10])
-                log.info(f'Iter {icnt:4d} | last 10 loss: {loss.item():.3f} | ' + \
-                         f'avg loss: {avg_loss:.3f} | wins: {wins/args.logiters}')
+            if args.docg and icnt % args.cgupdate == 0 and icnt > 0:
+                cgst = time.time()
+                for cgi in range(args.ncgiters):
+                    cgloss = policy.train_cg_loss_cached()
+                    cglosses.append(cgloss)
+                log.info('      Completed: {:3d} cg backprops | Last CG loss: {:.2f} | Avg all CG Loss: {:.2f} | Elapsed: {:.2f}min'.format(
+                         len(cglosses), np.mean(cglosses[:-args.ncgiters]), np.mean(cglosses), (time.time() - cgst) / 60.))
+
+        if e % args.logiters == 0:
+            avg_loss = np.mean(losses)
+            loss = np.mean(losses[-10:])
+            val_results = val_model(policy, args.valmaxdist, args.valmaxmoves)
+            cgloss = 0
+            cgt = 0
+            if hasattr(policy, 'eval_cg_loss'):
+                cgst = time.time()
+                cgloss = policy.eval_cg_loss()
+                cgt = time.time() - cgst
+
+            log.info(f'Epoch {e:5d} | last 10 loss: {np.mean(losses[-10:]):.3f} | cg loss: {cgloss:.3f}, time: {cgt:.2f}s | ' + \
+                     f'val: {val_results}')
 
     log.info('Done training')
-    val_results = val_model(policy, 5, 10)
+    val_results = val_model(policy, args.valmaxdist, args.valmaxmoves)
     log.info('Validation results: {}'.format(val_results))
-
-    eval_net = lambda tup: policy(tens(tup))
-    policy_score = perm_df.benchmark_policy(perms, eval_net, rev=True)
-    log.info('Policy score: {:.4f}'.format(policy_score))
-
-    # debug
-    states = S8Puzzle.random_walk(5)
-    all_nbrs = [nbrs(s) for s in states]
-    for nlst, st in zip(all_nbrs, states):
-        nbrs_tens = torch.cat([tens(n) for n in nlst], dim=0)
-        nbr_vals = policy.forward(nbrs_tens)
-        st_val = policy.forward(tens(st))
-        opt_ = policy.opt_move(nbrs_tens)
-        nbr_vals = [n.item() for n in nbr_vals]
-        log.info('St: {} | Nbr vals: {} | opt: {}'.format(st_val.item(), nbr_vals, opt_))
     pdb.set_trace()
 
 if __name__ == '__main__':
+    _prefix = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'
     parser = argparse.ArgumentParser()
     parser.add_argument('--logfile', type=str, default=f'./logs/rl/{time.time()}.log')
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--topk', type=int, default=2)
+    parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=int, default=0.05)
     parser.add_argument('--update', type=int, default=100)
-    parser.add_argument('--logiters', type=int, default=2000)
+    parser.add_argument('--logiters', type=int, default=100)
+    parser.add_argument('--ncgiters', type=int, default=10)
+    parser.add_argument('--docg', action='store_true', default=False)
+    parser.add_argument('--cgupdate', type=int, default=500)
     parser.add_argument('--minibatch', type=int, default=128)
-    parser.add_argument('--convert', type=str, default='onehot')
-    parser.add_argument('--yorprefix', type=str, default='/local/hopan/irreps/s_8/')
+    parser.add_argument('--convert', type=str, default='irrep')
+    parser.add_argument('--yorprefix', type=str, default=f'/{_prefix}/hopan/irreps/s_8/')
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--discount', type=float, default=0.9)
-    parser.add_argument('--model', type=str, default='mlp')
+    parser.add_argument('--model', type=str, default='linear')
+    parser.add_argument('--valmaxdist', type=int, default=6)
+    parser.add_argument('--valmaxmoves', type=int, default=10)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     args = parser.parse_args()
     main(args)

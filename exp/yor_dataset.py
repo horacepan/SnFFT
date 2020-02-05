@@ -97,6 +97,10 @@ class YorConverter:
         irrep_vecs.append(np.array([[1]]))
         return np.hstack(irrep_vecs)
 
+    def to_tensor(self, gtups):
+        X = torch.cat([self.pdict[p] for p in perms], dim=0)
+        return X
+
     def __call__(self, perm):
         return self.pdict[perm]
 

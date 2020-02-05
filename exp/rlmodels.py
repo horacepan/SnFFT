@@ -11,12 +11,8 @@ class RlPolicy(nn.Module):
         self.net = nn.Linear(nin, nout)
         self.to_tensor = to_tensor
 
-    def forward_th(self, x):
+    def forward(self, x):
         return self.net(x)
-
-    def opt_move(self, x):
-        output = self.forward(x)
-        return output.argmax()
 
     def reset_parameters(self):
         self.net.weight.data.normal(std=0.1)
@@ -27,7 +23,7 @@ class RlPolicy(nn.Module):
 
     def opt_move_tup(self, tup_nbrs):
         tens_nbrs = torch.cat([self.to_tensor(tup) for tup in tup_nbrs], dim=0)
-        return self.opt_move(tens_nbrs)
+        return self.forward(tens_nbrs).argmax()
 
 class MLP(nn.Module):
     def __init__(self, nin, nhid, nout, to_tensor):
@@ -44,20 +40,16 @@ class MLP(nn.Module):
         )
         self.to_tensor = to_tensor
 
-    def forward_th(self, x):
+    def forward(self, x):
         return self.net(x)
 
     def forward_tup(self, tup):
-        tens = self.to_tensor(tup)
+        tens = self.to_tensor([tup])
         return self.forward(tens)
 
-    def opt_move(self, x):
-        output = self.forward(x)
-        return output.argmax()
-
     def opt_move_tup(self, tup_nbrs):
-        tens_nbrs = torch.cat([self.to_tensor(tup) for tup in tup_nbrs], dim=0)
-        return self.opt_move(tens_nbrs)
+        tens_nbrs = self.to_tensor(tup_nbrs)
+        return self.forward(tens_nbrs).argmax()
 
 class MLPMini(nn.Module):
     def __init__(self, nin, nhid, nout, to_tensor):
@@ -76,13 +68,9 @@ class MLPMini(nn.Module):
         return self.net(x)
 
     def forward_tup(self, tup):
-        tens = self.to_tensor(tup)
+        tens = self.to_tensor([tup])
         return self.forward(tens)
 
-    def opt_move(self, x):
-        output = self.forward(x)
-        return output.argmax()
-
     def opt_move_tup(self, tup_nbrs):
-        tens_nbrs = torch.cat([self.to_tensor(tup) for tup in tup_nbrs], dim=0)
-        return self.opt_move(tens_nbrs)
+        tens_nbrs = self.to_tensor(tup_nbrs)
+        return self.forward(tens_nbrs).argmax()

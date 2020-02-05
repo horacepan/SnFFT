@@ -1,6 +1,7 @@
 import pdb
 import numpy as np
 import pandas as pd
+import torch
 from utility import S8_GENERATORS
 
 def str2ptup(s):
@@ -56,13 +57,6 @@ class PermDF:
             opt_pol_nbr = min(pol_vals, key=pol_vals.get)
         return opt_pol_nbr in opt_nbrs
 
-    '''
-    def pol_correct(self, gtup, policy):
-        true_opts = self.opt_nbr(gtup, self._dist_dict)
-        pol_opts = self.opt_nbr(gtup, policy)
-        return pol_opts[0] in true_opts
-    '''
-
     def nbr_values(self, gtup, func=None):
         if func is None:
             func = self.__getitem__
@@ -88,10 +82,11 @@ class PermDF:
         if len(gtups) == 0:
             return -1
 
-        ncorrect = 0
-        for g in gtups:
-            ncorrect += int(self.opt_nbr(g, policy, rev))
-        return ncorrect / len(gtups)
+        with torch.no_grad():
+            ncorrect = 0
+            for g in gtups:
+                ncorrect += int(self.opt_nbr(g, policy, rev))
+            return ncorrect / len(gtups)
 
     def opt_move_tup(self, tup):
         dist = self.dist_dict[tup]

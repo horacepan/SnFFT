@@ -79,16 +79,19 @@ def check_memory(verbose=True):
         print("Consumed {:.2f}mb memory".format(mem))
     return mem
 
-def perm_onehot(perm, batchdim=True):
-    n = len(perm)
-    tensor = torch.zeros(n*n)
+def perm_onehot(perms, batchdim=True):
+    n = len(perms)
+    d = len(perms[0]) ** 2
+    tensor = torch.zeros(n, d)
     k = 0
-    for i in perm:
-        tensor[i + k - 1] = 1
-        k += n
 
-    if batchdim:
-        return tensor.unsqueeze(0)
+    for idx in range(n):
+        perm = perms[idx]
+        k = 0
+        for i in perm:
+            tensor[idx, i + k - 1] = 1
+            k += n
+
     return tensor
 
 class ReplayBuffer:
