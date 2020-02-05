@@ -55,7 +55,7 @@ def can_solve(state, policy, max_moves):
 
     return False
 
-def val_model(policy, max_dist, max_moves, cnt=100, rev=False):
+def val_model(policy, max_dist, perm_df, cnt=100):
     '''
     To validate a model need:
     - transition function
@@ -66,12 +66,11 @@ def val_model(policy, max_dist, max_moves, cnt=100, rev=False):
     # generate k states by taking a random walk of length d
     # up to size
     nsolves = {}
-    for dist in range(1, max_dist):
-        d_states = [S8Puzzle.random_state(dist) for _ in range(cnt)]
+    for dist in range(1, max_dist + 1):
+        d_states = perm_df.random_state(dist, cnt)
         solves = 0
         for state in d_states:
-            # try to solve the given state within
-            solves += can_solve(state, policy, max_moves)
+            solves += can_solve(state, policy, dist + 1)
         nsolves[dist] = solves / cnt
     return nsolves
 
@@ -82,7 +81,7 @@ def main(args):
     random.seed(args.seed)
 
     perms = list(permutations(tuple(i for i in range(1, 9))))
-    irreps = [(3, 2, 2, 1), (4, 2, 2)]
+    irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)]
 
     if args.convert == 'onehot':
         to_tensor = perm_onehot
@@ -111,15 +110,16 @@ def main(args):
         optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     start_states = S8Puzzle.start_states()
 
-    #val_results = val_model(policy, args.valmaxdist, args.valmaxmoves)
-    #log.info('Validation results: {}'.format(val_results))
-
     replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
     for i in range(args.capacity):
         st1 = to_tensor([random.choice(start_states)])
         st2 = to_tensor([random.choice(start_states)])
         replay.push(st1, get_reward(True), 10, 1) # this is sort of hacky
 
+    log.info('Checking true policy...')
+    log.info('Sanity check | true sp dist policy: {}'.format(val_model(perm_df, args.valmaxdist, perm_df)))
+    val_results = val_model(policy, args.valmaxdist, perm_df)
+    log.info('Before training val results: {}'.format(val_results))
     icnt = 0
     losses = []
     cglosses = []
@@ -160,30 +160,33 @@ def main(args):
                 losses.append(loss.item())
                 optim.step()
 
-            if args.docg and icnt % args.cgupdate == 0 and icnt > 0:
-                cgst = time.time()
-                for cgi in range(args.ncgiters):
-                    cgloss = policy.train_cg_loss_cached()
-                    cglosses.append(cgloss)
-                log.info('      Completed: {:3d} cg backprops | Last CG loss: {:.2f} | Avg all CG Loss: {:.2f} | Elapsed: {:.2f}min'.format(
-                         len(cglosses), np.mean(cglosses[:-args.ncgiters]), np.mean(cglosses), (time.time() - cgst) / 60.))
+        if args.docg and e % args.cgupdate == 0 and icnt > 0:
+            cgst = time.time()
+            for cgi in range(args.ncgiters):
+                cgloss = policy.train_cg_loss_cached()
+                cglosses.append(cgloss)
+            val_results = val_model(policy, args.valmaxdist, perm_df)
+            log.info('      Completed: {:3d} cg backprops | Last CG loss: {:.2f} | Avg all CG Loss: {:.2f} | Elapsed: {:.2f}min | Val results: {}'.format(
+                     len(cglosses), np.mean(cglosses[:-args.ncgiters]), np.mean(cglosses), (time.time() - cgst) / 60., val_results
+            ))
 
         if e % args.logiters == 0:
-            avg_loss = np.mean(losses)
-            loss = np.mean(losses[-10:])
-            val_results = val_model(policy, args.valmaxdist, args.valmaxmoves)
-            cgloss = 0
-            cgt = 0
+            val_results = val_model(policy, args.valmaxdist, perm_df)
+            exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
             if hasattr(policy, 'eval_cg_loss'):
                 cgst = time.time()
                 cgloss = policy.eval_cg_loss()
                 cgt = time.time() - cgst
 
-            log.info(f'Epoch {e:5d} | last 10 loss: {np.mean(losses[-10:]):.3f} | cg loss: {cgloss:.3f}, time: {cgt:.2f}s | ' + \
-                     f'val: {val_results}')
+                log.info(f'Epoch {e:5d} | last 10 loss: {np.mean(losses[-10:]):.3f} | cg loss: {cgloss:.3f}, time: {cgt:.2f}s | ' + \
+                         f'exp rate: {exp_rate:.3f} | val: {val_results}')
+            else:
+                log.info(f'Epoch {e:5d} | last 10 loss: {np.mean(losses[-10:]):.3f} | ' + \
+                         f'exp rate: {exp_rate:.3f} | val: {val_results}')
+
 
     log.info('Done training')
-    val_results = val_model(policy, args.valmaxdist, args.valmaxmoves)
+    val_results = val_model(policy, args.valmaxdist, perm_df)
     log.info('Validation results: {}'.format(val_results))
     pdb.set_trace()
 
@@ -198,7 +201,7 @@ if __name__ == '__main__':
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=int, default=0.05)
     parser.add_argument('--update', type=int, default=100)
-    parser.add_argument('--logiters', type=int, default=100)
+    parser.add_argument('--logiters', type=int, default=1000)
     parser.add_argument('--ncgiters', type=int, default=10)
     parser.add_argument('--docg', action='store_true', default=False)
     parser.add_argument('--cgupdate', type=int, default=500)

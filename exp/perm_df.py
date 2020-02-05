@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 from utility import S8_GENERATORS
 
-def str2ptup(s):
+def str2tup(s):
     return tuple(int(i) for i in s)
 
 class PermDF:
@@ -19,12 +19,11 @@ class PermDF:
 
     def load_df(self, fname):
         df = pd.read_csv(fname, header=None, dtype={0: str, 1: int})
-        df = df.set_index(0)
-        df.columns = ['dist']
+        df.columns = ['state', 'dist']
         return df
 
     def load_dist_dict(self):
-        return {str2ptup(s): row['dist'] for s, row in self.df.iterrows()}
+        return {str2tup(row['state']): row['dist'] for s, row in self.df.iterrows()}
 
     def __getitem__(self, gtup):
         return self.dist_dict[gtup]
@@ -89,7 +88,13 @@ class PermDF:
             return ncorrect / len(gtups)
 
     def opt_move_tup(self, tup):
-        dist = self.dist_dict[tup]
+        dists = [self.dist_dict[t] for t in tup]
+        return dists.index(min(dists))
+
+    def random_state(self, dist, cnt):
+        subdf = self.df[self.df['dist'] == dist].sample(n=cnt)
+        perms = [str2tup(row['state']) for _, row in subdf.iterrows()]
+        return perms
 
 def px_mult(p1, p2):
     return tuple([p1[p2[x] - 1] for x in range(len(p1))])
