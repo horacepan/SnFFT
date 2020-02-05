@@ -23,6 +23,7 @@ def get_batch(xs, ys, size):
 def main(args):
     _st = time.time()
     log = get_logger(f'./{args.logfile}')
+    log.info('Starting...')
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1), (3, 3, 1, 1)]
@@ -40,6 +41,7 @@ def main(args):
         log.info('Using torch policy')
         policy = FourierPolicyTorch(irreps[:args.topk], args.pklprefix, args.lr, all_perms)
 
+    policy.to(device)
     st = time.time()
     losses = []
     cg_losses = []
@@ -62,7 +64,6 @@ def main(args):
             with torch.no_grad():
                 train_mse = policy.compute_loss(train_p, train_y)
                 test_score = perm_df.benchmark_policy(test_p, policy)
-                tpred = policy.forward_dict(test_p)
 
                 st = time.time()
                 tpred, tnbrs = policy.nbr_deltas(test_p, nbrs)
@@ -93,7 +94,7 @@ def main(args):
     #log.info('Random policy prop correct: {:.4f}'.format(perm_df.benchmark(test_p)))
     log.info(f'Mem footprint: {check_memory()}mb')
     log.info(f'Log saved: {args.logfile}')
-    pdb.set_trace()
+    log.info('Total time: {:.2f}mins'.format((time.time() - _st) / 60.))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

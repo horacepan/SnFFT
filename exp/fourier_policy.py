@@ -79,7 +79,7 @@ class FourierPolicyTorch(nn.Module):
         '''
         self.optim.zero_grad()
         y_pred = self.forward_dict(perms)
-        y = torch.from_numpy(y).float()
+        y = torch.from_numpy(y).float().to(device)
         loss = nn.functional.mse_loss(y_pred, y)
         loss.backward()
         self.optim.step()
@@ -104,13 +104,14 @@ class FourierPolicyTorch(nn.Module):
         '''
         with torch.no_grad():
             y_pred = self.forward_dict(perms)
-            return nn.functional.mse_loss(y_pred, torch.from_numpy(y).float()).item()
+            y = torch.from_numpy(y).float().to(device).reshape(y_pred.shape)
+            return nn.functional.mse_loss(y_pred, y).item()
 
     def __call__(self, gtup):
         '''
         gtup: tuple
         '''
-        vec = self.pdict[gtup]
+        vec = self.pdict[gtup].to(device)
         return vec.matmul(self.w_torch)
 
     def _reshaped_mats(self):

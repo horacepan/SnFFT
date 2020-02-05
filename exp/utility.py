@@ -116,3 +116,12 @@ class ReplayBuffer:
         size = min(self.filled, batch_size)
         idxs = np.random.choice(self.filled, size=size)
         return (self.states[idxs], self.next_states[idxs], self.rewards[idxs], self.dones[idxs])
+
+def debug_mem():
+    import gc
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                print(type(obj), obj.size(), obj.device)
+        except:
+            pass
