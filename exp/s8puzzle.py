@@ -57,6 +57,10 @@ class S8Puzzle:
         pass
 
     @staticmethod
+    def num_nbrs():
+        return len(S8Puzzle.generators)
+
+    @staticmethod
     def nbrs(tup):
         return [px_mult(g, tup) for g in S8Puzzle.generators]
 

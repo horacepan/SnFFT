@@ -28,6 +28,9 @@ class PermDF:
     def __getitem__(self, gtup):
         return self.dist_dict[gtup]
 
+    def __call__(self, gtup):
+        return self.dist_dict[gtup]
+
     def benchmark(self, gtups):
         if len(gtups) == 0:
             return -1
@@ -40,7 +43,7 @@ class PermDF:
             probs.append(len(opt_nbrs) / len(true_vals))
         return np.mean(probs)
 
-    def opt_nbr(self, gtup, policy, rev=False):
+    def opt_nbr(self, gtup, policy, optmin=True):
         '''
         See if the optimal move given by the policy coicides with the trust
         dist's optimal move
@@ -50,19 +53,22 @@ class PermDF:
         opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
 
         pol_vals = self.nbr_values(gtup, policy)
-        if rev:
-            opt_pol_nbr = max(pol_vals, key=pol_vals.get)
-        else:
+        if optmin:
             opt_pol_nbr = min(pol_vals, key=pol_vals.get)
+        else:
+            opt_pol_nbr = max(pol_vals, key=pol_vals.get)
         return opt_pol_nbr in opt_nbrs
 
     def nbr_values(self, gtup, func=None):
         if func is None:
-            func = self.__getitem__
+            func = self.__call__
 
         vals = {}
         for n in self.nbr_func(gtup):
-            vals[n] = func(n)
+            if hasattr(func, 'forward_tup'):
+                vals[n] = func.forward_tup([n])
+            else:
+                vals[n] = func(n)
 
         return vals
 
@@ -77,15 +83,26 @@ class PermDF:
         train_y = np.array([self.dist_dict[p] for p in train_perms])
         return train_perms, train_y, test_perms, test_y
 
-    def benchmark_policy(self, gtups, policy, rev=False):
+    def benchmark_policy(self, gtups, policy, optmin=True):
         if len(gtups) == 0:
             return -1
 
         with torch.no_grad():
             ncorrect = 0
             for g in gtups:
-                ncorrect += int(self.opt_nbr(g, policy, rev))
+                ncorrect += int(self.opt_nbr(g, policy, optmin))
             return ncorrect / len(gtups)
+
+    def prop_corr_by_dist(self, policy, optmin=True):
+        dist_corr = {}
+        ncorrect = 0
+        for ptup, dist in self.dist_dict.items():
+            correct = int(self.opt_nbr(gtup, policy, optmin))
+            ncorrect += correct
+            dist_corr[dist] = dist_corr.get(dist, 0) + correct
+
+        prop_corr = ncorrect / len(self.dist_dict)
+        return dist_corr, prop_corr
 
     def opt_move_tup(self, tup):
         dists = [self.dist_dict[t] for t in tup]
@@ -95,6 +112,9 @@ class PermDF:
         subdf = self.df[self.df['dist'] == dist].sample(n=cnt)
         perms = [str2tup(row['state']) for _, row in subdf.iterrows()]
         return perms
+
+    def forward_tup(self, gtup):
+        return self.dist_dict[gtup]
 
 def px_mult(p1, p2):
     return tuple([p1[p2[x] - 1] for x in range(len(p1))])

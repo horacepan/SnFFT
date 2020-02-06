@@ -98,18 +98,22 @@ class ReplayBuffer:
     def __init__(self, state_size, capacity):
         self.states = torch.zeros(capacity, state_size)
         self.next_states = torch.zeros(capacity, state_size)
+        self.state_tups = [None] * capacity
+        self.next_state_tups = [None] * capacity
         self.rewards = torch.zeros(capacity, 1)
         self.dones = torch.zeros(capacity, 1)
         self.capacity = capacity
         self.filled = 0
         self._idx = 0
 
-    def push(self, state, next_state, reward, done):
+    def push(self, state, next_state, reward, done, state_tup, next_state_tup):
         self.states[self._idx] = state
         self.next_states[self._idx] = next_state
         self.rewards[self._idx] = reward
         self.dones[self._idx] = done
         self.filled = min(self.capacity, self.filled + 1)
+        self.state_tups[self._idx] = state_tup
+        self.next_state_tups[self._idx] = next_state_tup
         self._idx = (self._idx + 1) % self.capacity
 
     def sample(self, batch_size):
@@ -118,7 +122,14 @@ class ReplayBuffer:
         '''
         size = min(self.filled, batch_size)
         idxs = np.random.choice(self.filled, size=size)
-        return (self.states[idxs], self.next_states[idxs], self.rewards[idxs], self.dones[idxs])
+        tups = [self.state_tups[i] for i in idxs]
+        next_tups = [self.next_state_tups[i] for i in idxs]
+        return (self.states[idxs], self.next_states[idxs], self.rewards[idxs], self.dones[idxs], tups, next_tups)
+
+# Source: https://github.com/ikostrikov/pytorch-ddpg-naf/blob/master/ddpg.py#L15
+def update_params(target, source):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
 
 def debug_mem():
     import gc

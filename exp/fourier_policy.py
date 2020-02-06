@@ -19,7 +19,7 @@ class FourierPolicyTorch(nn.Module):
     '''
     Wrapper class for fourier linear regression
     '''
-    def __init__(self, irreps, yor_prefix, lr, perms):
+    def __init__(self, irreps, yor_prefix, lr, perms, yors=None, pdict=None):
         '''
         irreps: list of tuples
         yor_prefix: directory containing yor pickles
@@ -29,15 +29,24 @@ class FourierPolicyTorch(nn.Module):
         super(FourierPolicyTorch, self).__init__()
         self.size = sum(irreps[0])
         self.irreps = irreps
-        self.yors = {irr: load_yor(irr, yor_prefix) for irr in irreps}
+        if yors is None:
+            self.yors = {irr: load_yor(irr, yor_prefix) for irr in irreps}
+        else:
+            self.yors = yors
         self.irrep_sizes = {irr: self.yors[irr][tuple(range(1, self.size+1))].shape[0] for irr in irreps}
 
         total_size = sum([d ** 2 for d in self.irrep_sizes.values()])
         self.w_torch = nn.Parameter(torch.rand(total_size + 1, 1))
         self.w_torch.data.normal_(std=0.2)
         self.w_torch.data[-1] = 5.328571428571428 # TODO: this is a hack
-        self.optim = torch.optim.Adam([self.w_torch], lr=lr)
-        self.pdict = self.cache_perms(perms)
+
+        if yors is None:
+            self.optim = torch.optim.Adam([self.w_torch], lr=lr)
+        # this is pretty hacky
+        if pdict is None:
+            self.pdict = self.cache_perms(perms)
+        else:
+            self.pdict = pdict
         self.lr = lr
 
     def to_irrep(self, gtup):
@@ -66,8 +75,8 @@ class FourierPolicyTorch(nn.Module):
             for n in nbrs_func(g):
                 gnbrs.append(n)
 
-        y_nbrs = self.forward_dict(gnbrs).reshape(-1, len_nbrs)
-        y_pred = self.forward_dict(gtups)
+        y_nbrs = self.forward_tup(gnbrs).reshape(-1, len_nbrs)
+        y_pred = self.forward_tup(gtups)
         return y_pred, y_nbrs
 
     def train_batch(self, perms, y, **kwargs):
@@ -77,7 +86,7 @@ class FourierPolicyTorch(nn.Module):
         Returns: training loss on this batch. Also takes a gradient step
         '''
         self.optim.zero_grad()
-        y_pred = self.forward_dict(perms)
+        y_pred = self.forward_tup(perms)
         y = torch.from_numpy(y).float().reshape(y_pred.shape).to(device)
         loss = nn.functional.mse_loss(y_pred, y)
         loss.backward()
@@ -91,7 +100,7 @@ class FourierPolicyTorch(nn.Module):
         Returns the MSE loss between the model evaluated on the given perms vs y
         '''
         with torch.no_grad():
-            y_pred = self.forward_dict(perms)
+            y_pred = self.forward_tup(perms)
             y = torch.from_numpy(y).float().reshape(y_pred.shape).to(device)
             return nn.functional.mse_loss(y_pred, y).item()
 
@@ -126,6 +135,12 @@ class FourierPolicyTorch(nn.Module):
         y_pred = tensor.matmul(self.w_torch)
         return y_pred
 
+    def eval_opt_nbr(self, tups, nnbrs):
+        # eval all nbrs, returns tensor of the value of the opt neighbor
+        nbr_eval = self.forward_tup(tups).reshape(-1, nnbrs)
+        max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
+        return max_nbr_vals
+
     def cache_perms(self, perms):
         '''
         perms: list of tuples
@@ -137,7 +152,7 @@ class FourierPolicyTorch(nn.Module):
         self.pdict = pdict
         return pdict
 
-    def forward_dict(self, perms):
+    def forward_tup(self, perms):
         X_th = self.to_tensor(perms).to(device)
         y_pred = X_th.matmul(self.w_torch)
         return y_pred
@@ -148,8 +163,8 @@ class FourierPolicyTorch(nn.Module):
         self.optim = torch.optim.Adam(self.parameters(), lr=self.lr)
 
 class FourierPolicyCG(FourierPolicyTorch):
-    def __init__(self, irreps, prefix, lr, perms):
-        super(FourierPolicyCG, self).__init__(irreps, prefix, lr, perms)
+    def __init__(self, irreps, prefix, lr, perms, yors=None, pdict=None):
+        super(FourierPolicyCG, self).__init__(irreps, prefix, lr, perms, yors, pdict)
         self.s8_chars = pickle.load(open(f'{prefix}/char_dict.pkl', 'rb'))
         self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).float().to(device)
                          for p1 in irreps for p2 in irreps for base_p in irreps}

@@ -3,6 +3,7 @@ import sys
 import torch
 import torch.nn as nn
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class RlPolicy(nn.Module):
     def __init__(self, nin, nout, to_tensor):
         super(RlPolicy, self).__init__()
@@ -18,11 +19,11 @@ class RlPolicy(nn.Module):
         self.net.weight.data.normal(std=0.1)
 
     def forward_tup(self, tup):
-        tens = self.to_tensor(tup)
+        tens = self.to_tensor(tup).to(device)
         return self.forward(tens)
 
     def opt_move_tup(self, tup_nbrs):
-        tens_nbrs = torch.cat([self.to_tensor(tup) for tup in tup_nbrs], dim=0)
+        tens_nbrs = torch.cat([self.to_tensor(tup) for tup in tup_nbrs], dim=0).to(device)
         return self.forward(tens_nbrs).argmax()
 
 class MLP(nn.Module):
@@ -44,11 +45,11 @@ class MLP(nn.Module):
         return self.net(x)
 
     def forward_tup(self, tup):
-        tens = self.to_tensor([tup])
+        tens = self.to_tensor(tup).to(device)
         return self.forward(tens)
 
     def opt_move_tup(self, tup_nbrs):
-        tens_nbrs = self.to_tensor(tup_nbrs)
+        tens_nbrs = self.to_tensor(tup_nbrs).to(device)
         return self.forward(tens_nbrs).argmax()
 
 class MLPMini(nn.Module):
@@ -68,9 +69,9 @@ class MLPMini(nn.Module):
         return self.net(x)
 
     def forward_tup(self, tup):
-        tens = self.to_tensor([tup])
+        tens = self.to_tensor(tup).to(device)
         return self.forward(tens)
 
     def opt_move_tup(self, tup_nbrs):
-        tens_nbrs = self.to_tensor(tup_nbrs)
+        tens_nbrs = self.to_tensor(tup_nbrs).to(device)
         return self.forward(tens_nbrs).argmax()

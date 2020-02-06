@@ -15,7 +15,7 @@ from perm_df import PermDF
 from yor_dataset import YorConverter
 from rlmodels import MLP, RlPolicy, MLPMini
 from fourier_policy import FourierPolicyCG
-from utility import nbrs, perm_onehot, ReplayBuffer
+from utility import nbrs, perm_onehot, ReplayBuffer, update_params
 from s8puzzle import S8Puzzle
 from logger import get_logger
 import sys
@@ -75,7 +75,11 @@ def val_model(policy, max_dist, perm_df, cnt=100):
     return nsolves
 
 def main(args):
-    log = get_logger(args.logfile)
+    if args.nolog:
+        log = get_logger(None)
+    else:
+        log = get_logger(args.logfile)
+    log.info(f'Starting ... Saving logs in: {args.logfile}')
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -95,14 +99,18 @@ def main(args):
         log.info('Using linear policy on irreps with cg iterations: {}'.format(args.docg))
         policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms)
         to_tensor = lambda g: policy.to_tensor(g)
+        target = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
     elif args.model == 'mlp':
         log.info('Using MLP')
         policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
+        target = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
     elif args.model == 'mini':
         log.info('Using Mini MLP')
         policy = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
+        target = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
 
     policy.to(device)
+    target.to(device)
     perm_df = PermDF(args.fname, nbrs)
     if hasattr(policy, 'optim'):
         optim = policy.optim
@@ -110,22 +118,21 @@ def main(args):
         optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     start_states = S8Puzzle.start_states()
 
+    log.info('Memory used pre replay creation: {:.2f}mb'.format(check_memory(False)))
     replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
-    for i in range(args.capacity):
-        st1 = to_tensor([random.choice(start_states)])
-        st2 = to_tensor([random.choice(start_states)])
-        replay.push(st1, get_reward(True), 10, 1) # this is sort of hacky
-
-    log.info('Checking true policy...')
-    log.info('Sanity check | true sp dist policy: {}'.format(val_model(perm_df, args.valmaxdist, perm_df)))
-    val_results = val_model(policy, args.valmaxdist, perm_df)
-    log.info('Before training val results: {}'.format(val_results))
+    log.info('Memory used post replay creation: {:.2f}mb'.format(check_memory(False)))
+    log.info('Before training | benchmark_pol: {}'.format(perm_df.benchmark_policy(perms, policy, optmin=False)))
     icnt = 0
+    updates = 0
+    bps = 0
     losses = []
     cglosses = []
+
     for e in range(args.epochs + 1):
         states = S8Puzzle.random_walk(args.eplen)
+        #state = S8Puzzle.random_walk(args.eplen)[-1]
         for state in states:
+        #for _i in range(args.eplen + 10):
             _nbrs = S8Puzzle.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
                 move = S8Puzzle.random_move()
@@ -137,57 +144,69 @@ def main(args):
             # reward is pretty flexible though
             done = int(S8Puzzle.is_done(next_state))
             reward = get_reward(done)
-            curr_done = int(S8Puzzle.is_done(state))
-            curr_rew = get_reward(curr_done)
-
-            # this is sort of a hack
-            if curr_done:
-                replay.push(to_tensor([state]), to_tensor([next_state]), curr_rew, curr_done)
-            else:
-                replay.push(to_tensor([state]), to_tensor([next_state]), reward, done)
+            replay.push(to_tensor([state]), to_tensor([next_state]), reward, done, state, next_state)
 
             icnt += 1
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
-                bs, bns, br, bd = replay.sample(args.minibatch)
+                bs, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch)
                 bs = bs.to(device)
                 bns = bns.to(device)
                 br = br.to(device)
                 bd = bd.to(device)
 
-                loss = F.mse_loss(policy.forward(bs), (1 - bd) * policy.forward(bns).detach() + br)
+                # we want the opt of the nbrs of bs
+                bs_nbrs = [n for tup in bs_tups for n in S8Puzzle.nbrs(tup)]
+                opt_nbr_vals = target.eval_opt_nbr(bs_nbrs, S8Puzzle.num_nbrs()).detach()
+                loss = F.mse_loss(policy.forward(bs),
+                                  args.discount * (1 - bd) * opt_nbr_vals + br)
                 loss.backward()
                 losses.append(loss.item())
                 optim.step()
+                pdb.set_trace()
+                bps += 1
 
-        if args.docg and e % args.cgupdate == 0 and icnt > 0:
-            cgst = time.time()
-            for cgi in range(args.ncgiters):
-                cgloss = policy.train_cg_loss_cached()
-                cglosses.append(cgloss)
-            val_results = val_model(policy, args.valmaxdist, perm_df)
-            log.info('      Completed: {:3d} cg backprops | Last CG loss: {:.2f} | Avg all CG Loss: {:.2f} | Elapsed: {:.2f}min | Val results: {}'.format(
-                     len(cglosses), np.mean(cglosses[:-args.ncgiters]), np.mean(cglosses), (time.time() - cgst) / 60., val_results
-            ))
+            if icnt % args.updateint == 0 and icnt > 0:
+                # set target's weights to current policy's
+                updates += 1
+                update_params(target, policy)
+
+            if done:
+                break
 
         if e % args.logiters == 0:
             val_results = val_model(policy, args.valmaxdist, perm_df)
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
+            benchmark = perm_df.benchmark_policy(perms, policy, False)
             if hasattr(policy, 'eval_cg_loss'):
                 cgst = time.time()
                 cgloss = policy.eval_cg_loss()
                 cgt = time.time() - cgst
 
-                log.info(f'Epoch {e:5d} | last 10 loss: {np.mean(losses[-10:]):.3f} | cg loss: {cgloss:.3f}, time: {cgt:.2f}s | ' + \
-                         f'exp rate: {exp_rate:.3f} | val: {val_results}')
+                log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | cg loss: {cgloss:.3f}, time: {cgt:.2f}s | ' + \
+                         f'exp rate: {exp_rate:.3f} | val: {val_results} | Prop correct moves: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
             else:
-                log.info(f'Epoch {e:5d} | last 10 loss: {np.mean(losses[-10:]):.3f} | ' + \
-                         f'exp rate: {exp_rate:.3f} | val: {val_results}')
+                log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
+                         f'exp rate: {exp_rate:.3f} | val: {val_results} | Prop correct moves: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
 
+        #if args.docg and e % args.cgupdate == 0 and e > 0:
+        if args.docg and e % args.cgupdate == 0:
+            cgloss_pre = policy.eval_cg_loss()
+            cgst = time.time()
+            for cgi in range(args.ncgiters):
+                cgloss = policy.train_cg_loss_cached()
+                cglosses.append(cgloss)
+            benchmark = perm_df.benchmark_policy(perms, policy, False)
+            val_results = val_model(policy, args.valmaxdist, perm_df)
+            log.info(('      Completed: {:3d} cg backprops | Last {} CG loss: {:.2f} | ' + \
+                     'Elapsed: {:.2f}min | Val results: {} | Prop corr: {:.3f} | Pre cg loss: {:.3f}').format(
+                     len(cglosses), args.ncgiters, np.mean(cglosses[-args.ncgiters:]), (time.time() - cgst) / 60., val_results, benchmark, cgloss_pre
+            ))
 
-    log.info('Done training')
+    log.info(f'Done training | log saved in: {args.logfile}')
     val_results = val_model(policy, args.valmaxdist, perm_df)
-    log.info('Validation results: {}'.format(val_results))
+    benchmark = perm_df.benchmark_policy(perms, policy, False)
+    log.info('Prop correct moves: {:.3f} | Validation results: {}'.format(benchmark, val_results))
     pdb.set_trace()
 
 if __name__ == '__main__':
@@ -200,6 +219,7 @@ if __name__ == '__main__':
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=int, default=0.05)
+    parser.add_argument('--updateint', type=int, default=1000)
     parser.add_argument('--update', type=int, default=100)
     parser.add_argument('--logiters', type=int, default=1000)
     parser.add_argument('--ncgiters', type=int, default=10)
@@ -209,10 +229,11 @@ if __name__ == '__main__':
     parser.add_argument('--convert', type=str, default='irrep')
     parser.add_argument('--yorprefix', type=str, default=f'/{_prefix}/hopan/irreps/s_8/')
     parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--discount', type=float, default=0.9)
+    parser.add_argument('--discount', type=float, default=1)
     parser.add_argument('--model', type=str, default='linear')
     parser.add_argument('--valmaxdist', type=int, default=6)
     parser.add_argument('--valmaxmoves', type=int, default=10)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
+    parser.add_argument('--nolog', action='store_true', default=False)
     args = parser.parse_args()
     main(args)
