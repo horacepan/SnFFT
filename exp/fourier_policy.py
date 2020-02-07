@@ -135,9 +135,8 @@ class FourierPolicyTorch(nn.Module):
         y_pred = tensor.matmul(self.w_torch)
         return y_pred
 
-    def eval_opt_nbr(self, tups, nnbrs):
-        # eval all nbrs, returns tensor of the value of the opt neighbor
-        nbr_eval = self.forward_tup(tups).reshape(-1, nnbrs)
+    def eval_opt_nbr(self, nbr_tups, nnbrs):
+        nbr_eval = self.forward_tup(nbr_tups).reshape(-1, nnbrs)
         max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
         return max_nbr_vals
 

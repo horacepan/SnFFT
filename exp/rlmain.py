@@ -1,3 +1,4 @@
+from GPUtil import showUtilization as gpu_usage
 import pdb
 import os
 import time
@@ -15,7 +16,7 @@ from perm_df import PermDF
 from yor_dataset import YorConverter
 from rlmodels import MLP, RlPolicy, MLPMini
 from fourier_policy import FourierPolicyCG
-from utility import nbrs, perm_onehot, ReplayBuffer, update_params
+from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results
 from s8puzzle import S8Puzzle
 from logger import get_logger
 import sys
@@ -109,8 +110,10 @@ def main(args):
         policy = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
         target = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
 
+    log.info('GPU usage pre pol to device:')
     policy.to(device)
     target.to(device)
+    log.info('GPU usage post pol to device:')
     perm_df = PermDF(args.fname, nbrs)
     if hasattr(policy, 'optim'):
         optim = policy.optim
@@ -121,7 +124,12 @@ def main(args):
     log.info('Memory used pre replay creation: {:.2f}mb'.format(check_memory(False)))
     replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
     log.info('Memory used post replay creation: {:.2f}mb'.format(check_memory(False)))
-    log.info('Before training | benchmark_pol: {}'.format(perm_df.benchmark_policy(perms, policy, optmin=False)))
+
+    random_bench, random_prob_dists = perm_df.benchmark(perms)
+    log.info('Random baseline | benchmark_pol: {} | dist probs: {}'.format(random_bench, str_val_results(random_prob_dists)))
+    bench_prob, bench_prob_dists = perm_df.prop_corr_by_dist(policy, optmin=False)
+    log.info('Before training | benchmark_pol: {} | dist probs: {}'.format(bench_prob, str_val_results(bench_prob_dists)))
+    max_benchmark = 0
     icnt = 0
     updates = 0
     bps = 0
@@ -163,11 +171,9 @@ def main(args):
                 loss.backward()
                 losses.append(loss.item())
                 optim.step()
-                pdb.set_trace()
                 bps += 1
 
             if icnt % args.updateint == 0 and icnt > 0:
-                # set target's weights to current policy's
                 updates += 1
                 update_params(target, policy)
 
@@ -175,38 +181,55 @@ def main(args):
                 break
 
         if e % args.logiters == 0:
-            val_results = val_model(policy, args.valmaxdist, perm_df)
+            #sp_results = val_model(policy, args.valmaxdist, perm_df)
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
-            benchmark = perm_df.benchmark_policy(perms, policy, False)
+            benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
+            max_benchmark = max(max_benchmark, benchmark)
+            str_dict = str_val_results(val_results)
             if hasattr(policy, 'eval_cg_loss'):
                 cgst = time.time()
                 cgloss = policy.eval_cg_loss()
                 cgt = time.time() - cgst
 
                 log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | cg loss: {cgloss:.3f}, time: {cgt:.2f}s | ' + \
-                         f'exp rate: {exp_rate:.3f} | val: {val_results} | Prop correct moves: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
+                         f'exp rate: {exp_rate:.3f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
             else:
                 log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
-                         f'exp rate: {exp_rate:.3f} | val: {val_results} | Prop correct moves: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
+                         f'exp rate: {exp_rate:.3f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
+
+            if benchmark > 0.82:
+                try:
+                    fname = f'./models/{args.logfile}_{np.round(benchmark, 4)}'[-4] + '.pt'
+                    torch.save(policy.state_dict(), fname)
+                    log.info('Saved model in: {}'.format(fname))
+                except:
+                    log.info('Cannot save: {}'.format(fname))
+                    pdb.set_trace()
 
         #if args.docg and e % args.cgupdate == 0 and e > 0:
         if args.docg and e % args.cgupdate == 0:
             cgloss_pre = policy.eval_cg_loss()
             cgst = time.time()
-            for cgi in range(args.ncgiters):
+            for cgi in range(1, args.ncgiters+1):
                 cgloss = policy.train_cg_loss_cached()
                 cglosses.append(cgloss)
-            benchmark = perm_df.benchmark_policy(perms, policy, False)
-            val_results = val_model(policy, args.valmaxdist, perm_df)
-            log.info(('      Completed: {:3d} cg backprops | Last {} CG loss: {:.2f} | ' + \
-                     'Elapsed: {:.2f}min | Val results: {} | Prop corr: {:.3f} | Pre cg loss: {:.3f}').format(
-                     len(cglosses), args.ncgiters, np.mean(cglosses[-args.ncgiters:]), (time.time() - cgst) / 60., val_results, benchmark, cgloss_pre
-            ))
 
+                if cgi % 100 == 0:
+                    benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
+                    str_dict = str_val_results(val_results)
+                    log.info(('      Completed: {:3d} cg backprops | Last 100 CG loss: {:.2f} | ' + \
+                             'Elapsed: {:.2f}min | Val results: {} | Prop corr: {:.3f} | Pre cg loss: {:.3f}').format(
+                             len(cglosses), np.mean(cglosses[-100:]), (time.time() - cgst) / 60., str_dict, benchmark, cglosses[-100]
+                    ))
+                    max_benchmark = max(max_benchmark, benchmark)
+
+    log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
-    val_results = val_model(policy, args.valmaxdist, perm_df)
-    benchmark = perm_df.benchmark_policy(perms, policy, False)
-    log.info('Prop correct moves: {:.3f} | Validation results: {}'.format(benchmark, val_results))
+    sp_results = val_model(policy, args.valmaxdist, perm_df)
+    benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
+    str_dict = str_val_results(val_results)
+    log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
+    log.info('Shortest path results: {}'.format(sp_results))
     pdb.set_trace()
 
 if __name__ == '__main__':

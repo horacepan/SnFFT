@@ -14,5 +14,8 @@ def get_logger(fname=None):
         datefmt=date_fmt)
 
     logger = logging.getLogger(__name__)
+    sh = logging.StreamHandler()
     formatter = logging.Formatter(str_fmt, datefmt=date_fmt)
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
     return logger

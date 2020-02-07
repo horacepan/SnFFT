@@ -13,6 +13,12 @@ S8_GENERATORS = [
     (1, 2, 3, 4, 7, 5, 8, 6),
     (1, 2, 3, 4, 6, 8, 5, 7)
 ]
+def str_val_results(dic):
+    dstr = ''
+    for i, num in dic.items():
+        dstr += '{}: {:.2f} |'.format(i, num)
+    return dstr
+
 def px_mult(p1, p2):
     return tuple([p1[p2[x] - 1] for x in range(len(p1))])
 
@@ -80,17 +86,19 @@ def check_memory(verbose=True):
     return mem
 
 def perm_onehot(perms, batchdim=True):
-    n = len(perms)
-    d = len(perms[0]) ** 2
-    tensor = torch.zeros(n, d)
+    '''
+    List of tuples (perms) to create one hot vector tensor for
+    '''
+    d = len(perms[0])
+    tensor = torch.zeros(len(perms), d * d)
     k = 0
 
-    for idx in range(n):
+    for idx in range(len(perms)):
         perm = perms[idx]
         k = 0
         for i in perm:
             tensor[idx, i + k - 1] = 1
-            k += n
+            k += d
 
     return tensor
 

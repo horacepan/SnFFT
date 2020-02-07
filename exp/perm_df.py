@@ -16,6 +16,7 @@ class PermDF:
         self.df = self.load_df(fname)
         self.dist_dict = self.load_dist_dict()
         self.nbr_func = nbr_func
+        self.max_dist = self.df['dist'].max()
 
     def load_df(self, fname):
         df = pd.read_csv(fname, header=None, dtype={0: str, 1: int})
@@ -35,13 +36,26 @@ class PermDF:
         if len(gtups) == 0:
             return -1
 
+        dist_probs = {}
         probs = []
         for p in gtups:
+            dist = self.dist_dict[p]
             true_vals = self.nbr_values(p)
             opt_val = min(true_vals.values())
             opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
-            probs.append(len(opt_nbrs) / len(true_vals))
-        return np.mean(probs)
+            prob_opt_step = len(opt_nbrs) / len(true_vals)
+            probs.append(prob_opt_step)
+
+            if dist not in dist_probs:
+                dist_probs[dist] = []
+
+            dist_probs[dist].append(prob_opt_step)
+
+        res_prob = {}
+        for i in range(1, self.max_dist+1):
+            res_prob[i] = np.mean(dist_probs[i])
+
+        return np.mean(probs), res_prob
 
     def opt_nbr(self, gtup, policy, optmin=True):
         '''
@@ -95,14 +109,18 @@ class PermDF:
 
     def prop_corr_by_dist(self, policy, optmin=True):
         dist_corr = {}
+        dist_cnts = {}
         ncorrect = 0
         for ptup, dist in self.dist_dict.items():
-            correct = int(self.opt_nbr(gtup, policy, optmin))
+            correct = int(self.opt_nbr(ptup, policy, optmin))
             ncorrect += correct
             dist_corr[dist] = dist_corr.get(dist, 0) + correct
+            dist_cnts[dist] = dist_cnts.get(dist, 0) + 1
 
+        for i in range(self.max_dist):
+            dist_corr[i] = dist_corr[i] / dist_cnts[i]
         prop_corr = ncorrect / len(self.dist_dict)
-        return dist_corr, prop_corr
+        return prop_corr, dist_corr
 
     def opt_move_tup(self, tup):
         dists = [self.dist_dict[t] for t in tup]

@@ -52,6 +52,11 @@ class MLP(nn.Module):
         tens_nbrs = self.to_tensor(tup_nbrs).to(device)
         return self.forward(tens_nbrs).argmax()
 
+    def eval_opt_nbr(self, nbr_tups, nnbrs):
+        nbr_eval = self.forward_tup(nbr_tups).reshape(-1, nnbrs)
+        max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
+        return max_nbr_vals
+
 class MLPMini(nn.Module):
     def __init__(self, nin, nhid, nout, to_tensor):
         super(MLPMini, self).__init__()
@@ -75,3 +80,8 @@ class MLPMini(nn.Module):
     def opt_move_tup(self, tup_nbrs):
         tens_nbrs = self.to_tensor(tup_nbrs).to(device)
         return self.forward(tens_nbrs).argmax()
+
+    def eval_opt_nbr(self, nbr_tups, nnbrs):
+        nbr_eval = self.forward_tup(nbr_tups).reshape(-1, nnbrs)
+        max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
+        return max_nbr_vals
