@@ -35,7 +35,7 @@ def get_exp_rate(epoch, explore_epochs, min_exp):
 
 def get_reward(done):
     if done:
-        return 10
+        return 0
     else:
         return -1
 
@@ -86,7 +86,8 @@ def main(args):
     random.seed(args.seed)
 
     perms = list(permutations(tuple(i for i in range(1, 9))))
-    irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)]
+    irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1), (1,1,1,1,1,1,1,1)]
+    #irreps = [(1,1,1,1,1,1,1,1), (3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)]
 
     if args.convert == 'onehot':
         to_tensor = perm_onehot
@@ -98,7 +99,8 @@ def main(args):
 
     if args.model == 'linear':
         log.info('Using linear policy on irreps with cg iterations: {}'.format(args.docg))
-        policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms)
+        log.info(f'Irreps: {irreps[:args.topk]}')
+        policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, docg=args.docg)
         to_tensor = lambda g: policy.to_tensor(g)
         target = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
     elif args.model == 'mlp':
@@ -186,7 +188,7 @@ def main(args):
             benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
             max_benchmark = max(max_benchmark, benchmark)
             str_dict = str_val_results(val_results)
-            if hasattr(policy, 'eval_cg_loss'):
+            if hasattr(policy, 'eval_cg_loss') and hasattr(policy, 'cg_mats'):
                 cgst = time.time()
                 cgloss = policy.eval_cg_loss()
                 cgt = time.time() - cgst
@@ -214,7 +216,7 @@ def main(args):
                 cgloss = policy.train_cg_loss_cached()
                 cglosses.append(cgloss)
 
-                if cgi % 100 == 0:
+                if len(cglosses) % 100 == 0:
                     benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
                     str_dict = str_val_results(val_results)
                     log.info(('      Completed: {:3d} cg backprops | Last 100 CG loss: {:.2f} | ' + \
@@ -258,5 +260,6 @@ if __name__ == '__main__':
     parser.add_argument('--valmaxmoves', type=int, default=10)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     parser.add_argument('--nolog', action='store_true', default=False)
+    parser.add_argument('--notes', type=str, default='')
     args = parser.parse_args()
     main(args)

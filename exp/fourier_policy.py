@@ -162,11 +162,12 @@ class FourierPolicyTorch(nn.Module):
         self.optim = torch.optim.Adam(self.parameters(), lr=self.lr)
 
 class FourierPolicyCG(FourierPolicyTorch):
-    def __init__(self, irreps, prefix, lr, perms, yors=None, pdict=None):
+    def __init__(self, irreps, prefix, lr, perms, yors=None, pdict=None, docg=False):
         super(FourierPolicyCG, self).__init__(irreps, prefix, lr, perms, yors, pdict)
         self.s8_chars = pickle.load(open(f'{prefix}/char_dict.pkl', 'rb'))
-        self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).float().to(device)
-                         for p1 in irreps for p2 in irreps for base_p in irreps}
+        if docg:
+            self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).float().to(device)
+                             for p1 in irreps for p2 in irreps for base_p in irreps}
         self.multiplicities = self.compute_multiplicities()
 
         self.generators = S8_GENERATORS
