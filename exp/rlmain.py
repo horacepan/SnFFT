@@ -19,6 +19,7 @@ from fourier_policy import FourierPolicyCG
 from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results
 from s8puzzle import S8Puzzle
 from logger import get_logger
+from tensorboardX import SummaryWriter
 import sys
 sys.path.append('../')
 from utils import check_memory
@@ -71,23 +72,24 @@ def val_model(policy, max_dist, perm_df, cnt=100):
         d_states = perm_df.random_state(dist, cnt)
         solves = 0
         for state in d_states:
-            solves += can_solve(state, policy, dist + 1)
+            solves += can_solve(state, policy, 15)
         nsolves[dist] = solves / cnt
     return nsolves
 
 def main(args):
-    if args.nolog:
-        log = get_logger(None)
-    else:
-        log = get_logger(args.logfile)
+    log = get_logger(args.logfile)
+    sumdir = os.path.join(f'./logs/summary/{args.notes}')
+    os.makedirs(sumdir)
+    swr = SummaryWriter(sumdir)
+
     log.info(f'Starting ... Saving logs in: {args.logfile}')
+    log.info('Args: {}'.format(args))
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
 
     perms = list(permutations(tuple(i for i in range(1, 9))))
-    irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1), (1,1,1,1,1,1,1,1)]
-    #irreps = [(1,1,1,1,1,1,1,1), (3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)]
+    irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)]
 
     if args.convert == 'onehot':
         to_tensor = perm_onehot
@@ -102,19 +104,19 @@ def main(args):
         log.info(f'Irreps: {irreps[:args.topk]}')
         policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, docg=args.docg)
         to_tensor = lambda g: policy.to_tensor(g)
-        target = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
+        #target = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
     elif args.model == 'mlp':
         log.info('Using MLP')
         policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
-        target = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
+        #target = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
     elif args.model == 'mini':
         log.info('Using Mini MLP')
         policy = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
-        target = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
+        #target = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
 
     log.info('GPU usage pre pol to device:')
     policy.to(device)
-    target.to(device)
+    #target.to(device)
     log.info('GPU usage post pol to device:')
     perm_df = PermDF(args.fname, nbrs)
     if hasattr(policy, 'optim'):
@@ -127,10 +129,10 @@ def main(args):
     replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
     log.info('Memory used post replay creation: {:.2f}mb'.format(check_memory(False)))
 
-    random_bench, random_prob_dists = perm_df.benchmark(perms)
-    log.info('Random baseline | benchmark_pol: {} | dist probs: {}'.format(random_bench, str_val_results(random_prob_dists)))
-    bench_prob, bench_prob_dists = perm_df.prop_corr_by_dist(policy, optmin=False)
-    log.info('Before training | benchmark_pol: {} | dist probs: {}'.format(bench_prob, str_val_results(bench_prob_dists)))
+    #random_bench, random_prob_dists = perm_df.benchmark(perms)
+    #log.info('Random baseline | benchmark_pol: {} | dist probs: {}'.format(random_bench, str_val_results(random_prob_dists)))
+    #bench_prob, bench_prob_dists = perm_df.prop_corr_by_dist(policy, optmin=False)
+    #log.info('Before training | benchmark_pol: {} | dist probs: {}'.format(bench_prob, str_val_results(bench_prob_dists)))
     max_benchmark = 0
     icnt = 0
     updates = 0
@@ -167,27 +169,34 @@ def main(args):
 
                 # we want the opt of the nbrs of bs
                 bs_nbrs = [n for tup in bs_tups for n in S8Puzzle.nbrs(tup)]
-                opt_nbr_vals = target.eval_opt_nbr(bs_nbrs, S8Puzzle.num_nbrs()).detach()
+                opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, S8Puzzle.num_nbrs()).detach()
                 loss = F.mse_loss(policy.forward(bs),
                                   args.discount * (1 - bd) * opt_nbr_vals + br)
                 loss.backward()
                 losses.append(loss.item())
                 optim.step()
                 bps += 1
-
-            if icnt % args.updateint == 0 and icnt > 0:
-                updates += 1
-                update_params(target, policy)
+                swr.add_scalar('loss', loss.item(), bps)
 
             if done:
                 break
 
         if e % args.logiters == 0:
-            #sp_results = val_model(policy, args.valmaxdist, perm_df)
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
             benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
             max_benchmark = max(max_benchmark, benchmark)
             str_dict = str_val_results(val_results)
+            swr.add_scalar('prop_correct/overall', benchmark, e)
+
+            for ii in range(1, 9):
+                # sample some number of states that far away, evaluate them, report mean + std
+                rand_states = perm_df.random_state(ii, 100)
+                vals = policy.forward_tup(rand_states)
+                swr.add_scalar(f'values/median/states_{ii}', vals.median().item(), e)
+                swr.add_scalar(f'values/mean/states_{ii}', vals.mean().item(), e)
+                swr.add_scalar(f'values/std/states_{ii}', vals.std().item(), e)
+                swr.add_scalar(f'prop_correct/dist_{ii}', val_results[ii], e)
+
             if hasattr(policy, 'eval_cg_loss') and hasattr(policy, 'cg_mats'):
                 cgst = time.time()
                 cgloss = policy.eval_cg_loss()
@@ -244,7 +253,6 @@ if __name__ == '__main__':
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=int, default=0.05)
-    parser.add_argument('--updateint', type=int, default=1000)
     parser.add_argument('--update', type=int, default=100)
     parser.add_argument('--logiters', type=int, default=1000)
     parser.add_argument('--ncgiters', type=int, default=10)
@@ -256,10 +264,8 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--discount', type=float, default=1)
     parser.add_argument('--model', type=str, default='linear')
-    parser.add_argument('--valmaxdist', type=int, default=6)
-    parser.add_argument('--valmaxmoves', type=int, default=10)
+    parser.add_argument('--valmaxdist', type=int, default=8)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
-    parser.add_argument('--nolog', action='store_true', default=False)
     parser.add_argument('--notes', type=str, default='')
     args = parser.parse_args()
     main(args)
