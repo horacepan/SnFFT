@@ -32,7 +32,8 @@ def get_start_states():
     return states
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
-    return max(min_exp, 1 - (epoch / explore_epochs))
+    return 1
+    #return max(min_exp, 1 - (epoch / explore_epochs))
 
 def get_reward(done):
     if done:
@@ -104,7 +105,10 @@ def main(args):
         log.info(f'Irreps: {irreps[:args.topk]}')
         policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, docg=args.docg)
         to_tensor = lambda g: policy.to_tensor(g)
-        #target = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
+        # TODO: make agnostic to args.model
+        if args.doubleq:
+            target = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
+            target.to(device)
     elif args.model == 'mlp':
         log.info('Using MLP')
         policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
@@ -114,9 +118,9 @@ def main(args):
         policy = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
         #target = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
 
+
     log.info('GPU usage pre pol to device:')
     policy.to(device)
-    #target.to(device)
     log.info('GPU usage post pol to device:')
     perm_df = PermDF(args.fname, nbrs)
     if hasattr(policy, 'optim'):
@@ -169,7 +173,12 @@ def main(args):
 
                 # we want the opt of the nbrs of bs
                 bs_nbrs = [n for tup in bs_tups for n in S8Puzzle.nbrs(tup)]
-                opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, S8Puzzle.num_nbrs()).detach()
+                if args.doubleq:
+                    all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs())
+                    opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
+                    opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                else:
+                    opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, S8Puzzle.num_nbrs()).detach()
                 loss = F.mse_loss(policy.forward(bs),
                                   args.discount * (1 - bd) * opt_nbr_vals + br)
                 loss.backward()
@@ -180,6 +189,10 @@ def main(args):
 
             if done:
                 break
+
+        if e % args.update == 0 and e > 0:
+            update_params(target, policy)
+            updates += 1
 
         if e % args.logiters == 0:
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
@@ -203,14 +216,14 @@ def main(args):
                 cgt = time.time() - cgst
 
                 log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | cg loss: {cgloss:.3f}, time: {cgt:.2f}s | ' + \
-                         f'exp rate: {exp_rate:.3f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
+                         f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
             else:
                 log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
-                         f'exp rate: {exp_rate:.3f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
+                         f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
 
-            if benchmark > 0.82:
+            if benchmark > 0.9:
                 try:
-                    fname = f'./models/{args.logfile}_{np.round(benchmark, 4)}'[-4] + '.pt'
+                    fname = f'./models/top{args.topk}_gt90.pt'
                     torch.save(policy.state_dict(), fname)
                     log.info('Saved model in: {}'.format(fname))
                 except:
@@ -253,7 +266,7 @@ if __name__ == '__main__':
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=int, default=0.05)
-    parser.add_argument('--update', type=int, default=100)
+    parser.add_argument('--update', type=int, default=500)
     parser.add_argument('--logiters', type=int, default=1000)
     parser.add_argument('--ncgiters', type=int, default=10)
     parser.add_argument('--docg', action='store_true', default=False)
@@ -267,5 +280,6 @@ if __name__ == '__main__':
     parser.add_argument('--valmaxdist', type=int, default=8)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     parser.add_argument('--notes', type=str, default='')
+    parser.add_argument('--doubleq', action='store_true', default=False)
     args = parser.parse_args()
     main(args)
