@@ -161,6 +161,14 @@ class FourierPolicyTorch(nn.Module):
         self.w_torch = nn.Parameter(weight)
         self.optim = torch.optim.Adam(self.parameters(), lr=self.lr)
 
+    def opt_move(self, x):
+        output = self.forward(x)
+        return output.argmax()
+
+    def opt_move_tup(self, tup_nbrs):
+        tens_nbrs = self.to_tensor(tup_nbrs).to(device)
+        return self.opt_move(tens_nbrs)
+
 class FourierPolicyCG(FourierPolicyTorch):
     def __init__(self, irreps, prefix, lr, perms, yors=None, pdict=None, docg=False):
         super(FourierPolicyCG, self).__init__(irreps, prefix, lr, perms, yors, pdict)
@@ -239,11 +247,3 @@ class FourierPolicyCG(FourierPolicyTorch):
                 rhs += 2 * coeff * compute_rhs_block(fhat1, fhat2, cgmat, mult, rhog)
 
         return ((lhs - rhs).pow(2)).mean()
-
-    def opt_move(self, x):
-        output = self.forward(x)
-        return output.argmax()
-
-    def opt_move_tup(self, tup_nbrs):
-        tens_nbrs = self.to_tensor(tup_nbrs).to(device)
-        return self.opt_move(tens_nbrs)

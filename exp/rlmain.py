@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 from perm_df import PermDF
 from yor_dataset import YorConverter
-from rlmodels import MLP, RlPolicy, MLPMini
+from rlmodels import MLP
 from fourier_policy import FourierPolicyCG
 from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results
 from s8puzzle import S8Puzzle
@@ -25,11 +25,6 @@ sys.path.append('../')
 from utils import check_memory
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-def get_start_states():
-    df = pd.read_csv('/home/hopan/github/idastar/s8_dists_red.txt', header=None,
-                     dtype={0: str, 1: int}, nrows=24)
-    states = [tuple(int(i) for i in row[0]) for _, row in df.iterrows()]
-    return states
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
     return 1
@@ -113,13 +108,8 @@ def main(args):
             target.to(device)
     elif args.model == 'mlp':
         log.info('Using MLP')
-        policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
-        #target = MLP(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
-    elif args.model == 'mini':
-        log.info('Using Mini MLP')
-        policy = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
-        #target = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
-
+        policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor)
+        target = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor)
 
     policy.to(device)
     perm_df = PermDF(args.fname, nbrs)
@@ -239,6 +229,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--discount', type=float, default=1)
     parser.add_argument('--model', type=str, default='linear')
+    parser.add_argument('--layers', type=int, default=2)
     parser.add_argument('--valmaxdist', type=int, default=8)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     parser.add_argument('--notes', type=str, default='')
