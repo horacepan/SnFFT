@@ -80,7 +80,8 @@ def val_model(policy, max_dist, perm_df, cnt=100):
 def main(args):
     log = get_logger(args.logfile)
     sumdir = os.path.join(f'./logs/summary/{args.notes}')
-    os.makedirs(sumdir)
+    if not os.path.exists(sumdir):
+        os.makedirs(sumdir)
     swr = SummaryWriter(sumdir)
 
     log.info(f'Starting ... Saving logs in: {args.logfile}')
@@ -88,6 +89,7 @@ def main(args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
+    target = None
 
     perms = list(permutations(tuple(i for i in range(1, 9))))
     irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)]
@@ -119,9 +121,7 @@ def main(args):
         #target = MLPMini(to_tensor([perms[0]]).numel(), 32, 1, to_tensor)
 
 
-    log.info('GPU usage pre pol to device:')
     policy.to(device)
-    log.info('GPU usage post pol to device:')
     perm_df = PermDF(args.fname, nbrs)
     if hasattr(policy, 'optim'):
         optim = policy.optim
@@ -141,8 +141,8 @@ def main(args):
     icnt = 0
     updates = 0
     bps = 0
+    nbreaks = 0
     losses = []
-    cglosses = []
 
     for e in range(args.epochs + 1):
         states = S8Puzzle.random_walk(args.eplen)
@@ -171,7 +171,6 @@ def main(args):
                 br = br.to(device)
                 bd = bd.to(device)
 
-                # we want the opt of the nbrs of bs
                 bs_nbrs = [n for tup in bs_tups for n in S8Puzzle.nbrs(tup)]
                 if args.doubleq:
                     all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs())
@@ -188,9 +187,9 @@ def main(args):
                 swr.add_scalar('loss', loss.item(), bps)
 
             if done:
-                break
+                nbreaks += 1
 
-        if e % args.update == 0 and e > 0:
+        if e % args.update == 0 and e > 0 and target:
             update_params(target, policy)
             updates += 1
 
@@ -210,42 +209,8 @@ def main(args):
                 swr.add_scalar(f'values/std/states_{ii}', vals.std().item(), e)
                 swr.add_scalar(f'prop_correct/dist_{ii}', val_results[ii], e)
 
-            if hasattr(policy, 'eval_cg_loss') and hasattr(policy, 'cg_mats'):
-                cgst = time.time()
-                cgloss = policy.eval_cg_loss()
-                cgt = time.time() - cgst
-
-                log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | cg loss: {cgloss:.3f}, time: {cgt:.2f}s | ' + \
-                         f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
-            else:
-                log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
-                         f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps}')
-
-            if benchmark > 0.9:
-                try:
-                    fname = f'./models/top{args.topk}_gt90.pt'
-                    torch.save(policy.state_dict(), fname)
-                    log.info('Saved model in: {}'.format(fname))
-                except:
-                    log.info('Cannot save: {}'.format(fname))
-                    pdb.set_trace()
-
-        #if args.docg and e % args.cgupdate == 0 and e > 0:
-        if args.docg and e % args.cgupdate == 0:
-            cgloss_pre = policy.eval_cg_loss()
-            cgst = time.time()
-            for cgi in range(1, args.ncgiters+1):
-                cgloss = policy.train_cg_loss_cached()
-                cglosses.append(cgloss)
-
-                if len(cglosses) % 100 == 0:
-                    benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
-                    str_dict = str_val_results(val_results)
-                    log.info(('      Completed: {:3d} cg backprops | Last 100 CG loss: {:.2f} | ' + \
-                             'Elapsed: {:.2f}min | Val results: {} | Prop corr: {:.3f} | Pre cg loss: {:.3f}').format(
-                             len(cglosses), np.mean(cglosses[-100:]), (time.time() - cgst) / 60., str_dict, benchmark, cglosses[-100]
-                    ))
-                    max_benchmark = max(max_benchmark, benchmark)
+            log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
+                     f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | nbreaks: {nbreaks} | icnt: {icnt}')
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
@@ -268,9 +233,6 @@ if __name__ == '__main__':
     parser.add_argument('--minexp', type=int, default=0.05)
     parser.add_argument('--update', type=int, default=500)
     parser.add_argument('--logiters', type=int, default=1000)
-    parser.add_argument('--ncgiters', type=int, default=10)
-    parser.add_argument('--docg', action='store_true', default=False)
-    parser.add_argument('--cgupdate', type=int, default=500)
     parser.add_argument('--minibatch', type=int, default=128)
     parser.add_argument('--convert', type=str, default='irrep')
     parser.add_argument('--yorprefix', type=str, default=f'/{_prefix}/hopan/irreps/s_8/')
