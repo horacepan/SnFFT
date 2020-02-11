@@ -109,13 +109,15 @@ class ReplayBuffer:
         self.state_tups = [None] * capacity
         self.next_state_tups = [None] * capacity
         self.rewards = torch.zeros(capacity, 1)
+        self.actions = torch.zeros(capacity, 1)
         self.dones = torch.zeros(capacity, 1)
         self.capacity = capacity
         self.filled = 0
         self._idx = 0
 
-    def push(self, state, next_state, reward, done, state_tup, next_state_tup):
+    def push(self, state, action, next_state, reward, done, state_tup, next_state_tup):
         self.states[self._idx] = state
+        self.actions[self._idx] = action
         self.next_states[self._idx] = next_state
         self.rewards[self._idx] = reward
         self.dones[self._idx] = done
@@ -132,7 +134,7 @@ class ReplayBuffer:
         idxs = np.random.choice(self.filled, size=size)
         tups = [self.state_tups[i] for i in idxs]
         next_tups = [self.next_state_tups[i] for i in idxs]
-        return (self.states[idxs], self.next_states[idxs], self.rewards[idxs], self.dones[idxs], tups, next_tups)
+        return (self.states[idxs], self.actions[idxs], self.next_states[idxs], self.rewards[idxs], self.dones[idxs], tups, next_tups)
 
 # Source: https://github.com/ikostrikov/pytorch-ddpg-naf/blob/master/ddpg.py#L15
 def update_params(target, source):

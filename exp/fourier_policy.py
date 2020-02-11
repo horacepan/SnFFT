@@ -128,7 +128,7 @@ class FourierPolicyTorch(nn.Module):
         perms: list of tuples
         Returns: the tensor representation of the given permutations
         '''
-        X = torch.cat([self.pdict[p] for p in perms], dim=0)
+        X = torch.cat([self.pdict[p] for p in perms], dim=0).to(device)
         return X
 
     def forward(self, tensor):

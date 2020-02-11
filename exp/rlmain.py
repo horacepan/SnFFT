@@ -28,7 +28,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
     return 1
-    #return max(min_exp, 1 - (epoch / explore_epochs))
+    return max(min_exp, 1 - (epoch / explore_epochs))
 
 def get_reward(done):
     if done:
@@ -85,7 +85,7 @@ def main(args):
     np.random.seed(args.seed)
     random.seed(args.seed)
     target = None
-
+    seen_states = set()
     perms = list(permutations(tuple(i for i in range(1, 9))))
     irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)]
 
@@ -98,18 +98,24 @@ def main(args):
         raise Exception('Must pass in convert string')
 
     if args.model == 'linear':
-        log.info('Using linear policy on irreps with cg iterations: {}'.format(args.docg))
         log.info(f'Irreps: {irreps[:args.topk]}')
-        policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, docg=args.docg)
+        policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms)
         to_tensor = lambda g: policy.to_tensor(g)
         # TODO: make agnostic to args.model
         if args.doubleq:
             target = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
             target.to(device)
-    elif args.model == 'mlp':
-        log.info('Using MLP')
-        policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor)
-        target = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor)
+    elif args.model == 'dvn':
+        log.info('Using MLP DVN')
+        policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor=to_tensor)
+        target = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor=to_tensor)
+        target.to(device)
+    elif args.model == 'dqn':
+        log.info('Using MLP DQN')
+        policy = MLP(to_tensor([perms[0]]).numel(), 32, S8Puzzle.num_nbrs(), layers=args.layers, to_tensor=to_tensor)
+        target = MLP(to_tensor([perms[0]]).numel(), 32, S8Puzzle.num_nbrs(), layers=args.layers, to_tensor=to_tensor)
+        target.to(device)
+
 
     policy.to(device)
     perm_df = PermDF(args.fname, nbrs)
@@ -123,15 +129,10 @@ def main(args):
     replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
     log.info('Memory used post replay creation: {:.2f}mb'.format(check_memory(False)))
 
-    #random_bench, random_prob_dists = perm_df.benchmark(perms)
-    #log.info('Random baseline | benchmark_pol: {} | dist probs: {}'.format(random_bench, str_val_results(random_prob_dists)))
-    #bench_prob, bench_prob_dists = perm_df.prop_corr_by_dist(policy, optmin=False)
-    #log.info('Before training | benchmark_pol: {} | dist probs: {}'.format(bench_prob, str_val_results(bench_prob_dists)))
     max_benchmark = 0
     icnt = 0
     updates = 0
     bps = 0
-    nbreaks = 0
     losses = []
 
     for e in range(args.epochs + 1):
@@ -142,44 +143,61 @@ def main(args):
             _nbrs = S8Puzzle.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
                 move = S8Puzzle.random_move()
-            else:
+            elif hasattr(policy, 'nout') and policy.nout == 1:
                 nbrs_tens = to_tensor(_nbrs).to(device)
                 move = policy.forward(nbrs_tens).argmax().item()
+            elif hasattr(policy, 'nout') and policy.nout > 1:
+                move = policy.forward(to_tensor(state)).argmax().item()
             next_state = _nbrs[move]
 
             # reward is pretty flexible though
             done = int(S8Puzzle.is_done(next_state))
             reward = get_reward(done)
-            replay.push(to_tensor([state]), to_tensor([next_state]), reward, done, state, next_state)
+            replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
             icnt += 1
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
-                bs, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch)
+                bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch)
                 bs = bs.to(device)
+                ba = ba.to(device)
                 bns = bns.to(device)
                 br = br.to(device)
                 bd = bd.to(device)
 
                 bs_nbrs = [n for tup in bs_tups for n in S8Puzzle.nbrs(tup)]
-                if args.doubleq:
-                    all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs())
+                if args.model == 'linear':
+                    if args.doubleq:
+                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs())
+                        opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
+                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                    else:
+                        opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, S8Puzzle.num_nbrs()).detach()
+                    loss = F.mse_loss(policy.forward(bs),
+                                      args.discount * (1 - bd) * opt_nbr_vals + br)
+                elif args.model == 'dvn':
+                    nxt_nbr_vals = policy.forward_tup(bs_nbrs) # already nin -> hidden
                     opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
                     opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs()).gather(1, opt_nbr_idx).detach()
-                else:
-                    opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, S8Puzzle.num_nbrs()).detach()
-                loss = F.mse_loss(policy.forward(bs),
-                                  args.discount * (1 - bd) * opt_nbr_vals + br)
+                    loss = F.mse_loss(policy.forward(bs),
+                                      args.discount * (1 - bd) * opt_nbr_vals + br)
+                elif args.model ==  'dqn':
+                    # get q(s, a), and q(s_next, best_action)
+                    curr_vals = policy.forward_tup(bs_tups) # n x nactions
+                    qsa = curr_vals.gather(1, ba.long())
+
+                    nxt_vals = policy.forward_tup(bns_tups) # already nin -> hidden
+                    qsan = nxt_vals.max(dim=1, keepdim=True)[0]
+                    loss = F.mse_loss(qsa, qsan)
+
                 loss.backward()
                 losses.append(loss.item())
                 optim.step()
                 bps += 1
                 swr.add_scalar('loss', loss.item(), bps)
 
-            if done:
-                nbreaks += 1
-
-        if e % args.update == 0 and e > 0 and target:
+        seen_states.update(states)
+        if e % args.qqupdate == 0 and e > 0 and target:
             update_params(target, policy)
             updates += 1
 
@@ -200,7 +218,7 @@ def main(args):
                 swr.add_scalar(f'prop_correct/dist_{ii}', val_results[ii], e)
 
             log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
-                     f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | nbreaks: {nbreaks} | icnt: {icnt}')
+                     f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
@@ -221,7 +239,7 @@ if __name__ == '__main__':
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=int, default=0.05)
-    parser.add_argument('--update', type=int, default=500)
+    parser.add_argument('--update', type=int, default=100)
     parser.add_argument('--logiters', type=int, default=1000)
     parser.add_argument('--minibatch', type=int, default=128)
     parser.add_argument('--convert', type=str, default='irrep')
@@ -234,5 +252,6 @@ if __name__ == '__main__':
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     parser.add_argument('--notes', type=str, default='')
     parser.add_argument('--doubleq', action='store_true', default=False)
+    parser.add_argument('--qqupdate', type=int, default=100)
     args = parser.parse_args()
     main(args)

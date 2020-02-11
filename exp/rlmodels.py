@@ -6,21 +6,22 @@ import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class MLP(nn.Module):
-    def __init__(self, nin, nhid, nout, layers=2, to_tensor):
+    def __init__(self, nin, nhid, nout, layers=2, to_tensor=None):
         super(MLP, self).__init__()
         self.nin = nin
         self.nhid = nhid
         self.nout = nout
         self.fc_in = nn.Linear(nin, nhid)
-        self.fc_hid = [nn.Linear(nhid, nhid) for _ in range(layers-1)]
+        for i in range(1, layers):
+            setattr(self, f'fc_h{i}', nn.Linear(nhid, nhid))
         self.fc_out = nn.Linear(nhid, nout)
-        self.layers = [self.fc_in] + self.fc_hid + [self.fc_out]
+        self.layers = [self.fc_in] + [getattr(self, f'fc_h{i}') for i in range(1, layers)] + [self.fc_out]
         self.nonlinearity = F.relu
         self.to_tensor = to_tensor
 
     def forward(self, x):
         for layer in self.layers[:-1]:
-            x = self.layer(x)
+            x = layer(x)
             x = self.nonlinearity(x)
         return self.fc_out(x)
 
@@ -36,3 +37,11 @@ class MLP(nn.Module):
         nbr_eval = self.forward_tup(nbr_tups).reshape(-1, nnbrs)
         max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
         return max_nbr_vals
+
+class DQN(nn.Module):
+    def __init__(self, nin, nhid, nout):
+        pass
+
+class DVN(nn.Module):
+    def __init__(self, nin, nhid, nout):
+        pass

@@ -67,6 +67,7 @@ class PermDF:
         opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
 
         pol_vals = self.nbr_values(gtup, policy)
+
         if optmin:
             opt_pol_nbr = min(pol_vals, key=pol_vals.get)
         else:
@@ -78,11 +79,19 @@ class PermDF:
             func = self.__call__
 
         vals = {}
-        for n in self.nbr_func(gtup):
+        gtup_nbrs = self.nbr_func(gtup)
+
+        if hasattr(func, 'forward_tup') and hasattr(func, 'nout') and func.nout > 1:
+            res = func.forward_tup([gtup])
+            for i, ntup in enumerate(gtup_nbrs):
+                vals[ntup] = res[0, i].item()
+            return vals
+
+        for ntup in gtup_nbrs:
             if hasattr(func, 'forward_tup'):
-                vals[n] = func.forward_tup([n])
+                vals[ntup] = func.forward_tup([ntup]).item()
             else:
-                vals[n] = func(n)
+                vals[ntup] = func(ntup)
 
         return vals
 
