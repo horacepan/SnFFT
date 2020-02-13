@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 from perm_df import PermDF
 from yor_dataset import YorConverter
-from rlmodels import MLP
+from rlmodels import MLP, LinearPolicy
 from fourier_policy import FourierPolicyCG
 from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results
 from s8puzzle import S8Puzzle
@@ -27,7 +27,7 @@ from utils import check_memory
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
-    return 1
+    #return 1
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def get_reward(done):
@@ -36,7 +36,7 @@ def get_reward(done):
     else:
         return -1
 
-def can_solve(state, policy, max_moves):
+def can_solve(state, policy, max_moves, env):
     '''
     state: tuple
     policy: nn policy
@@ -45,15 +45,15 @@ def can_solve(state, policy, max_moves):
     '''
     curr_state = state
     for _ in range(max_moves):
-        neighbors = S8Puzzle.nbrs(curr_state)
+        neighbors = env.nbrs(curr_state)
         opt_move = policy.opt_move_tup(neighbors)
-        curr_state = S8Puzzle.step(curr_state, opt_move)
-        if S8Puzzle.is_done(curr_state):
+        curr_state = env.step(curr_state, opt_move)
+        if env.is_done(curr_state):
             return True
 
     return False
 
-def val_model(policy, max_dist, perm_df, cnt=100):
+def val_model(policy, max_dist, perm_df, cnt=100, env=S8Puzzle):
     '''
     To validate a model need:
     - transition function
@@ -68,7 +68,7 @@ def val_model(policy, max_dist, perm_df, cnt=100):
         d_states = perm_df.random_state(dist, cnt)
         solves = 0
         for state in d_states:
-            solves += can_solve(state, policy, 15)
+            solves += can_solve(state, policy, 15, env)
         nsolves[dist] = solves / cnt
     return nsolves
 
@@ -87,35 +87,48 @@ def main(args):
     target = None
     seen_states = set()
     perms = list(permutations(tuple(i for i in range(1, 9))))
-    irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)]
+    env = S8Puzzle
+    irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)][:args.topk]
+    if args.irreps:
+        try:
+            irreps = eval(args.irreps)
+        except:
+            log.info('Invalid input for args.irreps: {}'.format(args.irreps))
+            exit()
 
     if args.convert == 'onehot':
         to_tensor = perm_onehot
     elif args.convert == 'irrep':
-        #to_tensor = YorConverter(irreps[:args.topk], args.yorprefix, perms)
+        #to_tensor = YorConverter(irreps, args.yorprefix, perms)
         to_tensor = None
     else:
         raise Exception('Must pass in convert string')
 
     if args.model == 'linear':
-        log.info(f'Irreps: {irreps[:args.topk]}')
-        policy = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms)
+        log.info(f'Policy using Irreps: {irreps}')
+        policy = FourierPolicyCG(irreps, args.yorprefix, args.lr, perms)
         to_tensor = lambda g: policy.to_tensor(g)
         # TODO: make agnostic to args.model
         if args.doubleq:
-            target = FourierPolicyCG(irreps[:args.topk], args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
+            target = FourierPolicyCG(irreps, args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
             target.to(device)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
-        policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor=to_tensor)
-        target = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor=to_tensor)
+        #yor_conv = FourierPolicyCG(irreps, args.yorprefix, args.lr, perms)
+        #to_tensor = lambda g: yor_conv.to_tensor(g)
+        policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
-        policy = MLP(to_tensor([perms[0]]).numel(), 32, S8Puzzle.num_nbrs(), layers=args.layers, to_tensor=to_tensor)
-        target = MLP(to_tensor([perms[0]]).numel(), 32, S8Puzzle.num_nbrs(), layers=args.layers, to_tensor=to_tensor)
+        policy = MLP(to_tensor([perms[0]]).numel(), 32, env.num_nbrs(), layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([perms[0]]).numel(), 32, env.num_nbrs(), layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
-
+    elif args.model == 'onehotlinear':
+        policy = LinearPolicy(64, 1, to_tensor, std=args.std)
+        target = LinearPolicy(64, 1, to_tensor, std=args.std)
+        log.info('Using onehot linear policy')
+        target.to(device)
 
     policy.to(device)
     perm_df = PermDF(args.fname, nbrs)
@@ -123,7 +136,7 @@ def main(args):
         optim = policy.optim
     else:
         optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
-    start_states = S8Puzzle.start_states()
+    start_states = env.start_states()
 
     log.info('Memory used pre replay creation: {:.2f}mb'.format(check_memory(False)))
     replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
@@ -136,22 +149,22 @@ def main(args):
     losses = []
 
     for e in range(args.epochs + 1):
-        states = S8Puzzle.random_walk(args.eplen)
-        #state = S8Puzzle.random_walk(args.eplen)[-1]
+        states = env.random_walk(args.eplen)
+        #state = env.random_walk(args.eplen)[-1]
         for state in states:
         #for _i in range(args.eplen + 10):
-            _nbrs = S8Puzzle.nbrs(state)
+            _nbrs = env.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
-                move = S8Puzzle.random_move()
+                move = env.random_move()
             elif hasattr(policy, 'nout') and policy.nout == 1:
                 nbrs_tens = to_tensor(_nbrs).to(device)
                 move = policy.forward(nbrs_tens).argmax().item()
             elif hasattr(policy, 'nout') and policy.nout > 1:
-                move = policy.forward(to_tensor(state)).argmax().item()
+                move = policy.forward(to_tensor([state])).argmax().item()
             next_state = _nbrs[move]
 
             # reward is pretty flexible though
-            done = int(S8Puzzle.is_done(next_state))
+            done = int(env.is_done(next_state))
             reward = get_reward(done)
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
@@ -165,20 +178,20 @@ def main(args):
                 br = br.to(device)
                 bd = bd.to(device)
 
-                bs_nbrs = [n for tup in bs_tups for n in S8Puzzle.nbrs(tup)]
-                if args.model == 'linear':
+                bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
+                if args.model == 'linear' or args.model == 'onehotlinear':
                     if args.doubleq:
-                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs())
+                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
-                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     else:
-                        opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, S8Puzzle.num_nbrs()).detach()
+                        opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs()).detach()
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model == 'dvn':
-                    nxt_nbr_vals = policy.forward_tup(bs_nbrs) # already nin -> hidden
-                    opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
-                    opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, S8Puzzle.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                    nxt_nbr_vals = target.forward_tup(bs_nbrs) # already nin -> hidden
+                    opt_nbr_idx = nxt_nbr_vals.reshape(-1, env.num_nbrs()).max(dim=1, keepdim=True)[1]
+                    opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model ==  'dqn':
@@ -186,8 +199,9 @@ def main(args):
                     curr_vals = policy.forward_tup(bs_tups) # n x nactions
                     qsa = curr_vals.gather(1, ba.long())
 
-                    nxt_vals = policy.forward_tup(bns_tups) # already nin -> hidden
-                    qsan = nxt_vals.max(dim=1, keepdim=True)[0]
+                    nxt_vals = policy.forward_tup(bns_tups).detach() # already nin -> hidden
+                    nxt_actions = target.forward_tup(bns_tups).argmax(dim=1, keepdim=True).detach()
+                    qsan = nxt_vals.gather(1, nxt_actions)
                     loss = F.mse_loss(qsa, qsan)
 
                 loss.backward()
@@ -238,7 +252,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
-    parser.add_argument('--minexp', type=int, default=0.05)
+    parser.add_argument('--minexp', type=float, default=0.05)
     parser.add_argument('--update', type=int, default=100)
     parser.add_argument('--logiters', type=int, default=1000)
     parser.add_argument('--minibatch', type=int, default=128)
@@ -253,5 +267,7 @@ if __name__ == '__main__':
     parser.add_argument('--notes', type=str, default='')
     parser.add_argument('--doubleq', action='store_true', default=False)
     parser.add_argument('--qqupdate', type=int, default=100)
+    parser.add_argument('--std', type=float, default=0.1)
+    parser.add_argument('--irreps', type=str, default='')
     args = parser.parse_args()
     main(args)

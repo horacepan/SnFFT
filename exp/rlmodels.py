@@ -43,6 +43,33 @@ class MLP(nn.Module):
         for p in self.parameters():
             p.data.normal_(std=std)
 
+class LinearPolicy(nn.Module):
+    def __init__(self, nin, nout, to_tensor=None, std=0.1):
+        super(LinearPolicy, self).__init__()
+        self.nin = nin
+        self.net = nn.Linear(nin, nout)
+        self.to_tensor = to_tensor
+
+    def forward(self, x):
+        return self.net(x)
+
+    def forward_tup(self, tup):
+        tens = self.to_tensor(tup).to(device)
+        return self.forward(tens)
+
+    def opt_move_tup(self, tup_nbrs):
+        tens_nbrs = self.to_tensor(tup_nbrs).to(device)
+        return self.forward(tens_nbrs).argmax()
+
+    def eval_opt_nbr(self, nbr_tups, nnbrs):
+        nbr_eval = self.forward_tup(nbr_tups).reshape(-1, nnbrs)
+        max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
+        return max_nbr_vals
+
+    def reset_parameters(self, std=0.1):
+        for p in self.parameters():
+            p.data.normal_(std=std)
+
 class DQN(nn.Module):
     def __init__(self, nin, nhid, nout):
         pass
