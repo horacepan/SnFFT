@@ -39,8 +39,8 @@ def pymanopt_intertwiner(parts1, parts2, parts3, mult, n):
 
     krep1 = np.kron(rep1_tup, rep2_tup)
     krep2 = np.kron(rep1_cyc, rep2_cyc)
-    brep1 = block_rep(rep3_tup, mult) 
-    brep2 = block_rep(rep3_cyc, mult) 
+    brep1 = block_rep(rep3_tup, mult)
+    brep2 = block_rep(rep3_cyc, mult)
 
     d = krep1.shape[1]
     dz = brep1.shape[0]

@@ -13,6 +13,8 @@ S8_GENERATORS = [
     (1, 2, 3, 4, 7, 5, 8, 6),
     (1, 2, 3, 4, 6, 8, 5, 7)
 ]
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def str_val_results(dic):
     dstr = ''
     for i, num in dic.items():
@@ -100,7 +102,7 @@ def perm_onehot(perms, batchdim=True):
             tensor[idx, i + k - 1] = 1
             k += d
 
-    return tensor
+    return tensor.to(device)
 
 class ReplayBuffer:
     def __init__(self, state_size, capacity):

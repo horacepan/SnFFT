@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class MLP(nn.Module):
-    def __init__(self, nin, nhid, nout, layers=2, to_tensor=None):
+    def __init__(self, nin, nhid, nout, layers=2, to_tensor=None, std=0.1):
         super(MLP, self).__init__()
         self.nin = nin
         self.nhid = nhid
@@ -18,6 +18,7 @@ class MLP(nn.Module):
         self.layers = [self.fc_in] + [getattr(self, f'fc_h{i}') for i in range(1, layers)] + [self.fc_out]
         self.nonlinearity = F.relu
         self.to_tensor = to_tensor
+        self.reset_parameters(std)
 
     def forward(self, x):
         for layer in self.layers[:-1]:
@@ -37,6 +38,10 @@ class MLP(nn.Module):
         nbr_eval = self.forward_tup(nbr_tups).reshape(-1, nnbrs)
         max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
         return max_nbr_vals
+
+    def reset_parameters(self, std=0.1):
+        for p in self.parameters():
+            p.data.normal_(std=std)
 
 class DQN(nn.Module):
     def __init__(self, nin, nhid, nout):
