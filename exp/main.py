@@ -59,7 +59,6 @@ def main(args):
                  f'Test loss: {test_loss:.4f} | bpred mean: {bpred.mean().item():.2f}, std: {bpred.std().item():.2f}')
 
     log.info('Done!')
-    pdb.set_trace()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

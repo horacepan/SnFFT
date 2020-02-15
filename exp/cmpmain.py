@@ -58,7 +58,7 @@ def main(args):
             log.info('Invalid input for args.irreps: {}'.format(args.irreps))
             exit()
 
-    env = group_puzzle.get(args.puzzle)
+    env = S8Puzzle()
     to_tensor = None
     vec_size = env.size # this isnt an ideal interface
 
@@ -70,14 +70,14 @@ def main(args):
             target.to(device)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
-        policy = MLP(to_tensor(vec_size, 32, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(to_tensor(vec_size, 32, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        policy = MLP(to_tensor(vec_size, args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor(vec_size, args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
         nout = env.num_nbrs()
-        policy = MLP(vec_size, 32, nout, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(vec_size, 32, nout, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        policy = MLP(vec_size, args.nhid, nout, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(vec_size, args.nhid, nout, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
 
     policy.to(device)
@@ -195,6 +195,7 @@ if __name__ == '__main__':
     parser.add_argument('--qqupdate', type=int, default=100)
     parser.add_argument('--std', type=float, default=0.1)
     parser.add_argument('--irreps', type=str, default='')
+    parser.add_argument('--nhid', type=int, default=32)
     parser.add_argument('--puzzle', type=str, default='S8Puzzle')
     args = parser.parse_args()
     main(args)

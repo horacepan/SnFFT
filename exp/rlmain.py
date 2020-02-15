@@ -37,7 +37,7 @@ def get_reward(done):
         return -1
 
 def main(args):
-    log = get_logger(args.logfile)
+    log = get_logger(args.logfile, stdout=True, tofile=args.savelog)
     sumdir = os.path.join(f'./logs/summary/{args.notes}')
     if not os.path.exists(sumdir):
         os.makedirs(sumdir)
@@ -52,7 +52,6 @@ def main(args):
     seen_states = set()
     perms = list(permutations(tuple(i for i in range(1, 9))))
     env = S8Puzzle()
-    irreps = [(3, 2, 2, 1), (4, 2, 2), (4, 2, 1, 1)][:args.topk]
     if args.irreps:
         try:
             irreps = eval(args.irreps)
@@ -80,13 +79,13 @@ def main(args):
         log.info('Using MLP DVN')
         #yor_conv = FourierPolicyCG(irreps, args.yorprefix, args.lr, perms)
         #to_tensor = lambda g: yor_conv.to_tensor(g)
-        policy = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(to_tensor([perms[0]]).numel(), 32, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
-        policy = MLP(to_tensor([perms[0]]).numel(), 32, env.num_nbrs(), layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(to_tensor([perms[0]]).numel(), 32, env.num_nbrs(), layers=args.layers, to_tensor=to_tensor, std=args.std)
+        policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, env.num_nbrs(), layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([perms[0]]).numel(), args.nhid, env.num_nbrs(), layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
     elif args.model == 'onehotlinear':
         policy = LinearPolicy(64, 1, to_tensor, std=args.std)
@@ -135,12 +134,6 @@ def main(args):
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
-                bs = bs.to(device)
-                ba = ba.to(device)
-                bns = bns.to(device)
-                br = br.to(device)
-                bd = bd.to(device)
-
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
                 if args.model == 'linear' or args.model == 'onehotlinear':
                     if args.doubleq:
@@ -200,7 +193,7 @@ def main(args):
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
-    sp_results = val_model(policy, args.valmaxdist, perm_df)
+    sp_results = val_model(policy, 8, perm_df, cnt=100, env=env)
     benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
     str_dict = str_val_results(val_results)
     log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
@@ -210,9 +203,9 @@ def main(args):
 if __name__ == '__main__':
     _prefix = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'
     parser = argparse.ArgumentParser()
+    parser.add_argument('--savelog', action='store_true', default=False)
     parser.add_argument('--logfile', type=str, default=f'./logs/rl/{time.time()}.log')
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--topk', type=int, default=2)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
@@ -226,12 +219,12 @@ if __name__ == '__main__':
     parser.add_argument('--discount', type=float, default=1)
     parser.add_argument('--model', type=str, default='linear')
     parser.add_argument('--layers', type=int, default=2)
-    parser.add_argument('--valmaxdist', type=int, default=8)
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     parser.add_argument('--notes', type=str, default='')
     parser.add_argument('--doubleq', action='store_true', default=False)
     parser.add_argument('--qqupdate', type=int, default=100)
     parser.add_argument('--std', type=float, default=0.1)
     parser.add_argument('--irreps', type=str, default='')
+    parser.add_argument('--nhid', type=int, default=32)
     args = parser.parse_args()
     main(args)
