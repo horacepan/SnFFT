@@ -38,10 +38,7 @@ class FourierPolicyTorch(nn.Module):
         total_size = sum([d ** 2 for d in self.irrep_sizes.values()])
         self.w_torch = nn.Parameter(torch.rand(total_size + 1, 1))
         self.w_torch.data.normal_(std=0.2)
-        self.w_torch.data[-1] = 5.328571428571428 # TODO: this is a hack
 
-        if yors is None:
-            self.optim = torch.optim.Adam([self.w_torch], lr=lr)
         # this is pretty hacky
         if pdict is None:
             self.pdict = self.cache_perms(perms)
@@ -78,20 +75,6 @@ class FourierPolicyTorch(nn.Module):
         y_nbrs = self.forward_tup(gnbrs).reshape(-1, len_nbrs)
         y_pred = self.forward_tup(gtups)
         return y_pred, y_nbrs
-
-    def train_batch(self, perms, y, **kwargs):
-        '''
-        perms: list of tuples
-        y: numpy array
-        Returns: training loss on this batch. Also takes a gradient step
-        '''
-        self.optim.zero_grad()
-        y_pred = self.forward_tup(perms)
-        y = torch.from_numpy(y).float().reshape(y_pred.shape).to(device)
-        loss = nn.functional.mse_loss(y_pred, y)
-        loss.backward()
-        self.optim.step()
-        return loss.item()
 
     def compute_loss(self, perms, y):
         '''
@@ -159,7 +142,6 @@ class FourierPolicyTorch(nn.Module):
     def load(self, fname):
         weight = torch.load(fname)
         self.w_torch = nn.Parameter(weight)
-        self.optim = torch.optim.Adam(self.parameters(), lr=self.lr)
 
     def opt_move(self, x):
         output = self.forward(x)
@@ -188,8 +170,8 @@ class FourierPolicyCG(FourierPolicyTorch):
                 mults_dict[(p1, p2)] = proj(tens_char, self.s8_chars)
         return mults_dict
 
-    def train_cg_loss_cached(self):
-        self.optim.zero_grad()
+    def train_cg_loss_cached(self, optim):
+        optim.zero_grad()
         fhats = self._reshaped_mats()
         loss = 0
         kron_mats = {(p1, p2): th_kron(fhats[p1], fhats[p2]) for p1 in self.irreps for p2 in self.irreps}
@@ -199,7 +181,7 @@ class FourierPolicyCG(FourierPolicyTorch):
                 loss += self.cg_loss(base_p, g, fhats, kron_mats)
 
         loss.backward()
-        self.optim.step()
+        optim.step()
         return loss.item()
 
     def eval_cg_loss(self):

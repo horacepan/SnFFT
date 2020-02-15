@@ -2,7 +2,7 @@ import pdb
 import numpy as np
 import pandas as pd
 import torch
-from utility import S8_GENERATORS
+from utility import S8_GENERATORS, px_mult
 
 def str2tup(s):
     return tuple(int(i) for i in s)
@@ -143,8 +143,6 @@ class PermDF:
     def forward_tup(self, gtup):
         return self.dist_dict[gtup]
 
-def px_mult(p1, p2):
-    return tuple([p1[p2[x] - 1] for x in range(len(p1))])
 
 def nbrs(p):
     return [px_mult(g, p) for g in S8_GENERATORS]

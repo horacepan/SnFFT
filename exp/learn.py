@@ -7,6 +7,8 @@ from tqdm import tqdm
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
 from fourier_policy import FourierPolicyTorch, FourierPolicyCG
 from perm_df import PermDF, nbrs
@@ -37,9 +39,11 @@ def main(args):
     if args.mode == 'cg':
         log.info('Using cg policy')
         policy = FourierPolicyCG(irreps[:args.topk], args.pklprefix, args.lr, all_perms)
+        optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     else:
         log.info('Using torch policy')
         policy = FourierPolicyTorch(irreps[:args.topk], args.pklprefix, args.lr, all_perms)
+        optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
 
     policy.to(device)
     st = time.time()
@@ -47,12 +51,17 @@ def main(args):
     cg_losses = []
 
     for e in range(args.maxiters + 1):
+        optim.zero_grad()
         bx, by = get_batch(train_p, train_y, args.minibatch)
-        loss = policy.train_batch(bx, by, epoch=e)
+        y_pred = policy.forward_tup(bx)
+        by_th = torch.from_numpy(by).float().reshape(y_pred.shape).to(device)
+        loss = F.mse_loss(by_th, ypred)
+        loss.backward()
+        optim.step()
 
         if args.mode == 'cg' and e % args.cgiters == 0 and e > 0:
             cgst = time.time()
-            cg_loss = policy.train_cg_loss_cached()
+            cg_loss = policy.train_cg_loss_cached(optim)
             train_mse = policy.compute_loss(train_p, train_y)
             cgt = (time.time() - cgst) / 60.
             post_train_mse = policy.compute_loss(train_p, train_y)

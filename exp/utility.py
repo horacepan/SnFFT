@@ -27,6 +27,43 @@ def px_mult(p1, p2):
 def nbrs(p):
     return [px_mult(g, p) for g in S8_GENERATORS]
 
+def can_solve(state, policy, max_moves, env):
+    '''
+    state: tuple
+    policy: nn policy
+    max_moves: int
+    Returns: True if policy solves(gets to a finished state) within max_moves
+    '''
+    curr_state = state
+    for _ in range(max_moves):
+        neighbors = env.nbrs(curr_state)
+        opt_move = policy.opt_move_tup(neighbors)
+        curr_state = env.step(curr_state, opt_move)
+        if env.is_done(curr_state):
+            return True
+
+    return False
+
+def val_model(policy, max_dist, perm_df, cnt=100, env=None):
+    '''
+    To validate a model need:
+    - transition function
+    - means to generate states (or pass them in)
+    - policy to evluate
+    - check if policy landed us in a done state
+    '''
+    # generate k states by taking a random walk of length d
+    # up to size
+    nsolves = {}
+    for dist in range(1, max_dist + 1):
+        d_states = perm_df.random_state(dist, cnt)
+        solves = 0
+        for state in d_states:
+            solves += can_solve(state, policy, 15, env)
+        nsolves[dist] = solves / cnt
+    return nsolves
+
+
 def s8_move(ptup, gidx):
     '''
     Returns g \dot ptup, where g is the group element correspondig to gidx
@@ -128,7 +165,7 @@ class ReplayBuffer:
         self.next_state_tups[self._idx] = next_state_tup
         self._idx = (self._idx + 1) % self.capacity
 
-    def sample(self, batch_size):
+    def sample(self, batch_size, device):
         '''
         Returns a tuple of the state, next state, reward, dones
         '''
@@ -136,7 +173,13 @@ class ReplayBuffer:
         idxs = np.random.choice(self.filled, size=size)
         tups = [self.state_tups[i] for i in idxs]
         next_tups = [self.next_state_tups[i] for i in idxs]
-        return (self.states[idxs], self.actions[idxs], self.next_states[idxs], self.rewards[idxs], self.dones[idxs], tups, next_tups)
+
+        bs = self.states[idxs].to(device)
+        ba = self.actions[idxs].to(device)
+        bns = self.next_states[idxs].to(device)
+        br = self.rewards[idxs].to(device)
+        bd = self.dones[idxs].to(device)
+        return bs, ba, bns, br, bd, tups, next_tups
 
 # Source: https://github.com/ikostrikov/pytorch-ddpg-naf/blob/master/ddpg.py#L15
 def update_params(target, source):

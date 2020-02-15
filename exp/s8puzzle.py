@@ -56,56 +56,46 @@ class S8Puzzle:
     def __init__(self):
         pass
 
-    @staticmethod
-    def num_nbrs():
-        return len(S8Puzzle.generators)
+    def num_nbrs(self):
+        return len(self.generators)
 
-    @staticmethod
-    def nbrs(tup):
-        return [px_mult(g, tup) for g in S8Puzzle.generators]
+    def nbrs(self, tup):
+        return [px_mult(g, tup) for g in self.generators]
 
-    @staticmethod
-    def is_done(tup):
-        return tup in S8Puzzle._ss_set
+    def is_done(self, tup):
+        return tup in self._ss_set
 
-    @staticmethod
-    def start_states():
-        return S8Puzzle._start_states
+    def start_states(self):
+        return self._start_states
 
-    @staticmethod
-    def random_walk(length):
-        states = [random.choice(S8Puzzle._start_states)]
+    def random_walk(self, length):
+        states = [random.choice(self._start_states)]
         s = states[0]
         for _ in range(length - 1):
-            s = S8Puzzle.random_step(s)
+            s = self.random_step(s)
             states.append(s)
 
         return states
 
-    @staticmethod
-    def scramble(state, length):
+    def scramble(self, state, length):
         for _ in range(length):
-            action = np.random.choice(len(S8Puzzle.generators))
-            state = S8Puzzle.step(state, action)
+            action = np.random.choice(len(self.generators))
+            state = self.step(state, action)
         return state
 
-    @staticmethod
-    def random_state(length=100):
-        state = random.choice(S8Puzzle._start_states)
-        return S8Puzzle.scramble(state, length)
+    def random_state(self, length=100):
+        state = random.choice(self._start_states)
+        return self.scramble(state, length)
 
-    @staticmethod
-    def random_step(tup):
-        action = random.choice(S8Puzzle.generators)
+    def random_step(self, tup):
+        action = random.choice(self.generators)
         return px_mult(action, tup)
 
-    @staticmethod
-    def random_move():
+    def random_move(self):
         return np.random.choice(6)
 
-    @staticmethod
-    def step(tup, action):
-        g = S8Puzzle.generators[action]
+    def step(self, tup, action):
+        g = self.generators[action]
         return px_mult(g, tup)
 
 if __name__ == '__main__':
