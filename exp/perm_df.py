@@ -126,7 +126,7 @@ class PermDF:
             dist_corr[dist] = dist_corr.get(dist, 0) + correct
             dist_cnts[dist] = dist_cnts.get(dist, 0) + 1
 
-        for i in range(self.max_dist):
+        for i in range(self.max_dist + 1):
             dist_corr[i] = dist_corr[i] / dist_cnts[i]
         prop_corr = ncorrect / len(self.dist_dict)
         return prop_corr, dist_corr
