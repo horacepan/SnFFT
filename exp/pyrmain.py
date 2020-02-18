@@ -69,6 +69,13 @@ def main(args):
         log.info(f'Policy using Irreps: {irreps}')
         policy = WreathPolicy(irreps, args.pyrprefix)
         to_tensor = lambda g: policy.to_tensor(g)
+
+        if args.loadfhats:
+            fhat_dict = {(al, parts): np.load('{}/{}/{}.npy'.format(
+                                              args.fhatdir, al, parts))
+                         for (al, parts) in irreps}
+            policy.set_fhats(fhat_dict)
+
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
         policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
@@ -153,7 +160,10 @@ def main(args):
 
         if e % args.logiters == 0:
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
-            benchmark, val_results = wreath_df.prop_corr_by_dist(policy, False)
+            if args.loadfhats:
+                benchmark, val_results = wreath_df.prop_corr_by_dist(policy, True)
+            else:
+                benchmark, val_results = wreath_df.prop_corr_by_dist(policy, False)
             max_benchmark = max(max_benchmark, benchmark)
             str_dict = str_val_results(val_results)
             if args.savelog:
@@ -170,6 +180,12 @@ def main(args):
 
             log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
                      f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
+
+            if args.loadfhats:
+                sp_results = val_model(policy, 8, wreath_df, cnt=100, env=env)
+                log.info('Shortest path results: {}'.format(sp_results))
+                return {'prop_correct': benchmark, 'val_results': val_results, 'sp_results': sp_results}
+                exit()
 
     log.info('Max benchmark prop corr move attained: {:.4f} | Irreps: {}'.format(max_benchmark, irreps))
     log.info(f'Done training | log saved in: {args.logfile}')
@@ -209,5 +225,7 @@ if __name__ == '__main__':
     parser.add_argument('--std', type=float, default=0.1)
     parser.add_argument('--irreps', type=str, default='')
     parser.add_argument('--nhid', type=int, default=32)
+    parser.add_argument('--fhatdir', type=str, default='/local/hopan/pyraminx/fourier/')
+    parser.add_argument('--loadfhats', action='store_true', default=False)
     args = parser.parse_args()
     main(args)

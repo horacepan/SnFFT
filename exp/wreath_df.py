@@ -125,7 +125,9 @@ class WreathDF:
         return dists.index(min(dists))
 
     def random_state(self, dist, cnt):
-        subdf = self.df[self.df['dist'] == dist].sample(n=cnt, replace=True)
+        subdf = self.df[self.df['dist'] == dist]
+        if len(subdf) > cnt:
+            subdf = subdf.sample(n=cnt, replace=True)
         tups = [str2wtup(row['otup'], row['ptup']) for _, row in subdf.iterrows()]
         return tups
 

@@ -29,6 +29,7 @@ class WreathPolicy(nn.Module):
                          for (alpha, parts) in irreps}
         self.cache_perms()
         self.w_torch = nn.Parameter(torch.rand(self.get_dim() + 1, 1))
+        self.optmin = False
 
     def get_dim(self):
         n = sum(self.irreps[0][0])
@@ -63,7 +64,19 @@ class WreathPolicy(nn.Module):
         return F.mse_losss(y, y_pred)
 
     def _reshaped_mats(self):
-        pass
+        '''
+        Return dict mapping irrep tuple -> square tensor
+        '''
+        fhats = {}
+        idx = 0
+        n = sum(self.irreps[0][0])
+        ident = (tuple(0 for _ in range(n)), tuple(range(1, n+1)))
+
+        for irr in self.irreps:
+            size = self.rep_dict[irr][ident].shape[0]
+            fhats[irr] = self.w_torch[idx: idx + (size * size), :1].reshape(size, size)
+            idx += (size * size)
+        return fhats
 
     def to_tensor(self, perms):
         X = torch.cat([self.pdict[p] for p in perms], dim=0).to(device)
@@ -80,6 +93,8 @@ class WreathPolicy(nn.Module):
 
     def opt_move(self, x):
         output= self.forward(x)
+        if self.optmin:
+            return output.argmin()
         return output.argmax()
 
     def opt_move_tup(self, tup_nbrs):
@@ -90,6 +105,16 @@ class WreathPolicy(nn.Module):
         nbr_eval = self.forward_tup(nbrs).reshape(-1, nnbrs)
         max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
         return max_nbr_vals
+
+    def set_fhats(self, fhat_dict):
+        idx = 0
+        for irr, fhat in fhat_dict.items():
+            dsq = fhat.shape[0] ** 2
+            coeff = fhat.shape[0] ** 0.5
+            mat = torch.from_numpy(fhat).float().reshape(-1, 1) * coeff
+            self.w_torch.data[idx: idx + dsq] = mat
+            idx += dsq
+        self.optmin = True
 
 def main():
     irreps = [((4, 2), ((2, 2), (1, 1)))]

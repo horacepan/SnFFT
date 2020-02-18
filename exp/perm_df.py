@@ -136,7 +136,9 @@ class PermDF:
         return dists.index(min(dists))
 
     def random_state(self, dist, cnt):
-        subdf = self.df[self.df['dist'] == dist].sample(n=cnt)
+        subdf = self.df[self.df['dist'] == dist]
+        if len(subdf) > cnt:
+            subdf = subdf.sample(n=cnt)
         perms = [str2tup(row['state']) for _, row in subdf.iterrows()]
         return perms
 

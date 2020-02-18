@@ -38,7 +38,7 @@ def get_reward(done):
 
 def main(args):
     log = get_logger(args.logfile, stdout=args.stdout, tofile=args.savelog)
-    sumdir = os.path.join(f'./logs/summary/{args.notes}')
+    sumdir = os.path.join(f'./logs/nb_summary/{args.notes}')
     if not os.path.exists(sumdir):
         os.makedirs(sumdir)
 
@@ -74,6 +74,13 @@ def main(args):
         policy = FourierPolicyCG(irreps, args.yorprefix, perms)
         to_tensor = lambda g: policy.to_tensor(g)
         # TODO: make agnostic to args.model
+        if args.loadfhats:
+            fhat_dict = {irr: np.load('{}/{}.npy'.format(
+                                              args.fhatdir, irr))
+                         for irr in irreps}
+            policy.set_fhats(fhat_dict)
+            log.info('Policy using loaded fhats!')
+
         if args.doubleq:
             target = FourierPolicyCG(irreps, args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
             target.to(device)
@@ -176,7 +183,10 @@ def main(args):
 
         if e % args.logiters == 0:
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
-            benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
+            if args.loadfhats:
+                benchmark, val_results = perm_df.prop_corr_by_dist(policy, True)
+            else:
+                benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
             max_benchmark = max(max_benchmark, benchmark)
             str_dict = str_val_results(val_results)
             if args.savelog:
@@ -193,6 +203,9 @@ def main(args):
 
             log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
                      f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
+            if args.loadfhats:
+                return {'prop_correct': benchmark, 'val_results': val_results}
+                exit()
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
@@ -230,5 +243,8 @@ if __name__ == '__main__':
     parser.add_argument('--std', type=float, default=0.1)
     parser.add_argument('--irreps', type=str, default='')
     parser.add_argument('--nhid', type=int, default=32)
+
+    parser.add_argument('--fhatdir', type=str, default='/local/hopan/s8cube/fourier/')
+    parser.add_argument('--loadfhats', action='store_true', default=False)
     args = parser.parse_args()
     main(args)

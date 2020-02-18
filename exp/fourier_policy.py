@@ -104,6 +104,15 @@ class FourierPolicyTorch(nn.Module):
             idx += size * size
         return fhats
 
+    def set_fhats(self, fhat_dict):
+        idx = 0
+        for irr, fhat in fhat_dict.items():
+            dsq = fhat.shape[0] ** 2
+            coeff = fhat.shape[0] ** 0.5
+            mat = torch.from_numpy(fhat).float().reshape(-1, 1) * coeff
+            self.w_torch.data[idx: idx + dsq] = mat
+            idx += dsq
+
     def to_tensor(self, perms):
         '''
         perms: list of tuples
