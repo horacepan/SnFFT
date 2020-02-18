@@ -89,7 +89,7 @@ class Pyraminx(GroupPuzzle):
     def step(self, tup, action):
         o, p = tup
         ot, pt = self.generators[action]
-        return px_wreath_mul(ot, pt, o, p)
+        return px_wreath_mul(ot, pt, o, p, 2)
 
     def random_step(self, tup):
         move = random.choice(self.moves(tup))
