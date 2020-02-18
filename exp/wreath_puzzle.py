@@ -86,6 +86,11 @@ class Pyraminx(GroupPuzzle):
         state = random.choice(self._start_states)
         return self.scramble(state, length)
 
+    def step(self, tup, action):
+        o, p = tup
+        ot, pt = self.generators[action]
+        return px_wreath_mul(ot, pt, o, p)
+
     def random_step(self, tup):
         move = random.choice(self.moves(tup))
         return self.group_mult(move, tup)

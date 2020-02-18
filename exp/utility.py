@@ -155,6 +155,7 @@ def wreath_onehot(otups, perm_tups, wcyc):
 
 class ReplayBuffer:
     def __init__(self, state_size, capacity):
+        self.state_size = state_size
         self.states = torch.zeros(capacity, state_size)
         self.next_states = torch.zeros(capacity, state_size)
         self.state_tups = [None] * capacity

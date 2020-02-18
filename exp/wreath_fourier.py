@@ -94,7 +94,6 @@ class WreathPolicy(nn.Module):
 def main():
     irreps = [((4, 2), ((2, 2), (1, 1)))]
     pol = WreathPolicy(irreps, '/local/hopan/pyraminx/irreps/')
-    pdb.set_trace()
 
 if __name__ == '__main__':
     main()
