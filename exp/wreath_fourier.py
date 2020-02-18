@@ -21,13 +21,22 @@ def load_pyraminx_irreps(alpha, parts, prefix):
     return pickle.load(open(pkl_name, 'rb'))
 
 class WreathPolicy(nn.Module):
-    def __init__(self, irreps, pkl_prefix):
+    def __init__(self, irreps, pkl_prefix, rep_dict=None, pdict=None):
         super(WreathPolicy, self).__init__()
         fnames = [load_pyraminx_irreps(alpha, parts, pkl_prefix) for (alpha, parts) in irreps]
         self.irreps = irreps
-        self.rep_dict = {(alpha, parts): load_pyraminx_irreps(alpha, parts, pkl_prefix)
-                         for (alpha, parts) in irreps}
-        self.cache_perms()
+
+        if rep_dict is not None:
+            self.rep_dict = rep_dict
+        else:
+            self.rep_dict = {(alpha, parts): load_pyraminx_irreps(alpha, parts, pkl_prefix)
+                              for (alpha, parts) in irreps}
+
+        if pdict is not None:
+            self.pdict = pdict
+        else:
+            self.pdict = self.cache_perms()
+
         self.w_torch = nn.Parameter(torch.rand(self.get_dim() + 1, 1))
         self.optmin = False
 

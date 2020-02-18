@@ -37,6 +37,7 @@ class FourierPolicyTorch(nn.Module):
         total_size = sum([d ** 2 for d in self.irrep_sizes.values()])
         self.w_torch = nn.Parameter(torch.rand(total_size + 1, 1))
         self.w_torch.data.normal_(std=0.2)
+        self.optmin = False
 
         # this is pretty hacky
         if pdict is None:
@@ -105,6 +106,7 @@ class FourierPolicyTorch(nn.Module):
         return fhats
 
     def set_fhats(self, fhat_dict):
+        self.optmin = True
         idx = 0
         for irr, fhat in fhat_dict.items():
             dsq = fhat.shape[0] ** 2
@@ -152,6 +154,8 @@ class FourierPolicyTorch(nn.Module):
 
     def opt_move(self, x):
         output = self.forward(x)
+        if self.optmin:
+            return output.argmin()
         return output.argmax()
 
     def opt_move_tup(self, tup_nbrs):

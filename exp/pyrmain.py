@@ -68,6 +68,7 @@ def main(args):
     if args.model == 'linear':
         log.info(f'Policy using Irreps: {irreps}')
         policy = WreathPolicy(irreps, args.pyrprefix)
+        target = WreathPolicy(irreps, args.pyrprefix, rep_dict=policy.rep_dict, pdict=policy.pdict)
         to_tensor = lambda g: policy.to_tensor(g)
 
         if args.loadfhats:
@@ -194,6 +195,7 @@ def main(args):
     log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
     sp_results = val_model(policy, 8, wreath_df, cnt=100, env=env)
     log.info('Shortest path results: {}'.format(sp_results))
+    pdb.set_trace()
     return {'prop_correct': benchmark, 'val_results': val_results, 'sp_results': sp_results, 'model': policy}
 
 if __name__ == '__main__':
