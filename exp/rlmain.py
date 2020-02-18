@@ -71,7 +71,7 @@ def main(args):
 
     if args.model == 'linear':
         log.info(f'Policy using Irreps: {irreps}')
-        policy = FourierPolicyCG(irreps, args.yorprefix, args.lr, perms)
+        policy = FourierPolicyCG(irreps, args.yorprefix, perms)
         to_tensor = lambda g: policy.to_tensor(g)
         # TODO: make agnostic to args.model
         if args.doubleq:
@@ -79,7 +79,7 @@ def main(args):
             target.to(device)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
-        #yor_conv = FourierPolicyCG(irreps, args.yorprefix, args.lr, perms)
+        #yor_conv = FourierPolicyCG(irreps, args.yorprefix, perms)
         #to_tensor = lambda g: yor_conv.to_tensor(g)
         policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
@@ -201,7 +201,7 @@ def main(args):
     str_dict = str_val_results(val_results)
     log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
     log.info('Shortest path results: {}'.format(sp_results))
-    return {'prop_correct': benchmark, 'val_results': val_results}
+    return {'prop_correct': benchmark, 'val_results': val_results, 'sp_results': sp_results, 'model': policy}
 
 if __name__ == '__main__':
     _prefix = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'

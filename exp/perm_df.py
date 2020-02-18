@@ -143,7 +143,6 @@ class PermDF:
     def forward_tup(self, gtup):
         return self.dist_dict[gtup]
 
-
 def nbrs(p):
     return [px_mult(g, p) for g in S8_GENERATORS]
 

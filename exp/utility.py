@@ -124,7 +124,7 @@ def check_memory(verbose=True):
         print("Consumed {:.2f}mb memory".format(mem))
     return mem
 
-def perm_onehot(perms, batchdim=True):
+def perm_onehot(perms):
     '''
     List of tuples (perms) to create one hot vector tensor for
     '''
@@ -140,6 +140,18 @@ def perm_onehot(perms, batchdim=True):
             k += d
 
     return tensor.to(device)
+
+def wreath_onehot(otups, perm_tups, wcyc):
+    n = len(perm_tups[0])
+    perm_part = perm_onehot(perm_tups)
+    or_part = torch.zeros(len(otups), wcyc * n)
+    for idx, otup in enumerate(otups):
+        k = 0
+        for ori in otups:
+            tensor[idx, ori + k] = 1
+            k += wcyc
+
+    return torch.cat([or_part, perm_part], dim=1)
 
 class ReplayBuffer:
     def __init__(self, state_size, capacity):

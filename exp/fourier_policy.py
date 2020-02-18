@@ -19,11 +19,10 @@ class FourierPolicyTorch(nn.Module):
     '''
     Wrapper class for fourier linear regression
     '''
-    def __init__(self, irreps, yor_prefix, lr, perms, yors=None, pdict=None):
+    def __init__(self, irreps, yor_prefix, perms, yors=None, pdict=None):
         '''
         irreps: list of tuples
         yor_prefix: directory containing yor pickles
-        lr: learning rate
         perms: list of permutation tuples to cache
         '''
         super(FourierPolicyTorch, self).__init__()
@@ -44,7 +43,6 @@ class FourierPolicyTorch(nn.Module):
             self.pdict = self.cache_perms(perms)
         else:
             self.pdict = pdict
-        self.lr = lr
 
     def to_irrep(self, gtup):
         '''
@@ -152,8 +150,8 @@ class FourierPolicyTorch(nn.Module):
         return self.opt_move(tens_nbrs)
 
 class FourierPolicyCG(FourierPolicyTorch):
-    def __init__(self, irreps, prefix, lr, perms, yors=None, pdict=None, docg=False):
-        super(FourierPolicyCG, self).__init__(irreps, prefix, lr, perms, yors, pdict)
+    def __init__(self, irreps, prefix, perms, yors=None, pdict=None, docg=False):
+        super(FourierPolicyCG, self).__init__(irreps, prefix, perms, yors, pdict)
         self.s8_chars = pickle.load(open(f'{prefix}/char_dict.pkl', 'rb'))
         if docg:
             self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).float().to(device)
