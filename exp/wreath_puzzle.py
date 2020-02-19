@@ -82,6 +82,12 @@ class Pyraminx(GroupPuzzle):
 
         return states
 
+    def scramble(self, state, length):
+        for _ in range(length):
+            action = np.random.choice(len(self.generators))
+            state = self.step(state, action)
+        return state
+
     def random_state(self, length):
         state = random.choice(self._start_states)
         return self.scramble(state, length)
@@ -97,13 +103,3 @@ class Pyraminx(GroupPuzzle):
 
     def random_move(self, state=None):
         return np.random.choice(len(self.generators))
-
-def test():
-    x = Pyraminx()
-    print(x.nbrs(IDENT))
-    y = x.random_walk(10)
-    print('y type', type(y))
-    print(y, x.is_done(y[-1]))
-    print(x.nbrs(y[-1]))
-    print(x.random_move())
-    print(x.num_nbrs())

@@ -16,7 +16,7 @@ from perm_df import PermDF
 from yor_dataset import YorConverter
 from rlmodels import MLP, LinearPolicy
 from fourier_policy import FourierPolicyCG
-from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, can_solve, val_model
+from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, can_solve, val_model, test_model, test_all_states
 from s8puzzle import S8Puzzle
 from logger import get_logger
 from tensorboardX import SummaryWriter
@@ -36,6 +36,14 @@ def get_reward(done):
         return 0
     else:
         return -1
+
+def get_transition_dists(bs_tups, bns_tups, df):
+    cnter = {}
+    for t1, t2 in zip(bs_tups, bns_tups):
+        d1 = df[t1]
+        d2 = df[t2]
+        cnter[(d1, d2)] = cnter.get((d1, d2), 0) + 1 
+    return cnter
 
 def main(args):
     log = get_logger(args.logfile, stdout=args.stdout, tofile=args.savelog)
@@ -105,9 +113,12 @@ def main(args):
 
     policy.to(device)
     perm_df = PermDF(args.fname, nbrs)
-    baseline_corr, corr_dict = perm_df.benchmark()
-    log.info('Baseline correct: {}'.format(baseline_corr))
-    log.info(str_val_results(corr_dict))
+    score, dists, stats = test_model(policy, 1000, 1000, 20, perm_df, env)
+    log.info(f'Prop correct: {score} | dists: {dists} | stats: {stats}')
+    #baseline_corr, corr_dict = perm_df.benchmark()
+    #log.info('Baseline correct: {}'.format(baseline_corr))
+    #log.info(str_val_results(corr_dict))
+    res, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, env)
 
     if hasattr(policy, 'optim'):
         optim = policy.optim
@@ -140,7 +151,8 @@ def main(args):
             next_state = _nbrs[move]
 
             # reward is pretty flexible though
-            done = int(env.is_done(next_state))
+            #done = int(env.is_done(next_state))
+            done = int(env.is_done(state))
             reward = get_reward(done)
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
@@ -149,21 +161,25 @@ def main(args):
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
+                bs_nbrs_flat = [env.nbrs(tup) for tup in bs_tups]
                 if args.model == 'linear' or args.model == 'onehotlinear':
                     if args.doubleq:
                         all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
-                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx)
                     else:
-                        opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs()).detach()
+                        opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs())
+                        bs_opt = [b[i.item()] for b, i in zip(bs_nbrs_flat, idx)]
                     loss = F.mse_loss(policy.forward(bs),
-                                      args.discount * (1 - bd) * opt_nbr_vals + br)
+                                      args.discount * opt_nbr_vals + br)
+                                      #args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model == 'dvn':
                     nxt_nbr_vals = target.forward_tup(bs_nbrs) # already nin -> hidden
                     opt_nbr_idx = nxt_nbr_vals.reshape(-1, env.num_nbrs()).max(dim=1, keepdim=True)[1]
                     opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     loss = F.mse_loss(policy.forward(bs),
-                                      args.discount * (1 - bd) * opt_nbr_vals + br)
+                                      args.discount * opt_nbr_vals + br)
+                                      #args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model ==  'dqn':
                     # get q(s, a), and q(s_next, best_action)
                     curr_vals = policy.forward_tup(bs_tups) # n x nactions
@@ -218,7 +234,9 @@ def main(args):
     benchmark, val_results = perm_df.prop_corr_by_dist(policy, False)
     str_dict = str_val_results(val_results)
     log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
-    log.info('Shortest path results: {}'.format(sp_results))
+    log.info('Solve results: {}'.format(sp_results))
+    score, dists, stats = test_all_states(policy, 20, perm_df, env)
+    log.info(f'Full Prop solves: {score:.4f} | stats: {stats} | dists: {dists}')
     pdb.set_trace()
     return {'prop_correct': benchmark, 'val_results': val_results, 'sp_results': sp_results, 'model': policy}
 

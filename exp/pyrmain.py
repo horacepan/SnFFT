@@ -18,7 +18,7 @@ from yor_dataset import YorConverter
 from rlmodels import MLP, LinearPolicy
 from fourier_policy import FourierPolicyCG
 from wreath_fourier import WreathPolicy
-from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, can_solve, val_model, wreath_onehot
+from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, can_solve, val_model, wreath_onehot, test_model, test_all_states
 from s8puzzle import S8Puzzle
 from wreath_puzzle import Pyraminx
 from logger import get_logger
@@ -30,7 +30,7 @@ from utils import check_memory
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
-    #return 1
+    return 1
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def get_reward(done):
@@ -86,9 +86,12 @@ def main(args):
 
     policy.to(device)
     wreath_df = WreathDF(args.pyrfname)
-    baseline_corr, corr_dict = wreath_df.benchmark()
-    log.info('Baseline correct: {}'.format(baseline_corr))
-    log.info(corr_dict)
+    score, dists, stats = test_model(policy, 1000, 1000, 20, wreath_df, env)
+    log.info(f'Prop correct: {score} | dists: {dists} | stats: {stats}')
+
+    #baseline_corr, corr_dict = wreath_df.benchmark()
+    #log.info('Baseline correct: {}'.format(baseline_corr))
+    #log.info(corr_dict)
     if hasattr(policy, 'optim'):
         optim = policy.optim
     else:
@@ -103,6 +106,10 @@ def main(args):
     updates = 0
     bps = 0
     losses = []
+    cnt = 1000
+    res, dists, stats = test_model(policy, 1000, cnt, 20, wreath_df, env)
+    log.info('Prop solves: {:.4f} | Samples: {} | stats: {}'.format(res, cnt, stats))
+    res_all = test_all_states(policy, wreath_df, env)
 
     for e in range(args.epochs + 1):
         states = env.random_walk(args.eplen)
@@ -117,7 +124,8 @@ def main(args):
                 move = policy.forward(to_tensor([state])).argmax().item()
             next_state = _nbrs[move]
 
-            done = int(env.is_done(next_state))
+            #done = int(env.is_done(next_state))
+            done = int(env.is_done(state))
             reward = get_reward(done)
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
@@ -126,22 +134,24 @@ def main(args):
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
-                # do I still learn anything while 
+                # do I still learn anything while
                 if args.model == 'linear' or args.model == 'onehotlinear':
                     if args.doubleq:
                         all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
                         opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     else:
-                        opt_nbr_vals = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs()).detach()
+                        opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs())
                     loss = F.mse_loss(policy.forward(bs),
-                                      args.discount * (1 - bd) * opt_nbr_vals + br)
+                                      args.discount * opt_nbr_vals + br)
+                                      #args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model == 'dvn':
                     nxt_nbr_vals = target.forward_tup(bs_nbrs) # already nin -> hidden
                     opt_nbr_idx = nxt_nbr_vals.reshape(-1, env.num_nbrs()).max(dim=1, keepdim=True)[1]
                     opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     loss = F.mse_loss(policy.forward(bs),
-                                      args.discount * (1 - bd) * opt_nbr_vals + br)
+                                      args.discount * opt_nbr_vals + br)
+                                      #args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model ==  'dqn':
                     # get q(s, a), and q(s_next, best_action)
                     curr_vals = policy.forward_tup(bs_tups) # n x nactions
@@ -199,7 +209,9 @@ def main(args):
     str_dict = str_val_results(val_results)
     log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
     sp_results = val_model(policy, 8, wreath_df, cnt=100, env=env)
-    log.info('Shortest path results: {}'.format(sp_results))
+    log.info('Solve results: {}'.format(sp_results))
+    score, dists, stats = test_all_states(policy, 20, wreath_df, env)
+    log.info(f'Full Prop solves: {score:.4f} | stats: {stats} | dists: {dists}')
     pdb.set_trace()
     return {'prop_correct': benchmark, 'val_results': val_results, 'sp_results': sp_results, 'model': policy}
 

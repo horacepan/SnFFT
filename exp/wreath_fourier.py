@@ -112,8 +112,8 @@ class WreathPolicy(nn.Module):
 
     def eval_opt_nbr(self, nbrs, nnbrs):
         nbr_eval = self.forward_tup(nbrs).reshape(-1, nnbrs)
-        max_nbr_vals = nbr_eval.max(dim=1, keepdim=True)[0]
-        return max_nbr_vals
+        max_nbr_vals, idx = nbr_eval.max(dim=1, keepdim=True)
+        return max_nbr_vals.detach(), idx
 
     def set_fhats(self, fhat_dict):
         idx = 0

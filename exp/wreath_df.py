@@ -160,6 +160,9 @@ class WreathDF:
     def forward_tup(self, gtup):
         return [self.dist_dict[g] for g in gtup]
 
+    def all_states(self):
+        return self.dist_dict.keys()
+
 def main():
     alpha = (4, 2)
     parts = ((3, 1), (1, 1))

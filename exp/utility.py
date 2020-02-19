@@ -62,9 +62,32 @@ def val_model(policy, max_dist, perm_df, cnt=100, env=None):
         solves = 0
         for state in d_states:
             solves += can_solve(state, policy, 15, env, perm_df)
-        nsolves[dist] = solves / cnt
+        nsolves[dist] = solves / len(d_states)
     return nsolves
 
+def test_model(policy, scramble_len, cnt, max_moves, perm_df, env):
+    states = [env.random_state(scramble_len) for _ in range(cnt)]
+    return _test_model(policy, states, max_moves, perm_df, env)
+
+def _test_model(policy, states, max_moves, perm_df, env):
+    stats =  {}
+    dists = {}
+    solves = 0
+    for s in states:
+        solved =  int(can_solve(s, policy, max_moves, env, perm_df))
+        solves += solved
+        d = perm_df[s] # should probably avoid this sort of api
+        dists[d] = dists.get(d, 0) + 1
+        stats[d] = stats.get(d, 0) + solved
+
+    for d in dists.keys():
+        stats[d] = stats[d] / dists[d]
+
+    return solves/len(states), dists, stats
+
+def test_all_states(policy, max_moves, perm_df, env):
+    states = perm_df.all_states()
+    return test_model(policy, states, max_moves, perm_df, env)
 
 def s8_move(ptup, gidx):
     '''
