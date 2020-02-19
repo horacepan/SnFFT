@@ -34,6 +34,7 @@ def get_exp_rate(epoch, explore_epochs, min_exp):
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def get_reward(done):
+    return -1
     if done:
         return 0
     else:
@@ -85,6 +86,9 @@ def main(args):
 
     policy.to(device)
     wreath_df = WreathDF(args.pyrfname)
+    baseline_corr, corr_dict = wreath_df.benchmark()
+    log.info('Baseline correct: {}'.format(baseline_corr))
+    log.info(corr_dict)
     if hasattr(policy, 'optim'):
         optim = policy.optim
     else:
@@ -122,6 +126,7 @@ def main(args):
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
+                # do I still learn anything while 
                 if args.model == 'linear' or args.model == 'onehotlinear':
                     if args.doubleq:
                         all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
@@ -162,9 +167,9 @@ def main(args):
         if e % args.logiters == 0:
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
             if args.loadfhats:
-                benchmark, val_results = wreath_df.prop_corr_by_dist(policy, True)
+                benchmark, val_results = wreath_df.prop_corr_by_dist(policy)
             else:
-                benchmark, val_results = wreath_df.prop_corr_by_dist(policy, False)
+                benchmark, val_results = wreath_df.prop_corr_by_dist(policy)
             max_benchmark = max(max_benchmark, benchmark)
             str_dict = str_val_results(val_results)
             if args.savelog:
@@ -190,7 +195,7 @@ def main(args):
 
     log.info('Max benchmark prop corr move attained: {:.4f} | Irreps: {}'.format(max_benchmark, irreps))
     log.info(f'Done training | log saved in: {args.logfile}')
-    benchmark, val_results = wreath_df.prop_corr_by_dist(policy, False)
+    benchmark, val_results = wreath_df.prop_corr_by_dist(policy)
     str_dict = str_val_results(val_results)
     log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
     sp_results = val_model(policy, 8, wreath_df, cnt=100, env=env)

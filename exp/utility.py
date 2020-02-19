@@ -27,15 +27,17 @@ def px_mult(p1, p2):
 def nbrs(p):
     return [px_mult(g, p) for g in S8_GENERATORS]
 
-def can_solve(state, policy, max_moves, env):
+def can_solve(state, policy, max_moves, env, perm_df=None):
     '''
     state: tuple
     policy: nn policy
     max_moves: int
     Returns: True if policy solves(gets to a finished state) within max_moves
     '''
+    visited = {}
     curr_state = state
     for _ in range(max_moves):
+        visited[curr_state] = visited.get(curr_state, 0) + 1
         neighbors = env.nbrs(curr_state)
         opt_move = policy.opt_move_tup(neighbors)
         curr_state = env.step(curr_state, opt_move)
@@ -59,7 +61,7 @@ def val_model(policy, max_dist, perm_df, cnt=100, env=None):
         d_states = perm_df.random_state(dist, cnt)
         solves = 0
         for state in d_states:
-            solves += can_solve(state, policy, 15, env)
+            solves += can_solve(state, policy, 15, env, perm_df)
         nsolves[dist] = solves / cnt
     return nsolves
 

@@ -31,6 +31,7 @@ def get_exp_rate(epoch, explore_epochs, min_exp):
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def get_reward(done):
+    return -1
     if done:
         return 0
     else:
@@ -104,6 +105,10 @@ def main(args):
 
     policy.to(device)
     perm_df = PermDF(args.fname, nbrs)
+    baseline_corr, corr_dict = perm_df.benchmark()
+    log.info('Baseline correct: {}'.format(baseline_corr))
+    log.info(str_val_results(corr_dict))
+
     if hasattr(policy, 'optim'):
         optim = policy.optim
     else:
@@ -214,6 +219,7 @@ def main(args):
     str_dict = str_val_results(val_results)
     log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
     log.info('Shortest path results: {}'.format(sp_results))
+    pdb.set_trace()
     return {'prop_correct': benchmark, 'val_results': val_results, 'sp_results': sp_results, 'model': policy}
 
 if __name__ == '__main__':

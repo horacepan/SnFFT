@@ -32,9 +32,9 @@ class PermDF:
     def __call__(self, gtup):
         return self.dist_dict[gtup]
 
-    def benchmark(self, gtups):
-        if len(gtups) == 0:
-            return -1
+    def benchmark(self, gtups=None):
+        if gtups is None:
+            gtups = list(self.dist_dict.keys())
 
         dist_probs = {}
         probs = []

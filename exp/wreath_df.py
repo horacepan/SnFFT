@@ -45,6 +45,7 @@ class WreathDF:
         self.dist_dict = self.load_dist_dict()
         self.nbr_func = w_nbrs
         self.max_dist = self.df['dist'].max()
+        self.optmin = True # when the true dists is used as a function, best move is the min dist
 
     def load_df(self, fname):
         st = time.time()
@@ -57,6 +58,31 @@ class WreathDF:
 
     def __call__(self, gtup):
         return self.dist_dict[gtup]
+
+    def benchmark(self, gtups=None):
+        if gtups is None:
+            gtups =  list(self.dist_dict.keys())
+
+        dist_probs = {}
+        probs = []
+        for p in gtups:
+            dist = self.dist_dict[p]
+            true_vals = self.nbr_values(p)
+            opt_val = min(true_vals.values())
+            opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
+            prob_opt_step = len(opt_nbrs) / len(true_vals)
+            probs.append(prob_opt_step)
+
+            if dist not in dist_probs:
+                dist_probs[dist] = []
+
+            dist_probs[dist].append(prob_opt_step)
+
+        res_prob = {}
+        for i in range(1, self.max_dist+1):
+            res_prob[i] = np.mean(dist_probs[i])
+
+        return np.mean(probs), res_prob
 
     def load_dist_dict(self):
         return {str2wtup(row[0], row[1]): row['dist'] for s, row in self.df.iterrows()}
@@ -82,35 +108,35 @@ class WreathDF:
 
         return vals
 
-    def benchmark_policy(self, gtups, policy, optmin=True):
+    def benchmark_policy(self, gtups, policy):
         if len(gtups) == 0:
             return -1
 
         with torch.no_grad():
             ncorrect = 0
             for g in gtups:
-                ncorrect += int(self.opt_nbr(g, policy, optmin))
+                ncorrect += int(self.opt_nbr(g, policy))
             return ncorrect / len(gtups)
 
-    def opt_nbr(self, gtup, policy, optmin=True):
+    def opt_nbr(self, gtup, policy):
         true_vals = self.nbr_values(gtup)
         opt_val = min(true_vals.values())
         opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
 
         pol_vals = self.nbr_values(gtup, policy)
 
-        if optmin:
+        if policy.optmin:
             opt_pol_nbr = min(pol_vals, key=pol_vals.get)
         else:
             opt_pol_nbr = max(pol_vals, key=pol_vals.get)
         return opt_pol_nbr in opt_nbrs
 
-    def prop_corr_by_dist(self, policy, optmin=True):
+    def prop_corr_by_dist(self, policy):
         dist_corr = {}
         dist_cnts = {}
         ncorrect = 0
         for ptup, dist in self.dist_dict.items():
-            correct = int(self.opt_nbr(ptup, policy, optmin))
+            correct = int(self.opt_nbr(ptup, policy))
             ncorrect += correct
             dist_corr[dist] = dist_corr.get(dist, 0) + correct
             dist_cnts[dist] = dist_cnts.get(dist, 0) + 1
@@ -127,7 +153,7 @@ class WreathDF:
     def random_state(self, dist, cnt):
         subdf = self.df[self.df['dist'] == dist]
         if len(subdf) > cnt:
-            subdf = subdf.sample(n=cnt, replace=True)
+            subdf = subdf.sample(n=cnt)
         tups = [str2wtup(row['otup'], row['ptup']) for _, row in subdf.iterrows()]
         return tups
 
