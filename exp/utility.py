@@ -87,7 +87,7 @@ def _test_model(policy, states, max_moves, perm_df, env):
 
 def test_all_states(policy, max_moves, perm_df, env):
     states = perm_df.all_states()
-    return test_model(policy, states, max_moves, perm_df, env)
+    return _test_model(policy, states, max_moves, perm_df, env)
 
 def s8_move(ptup, gidx):
     '''

@@ -91,7 +91,7 @@ def main(args):
             log.info('Policy using loaded fhats!')
 
         if args.doubleq:
-            target = FourierPolicyCG(irreps, args.yorprefix, args.lr, perms, yors=policy.yors, pdict=policy.pdict)
+            target = FourierPolicyCG(irreps, args.yorprefix, perms, yors=policy.yors, pdict=policy.pdict)
             target.to(device)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
@@ -113,8 +113,8 @@ def main(args):
 
     policy.to(device)
     perm_df = PermDF(args.fname, nbrs)
-    score, dists, stats = test_model(policy, 1000, 1000, 20, perm_df, env)
-    log.info(f'Prop correct: {score} | dists: {dists} | stats: {stats}')
+    #score, dists, stats = test_model(policy, 1000, 1000, 20, perm_df, env)
+    #log.info(f'Prop correct: {score} | dists: {dists} | stats: {stats}')
     #baseline_corr, corr_dict = perm_df.benchmark()
     #log.info('Baseline correct: {}'.format(baseline_corr))
     #log.info(str_val_results(corr_dict))
@@ -151,8 +151,8 @@ def main(args):
             next_state = _nbrs[move]
 
             # reward is pretty flexible though
-            #done = int(env.is_done(next_state))
-            done = int(env.is_done(state))
+            done = int(env.is_done(next_state))
+            #done = 1 if (env.is_done(state)) else -1
             reward = get_reward(done)
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
@@ -171,8 +171,8 @@ def main(args):
                         opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs())
                         bs_opt = [b[i.item()] for b, i in zip(bs_nbrs_flat, idx)]
                     loss = F.mse_loss(policy.forward(bs),
-                                      args.discount * opt_nbr_vals + br)
-                                      #args.discount * (1 - bd) * opt_nbr_vals + br)
+                                      #args.discount * opt_nbr_vals + br)
+                                      args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model == 'dvn':
                     nxt_nbr_vals = target.forward_tup(bs_nbrs) # already nin -> hidden
                     opt_nbr_idx = nxt_nbr_vals.reshape(-1, env.num_nbrs()).max(dim=1, keepdim=True)[1]
@@ -236,7 +236,7 @@ def main(args):
     log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
     log.info('Solve results: {}'.format(sp_results))
     score, dists, stats = test_all_states(policy, 20, perm_df, env)
-    log.info(f'Full Prop solves: {score:.4f} | stats: {stats} | dists: {dists}')
+    log.info(f'Full Prop solves: {score:.4f} | stats: {str_val_results(stats)} | dists: {dists}')
     pdb.set_trace()
     return {'prop_correct': benchmark, 'val_results': val_results, 'sp_results': sp_results, 'model': policy}
 

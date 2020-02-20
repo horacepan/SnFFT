@@ -98,9 +98,6 @@ class S8Puzzle:
         g = self.generators[action]
         return px_mult(g, tup)
 
-    def all_states(self):
-        return self.dist_dict.keys()
-
 if __name__ == '__main__':
     x = S8Puzzle.random_state()
     print(x)

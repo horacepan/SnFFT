@@ -109,7 +109,8 @@ def main(args):
     cnt = 1000
     res, dists, stats = test_model(policy, 1000, cnt, 20, wreath_df, env)
     log.info('Prop solves: {:.4f} | Samples: {} | stats: {}'.format(res, cnt, stats))
-    res_all = test_all_states(policy, wreath_df, env)
+    all_sc, all_dis, all_stats = test_all_states(policy, 20, wreath_df, env)
+    log.info(f'Prop all solves: {all_sc:.4f} | {all_stats} | {all_dis}')
 
     for e in range(args.epochs + 1):
         states = env.random_walk(args.eplen)
@@ -184,7 +185,7 @@ def main(args):
             str_dict = str_val_results(val_results)
             if args.savelog:
                 swr.add_scalar('prop_correct/overall', benchmark, e)
-                for ii in range(1, 9):
+                for ii in range(0, 9):
                     # sample some number of states that far away, evaluate them, report mean + std
                     rand_states = wreath_df.random_state(ii, 100)
                     rand_tensors = to_tensor(rand_states)
@@ -211,7 +212,7 @@ def main(args):
     sp_results = val_model(policy, 8, wreath_df, cnt=100, env=env)
     log.info('Solve results: {}'.format(sp_results))
     score, dists, stats = test_all_states(policy, 20, wreath_df, env)
-    log.info(f'Full Prop solves: {score:.4f} | stats: {stats} | dists: {dists}')
+    log.info(f'Full Prop solves: {score:.4f} | stats: {str_val_results(stats)} | dists: {dists}')
     pdb.set_trace()
     return {'prop_correct': benchmark, 'val_results': val_results, 'sp_results': sp_results, 'model': policy}
 
