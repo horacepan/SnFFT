@@ -41,7 +41,7 @@ def can_solve(state, policy, max_moves, env, perm_df=None):
         neighbors = env.nbrs(curr_state)
         opt_move = policy.opt_move_tup(neighbors)
         curr_state = env.step(curr_state, opt_move)
-        if env.is_done(curr_state):
+        if env.is_done(curr_state) or perm_df[curr_state] == 1:
             return True
 
     return False
@@ -166,7 +166,8 @@ def perm_onehot(perms):
 
     return tensor.to(device)
 
-def wreath_onehot(otups, perm_tups, wcyc):
+def wreath_onehot(wtups, wcyc):
+    otups, ptups = zip(*wtups)
     n = len(perm_tups[0])
     perm_part = perm_onehot(perm_tups)
     or_part = torch.zeros(len(otups), wcyc * n)

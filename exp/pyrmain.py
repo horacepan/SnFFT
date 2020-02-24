@@ -80,8 +80,9 @@ def main(args):
 
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
-        policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        ident = env.start_states()[0]
+        policy = MLP(to_tensor([ident], env.cyc_size).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([ident], env.cyc_size).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
 
     policy.to(device)
@@ -92,11 +93,7 @@ def main(args):
     #baseline_corr, corr_dict = wreath_df.benchmark()
     #log.info('Baseline correct: {}'.format(baseline_corr))
     #log.info(corr_dict)
-    if hasattr(policy, 'optim'):
-        optim = policy.optim
-    else:
-        optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
-
+    optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     pre_mem = check_memory(False)
     replay = ReplayBuffer(to_tensor(env.start_states()[:1]).numel(), args.capacity)
     log.info('Memory used post replay creation: {:.2f}mb | pre: {:.2f}mb | state size: {}'.format(check_memory(False), pre_mem, replay.state_size))
@@ -243,7 +240,7 @@ if __name__ == '__main__':
     parser.add_argument('--doubleq', action='store_true', default=False)
     parser.add_argument('--qqupdate', type=int, default=100)
     parser.add_argument('--std', type=float, default=0.1)
-    parser.add_argument('--irreps', type=str, default='')
+    parser.add_argument('--irreps', type=str, default='[]')
     parser.add_argument('--nhid', type=int, default=32)
     parser.add_argument('--fhatdir', type=str, default='/local/hopan/pyraminx/fourier/')
     parser.add_argument('--loadfhats', action='store_true', default=False)

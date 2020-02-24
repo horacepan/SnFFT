@@ -24,8 +24,10 @@ class S8Puzzle:
         (1, 2, 3, 4, 7, 5, 8, 6),
         (1, 2, 3, 4, 6, 8, 5, 7)
     ]
-
-    _start_states = [
+    _one_start_states = [
+        (1, 2, 3, 4, 5, 6, 7, 8)
+    ]
+    _full_start_states = [
         (1, 2, 3, 4, 5, 6, 7, 8),
         (8, 1, 4, 5, 6, 3, 2, 7),
         (7, 8, 5, 6, 3, 4, 1, 2),
@@ -51,10 +53,13 @@ class S8Puzzle:
         (2, 1, 8, 7, 6, 5, 4, 3),
         (1, 8, 7, 2, 3, 6, 5, 4)
     ]
-    _ss_set = set(_start_states)
 
-    def __init__(self):
-        pass
+    def __init__(self, onestart=False):
+        if onestart:
+            self._start_states = S8Puzzle._one_start_states
+        else:
+            self._start_states = S8Puzzle._full_start_states
+        self._ss_set = set(self._start_states)
 
     def num_nbrs(self):
         return len(self.generators)

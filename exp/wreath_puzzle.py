@@ -3,7 +3,7 @@ import numpy as np
 import random
 from group_puzzle import GroupPuzzle
 
-IDENT = ((0, 0, 0, 0, 0, 0), (1, 2, 3, 4, 5, 6))
+PYRAMINX_IDENT = ((0, 0, 0, 0, 0, 0), (1, 2, 3, 4, 5, 6))
 PYRAMINX_GENERATORS = [
     ((0, 0, 1, 1, 0, 0), (1, 3, 4, 2, 5, 6)),
     ((1, 1, 0, 0, 0, 0), (2, 6, 3, 4, 5, 1)),
@@ -43,11 +43,12 @@ def px_wreath_mul(c1, p1, c2, p2, n):
     perm = px_mul(p1, p2)
     return ori, perm
 
-class Pyraminx(GroupPuzzle):
+class WreathPuzzle(GroupPuzzle):
     def __init__(self):
-        self.generators = PYRAMINX_GENERATORS
-        self._start_states = [IDENT]
-        self._ss_set = set(self._start_states)
+        self.generators = None
+        self._start_states = None
+        self._ss_set = None
+        self.cyc_size = None
 
     def num_nbrs(self):
         return len(self.generators)
@@ -95,7 +96,7 @@ class Pyraminx(GroupPuzzle):
     def step(self, tup, action):
         o, p = tup
         ot, pt = self.generators[action]
-        return px_wreath_mul(ot, pt, o, p, 2)
+        return px_wreath_mul(ot, pt, o, p, self.cyc_size)
 
     def random_step(self, tup):
         move = random.choice(self.moves(tup))
@@ -103,3 +104,21 @@ class Pyraminx(GroupPuzzle):
 
     def random_move(self, state=None):
         return np.random.choice(len(self.generators))
+
+
+class Pyraminx(WreathPuzzle):
+    def __init__(self):
+        self.generators = PYRAMINX_GENERATORS
+        self._start_states = [PYRAMINX_IDENT]
+        self._ss_set = set(self._start_states)
+        self.cyc_size = 2
+
+class Cube2(WreathPuzzle):
+    def __init__(self):
+        self.generators = CUBE2_GENERATORS
+        self._start_states = [CUBE2_STARTS]
+        self._ss_set = set(self._start_states)
+        self.cyc_size = 3
+
+    def render(self, state):
+        pass

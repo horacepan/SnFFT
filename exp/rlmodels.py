@@ -19,6 +19,7 @@ class MLP(nn.Module):
         self.nonlinearity = F.relu
         self.to_tensor = to_tensor
         self.reset_parameters(std)
+        self.optmin = False
 
     def forward(self, x):
         for layer in self.layers[:-1]:

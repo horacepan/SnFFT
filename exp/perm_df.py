@@ -57,7 +57,7 @@ class PermDF:
 
         return np.mean(probs), res_prob
 
-    def opt_nbr(self, gtup, policy, optmin=True):
+    def opt_nbr(self, gtup, policy):
         '''
         See if the optimal move given by the policy coicides with the trust
         dist's optimal move
@@ -68,7 +68,7 @@ class PermDF:
 
         pol_vals = self.nbr_values(gtup, policy)
 
-        if optmin:
+        if policy.optmin:
             opt_pol_nbr = min(pol_vals, key=pol_vals.get)
         else:
             opt_pol_nbr = max(pol_vals, key=pol_vals.get)
@@ -106,22 +106,22 @@ class PermDF:
         train_y = np.array([self.dist_dict[p] for p in train_perms])
         return train_perms, train_y, test_perms, test_y
 
-    def benchmark_policy(self, gtups, policy, optmin=True):
+    def benchmark_policy(self, gtups, policy):
         if len(gtups) == 0:
             return -1
 
         with torch.no_grad():
             ncorrect = 0
             for g in gtups:
-                ncorrect += int(self.opt_nbr(g, policy, optmin))
+                ncorrect += int(self.opt_nbr(g, policy))
             return ncorrect / len(gtups)
 
-    def prop_corr_by_dist(self, policy, optmin=True):
+    def prop_corr_by_dist(self, policy):
         dist_corr = {}
         dist_cnts = {}
         ncorrect = 0
         for ptup, dist in self.dist_dict.items():
-            correct = int(self.opt_nbr(ptup, policy, optmin))
+            correct = int(self.opt_nbr(ptup, policy))
             ncorrect += correct
             dist_corr[dist] = dist_corr.get(dist, 0) + correct
             dist_cnts[dist] = dist_cnts.get(dist, 0) + 1
