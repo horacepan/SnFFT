@@ -70,7 +70,7 @@ def init_memory(memory, env):
 def train_states(max_len, env):
     states = []
     env.reset_solved()
-    actions = [i for i in range(1, 7)]
+    actions = [i for i in range(env.actions)]
     for _ in range(max_len):
         action = random.choice(actions)
         ns, _, _, _ = env.step(action)
@@ -130,12 +130,7 @@ def main(hparams):
 
     env = Cube2IrrepEnv(alpha, parts, solve_rew=hparams['solve_rew'])
     log.info('env solve reward: {}'.format(env.solve_rew))
-    if hparams['opt'] == 'sgd':
-        log.info('Using sgd')
-        optimizer = torch.optim.SGD(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
-    elif hparams['opt'] == 'rms':
-        log.info('Using rmsprop')
-        optimizer = torch.optim.RMSprop(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
+    optimizer = torch.optim.SGD(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
     memory = ReplayMemory(hparams['capacity'])
     if hparams['meminit']:
         init_memory(memory, env)
@@ -286,7 +281,6 @@ if __name__ == '__main__':
     parser.add_argument('--norandom', action='store_true')
     parser.add_argument('--init', type=str, default=None)
     parser.add_argument('--noise', type=float, default=0)
-    parser.add_argument('--opt', type=str, default='sgd')
     parser.add_argument('--lossfunc', type=str, default='cmse')
     parser.add_argument('--curric', action='store_true')
     parser.add_argument('--meminit', action='store_true')
