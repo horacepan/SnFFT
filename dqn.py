@@ -121,8 +121,8 @@ class IrrepLinreg(nn.Module):
             self.zero_weights()
 
     def normal_init(self):
-        nn.init.normal_(self.wr, 0, 0.015)
-        nn.init.normal_(self.wi, 0, 0.015)
+        nn.init.normal_(self.wr, 0, 0.1)
+        nn.init.normal_(self.wi, 0, 0.1)
 
     def uniform_init(self):
         nn.init.uniform_(self.wr, -0.01, 0.01)
@@ -218,6 +218,13 @@ def get_action_th(env, model, state):
 
     return yr.argmax().item()
 
+def correct_move(env, model, state):
+    action = get_action(env, model, state)
+    neighbors = str_cube.neighbors_fixed_core_small(state) # do the symmetry modded out version for now
+    nbr_dists = [env.distance(n) for n in neighbors]
+    min_dist = min(nbr_dists)
+    return  nbr_dists[action] == min_dist
+
 def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     '''
     batch: named tuple of stuff
@@ -258,8 +265,8 @@ def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
 
     opt.zero_grad()
-    loss = lossfunc(reward + discount * yr_onestep.detach() * (1 - dones),
-                             discount * yi_onestep.detach() * (1 - dones), yr_pred, yi_pred)
+    loss = lossfunc(reward + discount * yr_onestep.detach(),
+                             discount * yi_onestep.detach(), yr_pred, yi_pred)
 
     loss.backward()
     old_wr = pol_net.wr.detach().clone()
@@ -271,6 +278,7 @@ def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     return loss.item()
 
 def explore_rate(epoch_num, explore_epochs, eps_min):
+    return 1
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
 
 def get_logdir(logdir, saveprefix):

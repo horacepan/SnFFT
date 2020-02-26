@@ -46,30 +46,8 @@ elif os.path.exists('/project2/risi/'):
     NP_IRREP_FMT = '/project2/risi/cube/fourier_unmod/{}/{}.npy'
     PREFIX = '/project2/risi/cube'
 
-def curriculum_dist(max_dist, curr_epoch, tot_epochs):
-    '''
-    Scale this so that initially you start 0 (or 1) away and gradually
-    have further scrambles?
-    Or maybe it shoud be probabalistic?! Equally likely in 0-k, where k gradually
-    increases?
-    '''
-    if curr_epoch >= tot_epochs / 2:
-        return max_dist
-    else:
-        # pick a random distance in 1 - max_dist * curr_epoch / (tot_epochs/2)
-        return random.randint(1, 1 + int(max_dist * curr_epoch / (tot_epochs/2)))
-
-def init_memory(memory, env):
-    state = ns = 'GGGGBBBBRRRRMMMMWWWWYYYY'
-    action = 0
-    rew = env.solve_rew
-    done = True
-    for _ in range(memory.capacity):
-        memory.push(state, action, ns, rew, done)
-
-def train_states(max_len, env):
-    states = []
-    env.reset_solved()
+def random_walk(max_len, env):
+    states = [env.reset_solved()]
     actions = [i for i in range(env.actions)]
     for _ in range(max_len):
         action = random.choice(actions)
@@ -132,12 +110,8 @@ def main(hparams):
     log.info('env solve reward: {}'.format(env.solve_rew))
     optimizer = torch.optim.SGD(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
     memory = ReplayMemory(hparams['capacity'])
-    if hparams['meminit']:
-        init_memory(memory, env)
     niter = 0
     nupdates = 0
-    totsolved = 0
-    solved_lens = []
     rewards = np.zeros(hparams['logint'])
 
     log.info('Before any training:')
@@ -145,6 +119,11 @@ def main(hparams):
     log.info('Validation | avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
         val_avg, val_prop, val_time
     ))
+    prop_correct, dist_correct = val_prop_correct(pol_net, env, hparams)
+    log.info('Validation | Prop correct: {:.3f} | {}'.format(
+        prop_correct, str_fmt_dict(dist_correct)
+    ))
+
     if len(solve_lens) > 0:
         log.info('Validation | LQ: {:.3f} | MQ: {:.3f} | UQ: {:.3f} | Max: {}'.format(
             np.percentile(solve_lens, 25),
@@ -154,21 +133,11 @@ def main(hparams):
         ))
     else:
         log.info('Validation | No solves!')
-    scramble_lens = []
-    for e in range(hparams['epochs']):
-        if hparams['curric']:
-            dist = curriculum_dist(hparams['max_dist'], e, hparams['epochs'])
-        else:
-            dist = hparams['max_dist']
-        state = env.reset_fixed(max_dist=dist)
-        epoch_rews = 0
-        scramble_lens.append(dist)
-        states = train_states(hparams['max_dist'], env)
 
-        #for state in states:
-        # if we're doing this we need a way to set the state to env so that we can extract the next state
-        #env.set_state(state)
-        for i in range(hparams['maxsteps']):
+    for e in range(hparams['epochs']):
+        states = random_walk(hparams['trainsteps'], env)
+
+        for state in states:
             if hparams['norandom']:
                 action = get_action(env, pol_net, state)
             elif random.random() < explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['eps_min']):
@@ -178,8 +147,6 @@ def main(hparams):
 
             ns, rew, done, _ = env.step(action, irrep=False)
             memory.push(state, action, ns, rew, done)
-            epoch_rews += rew
-            state = ns
             niter += 1
 
             if (not hparams['noupdate']) and niter > 0 and niter % hparams['update_int'] == 0:
@@ -188,43 +155,18 @@ def main(hparams):
                 logger.add_scalar('loss', _loss, nupdates)
                 nupdates += 1
 
-            if done:
-                solved_lens.append(i + 1)
-                totsolved += 1
-                break
-
-        rewards[e%len(rewards)] = epoch_rews
-        logger.add_scalar('reward', epoch_rews, e)
-
         if e % hparams['logint'] == 0 and e > 0:
-            val_avg, val_prop, val_time, _ = val_model(pol_net, env, hparams)
-            logger.add_scalar('last_{}_solved'.format(hparams['logint']), len(solved_lens) / hparams['logint'], e)
-            if len(solved_lens) > 0:
-                logger.add_scalar('last_{}_solved_len'.format(hparams['logint']), np.mean(solved_lens), e)
-            logger.add_scalar('val_solve_avg', val_avg, e)
-            logger.add_scalar('val_prop', val_prop, e)
-            log.info('{:7} | dist: {:4.1f} | avg rew: {:5.2f} | solve prop: {:5.3f}, len: {:5.2f} | exp: {:.2f} | ups {:7} | val avg {:.3f} prop {:.3f}'.format(
-                e,
-                np.mean(scramble_lens),
-                np.mean(rewards),
-                len(solved_lens) / hparams['logint'],
-                0 if len(solved_lens) == 0 else np.mean(solved_lens),
-                explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['eps_min']),
-                nupdates,
-                val_avg,
-                val_prop,
-            ))
-            solved_lens = []
-            scramble_lens = []
+            prop_correct, dist_correct = val_prop_correct(pol_net, env, hparams)
+            log.info('{:7} | prop correct: {:.3f} | {} | updates: {}'.format(
+                e, prop_correct, str_fmt_dict(dist_correct), nupdates))
 
         if e % hparams['updatetarget'] == 0 and e > 0:
             targ_net.load_state_dict(pol_net.state_dict())
 
     log.info('Total updates: {}'.format(nupdates))
-    log.info('Total solved: {:8} | Prop solved: {:.4f}'.format(totsolved, totsolved / hparams['epochs']))
     logger.export_scalars_to_json(os.path.join(savedir, 'summary.json'))
     logger.close()
-    torch.save(pol_net, os.path.join(savedir, 'model.pt'))
+    #torch.save(pol_net, os.path.join(savedir, 'model.pt'))
     check_memory()
 
     hparams['val_size'] = 10 * hparams['val_size']
@@ -232,6 +174,36 @@ def main(hparams):
     log.info('Validation avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
         val_avg, val_prop, val_time
     ))
+
+def val_prop_correct(pol_net, env, hparams):
+    '''
+    Generate some random smaple of states, see how many of the moves are correct
+    '''
+    dists = {}
+    dists_correct = {}
+    ncorrect = 0
+    for _ in range(hparams['val_size']):
+        state = env.reset_fixed(max_dist=hparams['max_dist'])
+        d = env.distance(state)
+        corr = correct_move(env, pol_net, state)
+
+        dists[d] = dists.get(d, 0) + 1
+        dists_correct[d] = dists_correct.get(d, 0) + corr
+        ncorrect += corr
+
+    for d, val in dists_correct.items():
+        dists_correct[d] /= dists[d]
+
+    prop_correct = ncorrect / hparams['val_size']
+    return prop_correct, dists_correct
+
+def str_fmt_dict(dic):
+    dstr = ''
+    max_key = max(dic.keys())
+    for i in range(0, max_key + 1):
+        dstr += '{:2d}: {:.3f} | '.format(i, dic.get(i, 0))
+
+    return dstr
 
 def val_model(pol_net, env, hparams):
     '''
@@ -264,6 +236,7 @@ if __name__ == '__main__':
     parser.add_argument('--eps_min', type=float, default=0.05)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--maxsteps', type=int, default=15)
+    parser.add_argument('--trainsteps', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--update_int', type=int, default=50)
@@ -282,8 +255,6 @@ if __name__ == '__main__':
     parser.add_argument('--init', type=str, default=None)
     parser.add_argument('--noise', type=float, default=0)
     parser.add_argument('--lossfunc', type=str, default='cmse')
-    parser.add_argument('--curric', action='store_true')
-    parser.add_argument('--meminit', action='store_true')
     parser.add_argument('--solve_rew', type=int, default=1)
     parser.add_argument('--alpha', type=str, default='(2, 3, 3)')
     parser.add_argument('--parts', type=str, default='((2,), (2, 1), (2, 1))')

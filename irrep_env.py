@@ -33,7 +33,7 @@ class Cube2IrrepEnv(CubeEnv):
 
     def reset_solved(self):
         state = super(Cube2IrrepEnv, self).reset(0)
-        return 0
+        return state
 
     def reset(self, max_dist=100):
         state = super(Cube2IrrepEnv, self).reset(max_dist)
