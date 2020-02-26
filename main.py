@@ -88,12 +88,12 @@ def main(hparams):
         pol_net.loadnp(NP_IRREP_FMT.format(str(alpha), str(parts)))
         targ_net.loadnp(NP_IRREP_FMT.format(str(alpha), str(parts)))
     else:
-        pol_net.init(hparams['init'])
-        targ_net.init(hparams['init'])
         log.info('Init model using mode: {}'.format(hparams['init']))
+        pol_net.normal_init(hparams['noise_std'])
+        targ_net.normal_init(hparams['noise_std'])
 
     if hparams['noise_std'] > 0:
-        log.info('Adding noise: {}'.format(hparams['noise']))
+        log.info('Adding noise: {}'.format(hparams['noise_std']))
         pol_net.add_gaussian_noise(0, hparams['noise_std'])
         targ_net.add_gaussian_noise(0, hparams['noise_std'])
 
@@ -103,15 +103,16 @@ def main(hparams):
     memory = ReplayMemory(hparams['capacity'])
     niter = 0
     nupdates = 0
+    seen_states = set()
 
     log.info('Before any training:')
     val_avg, val_prop, val_time, solve_lens = val_model(pol_net, env, hparams)
     log.info('Validation | avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
         val_avg, val_prop, val_time
     ))
-    prop_correct, dist_correct = val_prop_correct(pol_net, env, hparams)
-    log.info('Validation | Prop correct: {:.3f} | {}'.format(
-        prop_correct, str_fmt_dict(dist_correct)
+    prop_correct, dist_correct, dists = val_prop_correct(pol_net, env, hparams)
+    log.info('Validation | Prop correct: {:.3f} | {} | Dists: {}'.format(
+        prop_correct, str_fmt_dict(dist_correct), str_fmt_dict(dists)
     ))
 
     if len(solve_lens) > 0:
@@ -126,6 +127,7 @@ def main(hparams):
 
     for e in range(hparams['epochs']):
         states = random_walk(hparams['trainsteps'], env)
+        seen_states.update(states)
 
         for state in states:
             if hparams['norandom']:
@@ -146,12 +148,12 @@ def main(hparams):
                 nupdates += 1
 
         if e % hparams['logint'] == 0 and e > 0:
-            prop_correct, dist_correct = val_prop_correct(pol_net, env, hparams)
-            log.info('{:7} | prop correct: {:.3f} | {} | updates: {}'.format(
-                e, prop_correct, str_fmt_dict(dist_correct), nupdates))
+            prop_correct, dist_correct, dists = val_prop_correct(pol_net, env, hparams)
+            log.info('{:7} | Corr: {:.3f} | {}     Dists: {} Updates: {} seen: {}'.format(
+                e, prop_correct, str_fmt_dict(dist_correct), str_fmt_dict(dists), nupdates, len(seen_states)))
 
-        if e % hparams['updatetarget'] == 0 and e > 0:
-            targ_net.load_state_dict(pol_net.state_dict())
+        #if e % hparams['updatetarget'] == 0 and e > 0:
+        #    targ_net.load_state_dict(pol_net.state_dict())
 
     log.info('Total updates: {}'.format(nupdates))
     logger.export_scalars_to_json(os.path.join(savedir, 'summary.json'))
@@ -184,17 +186,17 @@ def val_prop_correct(pol_net, env, hparams):
     for d, val in dists_correct.items():
         dists_correct[d] /= dists[d]
 
-    #if dists_correct[1] == 0 and dists_correct[2] > 0:
-    #    pdb.set_trace()
+    for d, val in dists.items():
+        dists[d] = dists[d] / hparams['val_size']
 
     prop_correct = ncorrect / hparams['val_size']
-    return prop_correct, dists_correct
+    return prop_correct, dists_correct, dists
 
 def str_fmt_dict(dic):
     dstr = ''
     max_key = max(dic.keys())
     for i in range(0, max_key + 1):
-        dstr += '{:2d}: {:.3f} | '.format(i, dic.get(i, -1))
+        dstr += '{:2d}: {:+.3f} |'.format(i, dic.get(i, -1))
 
     return dstr
 
@@ -234,6 +236,7 @@ if __name__ == '__main__':
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--update_int', type=int, default=50)
     parser.add_argument('--updatetarget', type=int, default=100)
+    parser.add_argument('--usetarget', action='store_true', default=False)
     parser.add_argument('--logint', type=int, default=1000)
     parser.add_argument('--discount', type=float, default=0.9)
     parser.add_argument('--lr', type=float, default=0.01)

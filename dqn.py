@@ -127,9 +127,9 @@ class IrrepLinreg(nn.Module):
         else:
             self.zero_weights()
 
-    def normal_init(self):
-        nn.init.normal_(self.wr, 0, 0.1)
-        nn.init.normal_(self.wi, 0, 0.1)
+    def normal_init(self, std):
+        nn.init.normal_(self.wr, 0, std)
+        nn.init.normal_(self.wi, 0, std)
 
     def uniform_init(self):
         nn.init.uniform_(self.wr, -0.01, 0.01)
@@ -257,31 +257,20 @@ def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
 
     reward = torch.from_numpy(batch.reward)#.astype(np.float32))
     dones = torch.from_numpy(batch.done)
-    st = time.time()
     sr, si = env.encode_state(batch.state)
-    elapsed = time.time() - st
-
-    st = time.time()
-    nbrs = [n for s in batch.state for n in str_cube.neighbors_fixed_core_small(s)]
-    #nsr, nsi = env.encode_state(batch.next_state)
-    nsr, nsi = env.encode_state(nbrs)
-    nbr_elapsed = time.time() - st
-
-    st = time.time()
     yr_pred, yi_pred = pol_net.forward_sparse(sr, si)
-    fwd_elapsed = time.time() - st
 
-    st = time.time()
-    #yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
-    yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
-    nbr_fwd_elapsed = time.time() - st
+    nbrs = [n for s in batch.state for n in str_cube.neighbors_fixed_core_small(s)]
+    nsr, nsi = env.encode_state(nbrs)
 
-    st = time.time()
+    if hparams['usetarget']:
+        yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
+    else:
+        yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
     yr_onestep = yr_onestep.reshape(-1, env.actions)
     yi_onestep = yi_onestep.reshape(-1, env.actions)
     yr_next, opt_idx = yr_onestep.max(dim=1, keepdim=True)
     yi_next = yi_onestep.gather(1, opt_idx)
-    nbr_max_time = time.time() - st
 
     opt.zero_grad()
     loss = lossfunc(reward + discount * yr_next.detach(),
