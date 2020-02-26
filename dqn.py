@@ -23,21 +23,28 @@ from tensorboardX import SummaryWriter
 
 CUBE2_SIZE = 40320 * (3**7)
 
-def get_logger(fname):
-    str_fmt = '[%(asctime)s.%(msecs)03d] %(levelname)s %(module)s: %(message)s'
+def get_logger(fname=None, stdout=True, tofile=True):
+    '''
+    fname: file location to store the log file
+    '''
+    handlers = []
+    if stdout:
+        stdout_handler = logging.StreamHandler(sys.stdout)
+        handlers.append(stdout_handler)
+    if tofile:
+        file_handler = logging.FileHandler(filename=fname)
+        handlers.append(file_handler)
+
+    str_fmt = '[%(asctime)s.%(msecs)03d] %(message)s'
     date_fmt = "%Y-%m-%d %H:%M:%S"
     logging.basicConfig(
-        filename=fname,
         level=logging.DEBUG,
         format=str_fmt,
-        datefmt=date_fmt)
+        datefmt=date_fmt,
+        handlers=handlers
+    )
 
     logger = logging.getLogger(__name__)
-    sh = logging.StreamHandler()
-    formatter = logging.Formatter(str_fmt, datefmt=date_fmt)
-    sh.setFormatter(formatter)
-    logger.addHandler(sh)
-
     return logger
 
 class IrrepLinregNP:
@@ -134,7 +141,6 @@ class IrrepLinreg(nn.Module):
     def loadnp(self, fname, transpose=True):
         mat = np.load(fname)
         if transpose:
-            #print('Doing transpose')
             mat_re = mat.real.astype(np.float32).T
             mat_im = mat.imag.astype(np.float32).T
         else:
@@ -152,6 +158,14 @@ class IrrepLinreg(nn.Module):
         size = mat_re.shape[0]
         self.wr.data = torch.from_numpy(mat_re.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
         self.wi.data = torch.from_numpy(mat_im.reshape(size*size, 1)) * (size / CUBE2_SIZE) * -1
+
+    def add_gaussian_noise(self, mu, std):
+        _mu = torch.zeros(self.wr.size()) + mu
+        _std = torch.zeros(self.wr.size()) + std
+        r_noise = torch.normal(_mu, _std)
+        i_noise = torch.normal(_mu, _std)
+        self.wr.data.add_(r_noise)
+        self.wi.data.add_(i_noise)
 
 def value(model, env, state):
     xr, xi = env.irrep_inv(state)
@@ -211,6 +225,7 @@ def get_action_np(env, model, state):
 def get_action_th(env, model, state):
     neighbors = str_cube.neighbors_fixed_core_small(state) # do the symmetry modded out version for now
     xr, xi = env.encode_state(neighbors)
+
     if env.sparse:
         yr, yi = model.forward_sparse(xr, xi)
     else:
@@ -239,34 +254,38 @@ def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     else:
         lossfunc = cmse
     discount = hparams['discount']
-    sr = []
-    si = []
-    nsr = []
-    nsi = []
-
-    for s in batch.state:
-        _xr, _xi = env.irrep(s)
-        sr.append(_xr)
-        si.append(_xi)
-
-    for ns in batch.next_state:
-        xr, xi = env.irrep(ns)
-        nsr.append(xr)
-        nsi.append(xi)
 
     reward = torch.from_numpy(batch.reward)#.astype(np.float32))
     dones = torch.from_numpy(batch.done)
-    sr = torch.cat(sr, dim=0)
-    si = torch.cat(si, dim=0)
-    nsr = torch.cat(nsr, dim=0)
-    nsi = torch.cat(nsi, dim=0)
+    st = time.time()
+    sr, si = env.encode_state(batch.state)
+    elapsed = time.time() - st
 
+    st = time.time()
+    nbrs = [n for s in batch.state for n in str_cube.neighbors_fixed_core_small(s)]
+    #nsr, nsi = env.encode_state(batch.next_state)
+    nsr, nsi = env.encode_state(nbrs)
+    nbr_elapsed = time.time() - st
+
+    st = time.time()
     yr_pred, yi_pred = pol_net.forward_sparse(sr, si)
+    fwd_elapsed = time.time() - st
+
+    st = time.time()
+    #yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
     yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
+    nbr_fwd_elapsed = time.time() - st
+
+    st = time.time()
+    yr_onestep = yr_onestep.reshape(-1, env.actions)
+    yi_onestep = yi_onestep.reshape(-1, env.actions)
+    yr_next, opt_idx = yr_onestep.max(dim=1, keepdim=True)
+    yi_next = yi_onestep.gather(1, opt_idx)
+    nbr_max_time = time.time() - st
 
     opt.zero_grad()
-    loss = lossfunc(reward + discount * yr_onestep.detach(),
-                             discount * yi_onestep.detach(), yr_pred, yi_pred)
+    loss = lossfunc(reward + discount * yr_next.detach(),
+                             discount * yi_next.detach(), yr_pred, yi_pred)
 
     loss.backward()
     old_wr = pol_net.wr.detach().clone()
@@ -278,7 +297,6 @@ def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     return loss.item()
 
 def explore_rate(epoch_num, explore_epochs, eps_min):
-    return 1
     return max(eps_min, 1 - (epoch_num / (1 + explore_epochs)))
 
 def get_logdir(logdir, saveprefix):

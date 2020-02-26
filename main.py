@@ -92,19 +92,10 @@ def main(hparams):
         targ_net.init(hparams['init'])
         log.info('Init model using mode: {}'.format(hparams['init']))
 
-    if hparams['noise']:
+    if hparams['noise_std'] > 0:
         log.info('Adding noise: {}'.format(hparams['noise']))
-        mu = torch.zeros(pol_net.wr.size())
-        std = torch.zeros(pol_net.wr.size()) + hparams['noise']
-        wr_noise = torch.normal(mu, std)
-        wi_noise = torch.normal(mu, std)
-        pol_net.wr.data.add_(wr_noise)
-        pol_net.wi.data.add_(wi_noise)
-
-        wr_noise = torch.normal(mu, std)
-        wi_noise = torch.normal(mu, std)
-        targ_net.wr.data.add_(wr_noise)
-        targ_net.wi.data.add_(wi_noise)
+        pol_net.add_gaussian_noise(0, hparams['noise_std'])
+        targ_net.add_gaussian_noise(0, hparams['noise_std'])
 
     env = Cube2IrrepEnv(alpha, parts, solve_rew=hparams['solve_rew'])
     log.info('env solve reward: {}'.format(env.solve_rew))
@@ -112,7 +103,6 @@ def main(hparams):
     memory = ReplayMemory(hparams['capacity'])
     niter = 0
     nupdates = 0
-    rewards = np.zeros(hparams['logint'])
 
     log.info('Before any training:')
     val_avg, val_prop, val_time, solve_lens = val_model(pol_net, env, hparams)
@@ -140,7 +130,7 @@ def main(hparams):
         for state in states:
             if hparams['norandom']:
                 action = get_action(env, pol_net, state)
-            elif random.random() < explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['eps_min']):
+            elif random.random() < explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['minexp']):
                 action = random.randint(0, env.action_space.n - 1)
             else:
                 action = get_action(env, pol_net, state)
@@ -194,6 +184,9 @@ def val_prop_correct(pol_net, env, hparams):
     for d, val in dists_correct.items():
         dists_correct[d] /= dists[d]
 
+    #if dists_correct[1] == 0 and dists_correct[2] > 0:
+    #    pdb.set_trace()
+
     prop_correct = ncorrect / hparams['val_size']
     return prop_correct, dists_correct
 
@@ -201,7 +194,7 @@ def str_fmt_dict(dic):
     dstr = ''
     max_key = max(dic.keys())
     for i in range(0, max_key + 1):
-        dstr += '{:2d}: {:.3f} | '.format(i, dic.get(i, 0))
+        dstr += '{:2d}: {:.3f} | '.format(i, dic.get(i, -1))
 
     return dstr
 
@@ -233,7 +226,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_dist', type=int, default=100)
     parser.add_argument('--val_size', type=int, default=200)
     parser.add_argument('--explore_proportion', type=float, default=0.2)
-    parser.add_argument('--eps_min', type=float, default=0.05)
+    parser.add_argument('--minexp', type=float, default=0.05)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--maxsteps', type=int, default=15)
     parser.add_argument('--trainsteps', type=int, default=10)
@@ -253,7 +246,7 @@ if __name__ == '__main__':
     parser.add_argument('--noupdate', action='store_true')
     parser.add_argument('--norandom', action='store_true')
     parser.add_argument('--init', type=str, default=None)
-    parser.add_argument('--noise', type=float, default=0)
+    parser.add_argument('--noise_std', type=float, default=0)
     parser.add_argument('--lossfunc', type=str, default='cmse')
     parser.add_argument('--solve_rew', type=int, default=1)
     parser.add_argument('--alpha', type=str, default='(2, 3, 3)')

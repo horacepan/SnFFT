@@ -161,8 +161,7 @@ def main(args):
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
-                bs_nbrs_flat = [env.nbrs(tup) for tup in bs_tups]
-                if args.model == 'linear' or args.model == 'onehotlinear':
+                if args.model == 'linear':
                     if args.doubleq:
                         all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
