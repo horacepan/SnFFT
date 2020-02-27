@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import pdb
@@ -29,7 +30,10 @@ class Cube2IrrepEnv(CubeEnv):
         self.parts = parts
         self.sparse = sparse
         self._cubeirrep = Cube2Irrep(alpha, parts, numpy=numpy, sparse=sparse)
-        self._distances = pickle.load(open('/local/hopan/cube/cube_sym_mod.pkl', 'rb'))
+        if os.path.exists('/local/hopan/cube/cube_sym_mod.pkl'):
+            self._distances = pickle.load(open('/local/hopan/cube/cube_sym_mod.pkl', 'rb'))
+        elif os.path.exists('/scratch/hopan/cube/cube_sym_mod.pkl'):
+            self._distances = pickle.load(open('/scratch/hopan/cube/cube_sym_mod.pkl', 'rb'))
 
     def reset_solved(self):
         state = super(Cube2IrrepEnv, self).reset(0)

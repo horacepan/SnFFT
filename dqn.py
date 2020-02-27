@@ -240,13 +240,14 @@ def correct_move(env, model, state):
     min_dist = min(nbr_dists)
     return  nbr_dists[action] == min_dist
 
-def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
+def train_batch(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     '''
     batch: named tuple of stuff
     discount: float
     lossfunc: loss function
     opt: torch optim
     '''
+    opt.zero_grad()
     if hparams['lossfunc'] == 'cmse_real':
         lossfunc = cmse_real
     elif hparams['lossfunc'] == 'cmse_min_imag':
@@ -266,23 +267,16 @@ def update(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     if hparams['usetarget']:
         yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
     else:
-        yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
+        yr_onestep, yi_onestep = pol_net.forward_sparse(nsr, nsi)
     yr_onestep = yr_onestep.reshape(-1, env.actions)
     yi_onestep = yi_onestep.reshape(-1, env.actions)
     yr_next, opt_idx = yr_onestep.max(dim=1, keepdim=True)
     yi_next = yi_onestep.gather(1, opt_idx)
 
-    opt.zero_grad()
-    loss = lossfunc(reward + discount * yr_next.detach(),
-                             discount * yi_next.detach(), yr_pred, yi_pred)
-
+    loss = lossfunc((reward * dones) + discount * yr_next.detach(),
+                    discount * yi_next.detach(), yr_pred, yi_pred)
     loss.backward()
-    old_wr = pol_net.wr.detach().clone()
-    old_wi = pol_net.wi.detach().clone()
     opt.step()
-    # log the size of the update?
-    logger.add_scalar('wr_update_norm', (pol_net.wr - old_wr).norm().item(), nupdate)
-    logger.add_scalar('wi_update_norm', (pol_net.wi - old_wi).norm().item(), nupdate)
     return loss.item()
 
 def explore_rate(epoch_num, explore_epochs, eps_min):

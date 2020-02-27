@@ -13,10 +13,10 @@ sys.path.append('./cube/')
 from str_cube import get_wreath, init_2cube, render, scramble
 from cube_utils import cube2_orientations
 
-if os.path.exists('/local/hopan'):
+if os.path.exists('/local/hopan/cube'):
     IRREP_LOC_FMT = '/local/hopan/cube/pickles/{}/{}.pkl'
     IRREP_SP_LOC_FMT = '/local/hopan/cube/pickles_sparse/{}/{}.pkl'
-elif os.path.exists('/scratch/hopan'):
+elif os.path.exists('/scratch/hopan/cube'):
     IRREP_LOC_FMT = '/scratch/hopan/cube/pickles/{}/{}.pkl'
     IRREP_SP_LOC_FMT = '/scratch/hopan/cube/pickles_sparse/{}/{}.pkl'
 else:
