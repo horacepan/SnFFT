@@ -12,8 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-#from perm_df import PermDF
-from puzzle_df import PermDF
+from perm_df import PermDF
+#from puzzle_df import PermDF
 from yor_dataset import YorConverter
 from rlmodels import MLP, LinearPolicy
 from fourier_policy import FourierPolicyCG
@@ -37,6 +37,7 @@ def get_reward(done):
         return 0
     else:
         return -1
+
 def full_benchmark(policy, perm_df, env, log):
     score, dists, stats = test_all_states(policy, 20, perm_df, env)
     log.info(f'Full Prop solves: {score:.4f} | stats: {str_val_results(stats)} | dists: {dists}')
@@ -59,10 +60,6 @@ def main(args):
     target = None
     seen_states = set()
     perms = list(permutations(tuple(i for i in range(1, 9))))
-    if 'onestart' in args.fname:
-        env = S8Puzzle(onestart=True)
-    else:
-        env = S8Puzzle(onestart=False)
 
     if args.irreps:
         try:
@@ -112,14 +109,12 @@ def main(args):
 
     policy.to(device)
     #perm_df = PermDF(args.fname, nbrs)
-    perm_df = PermDF(args.fname)
-    #score, dists, stats = test_model(policy, 1000, 1000, 20, perm_df, env)
-    #log.info(f'Prop correct: {score} | dists: {dists} | stats: {stats}')
+    perm_df = PermDF(args.fname, 6)
     if not args.skipvalidate:
         baseline_corr, corr_dict = perm_df.benchmark()
         log.info('Baseline correct: {}'.format(baseline_corr))
         log.info(str_val_results(corr_dict))
-        res, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, env)
+        res, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, perm_df)
 
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     log.info('Memory used pre replay creation: {:.2f}mb'.format(check_memory(False)))
@@ -133,11 +128,11 @@ def main(args):
     losses = []
 
     for e in range(args.epochs + 1):
-        states = env.random_walk(args.eplen)
+        states = perm_df.random_walk(args.eplen)
         for state in states:
-            _nbrs = perm_df.neighbors(state)
+            _nbrs = perm_df.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
-                move = env.random_move()
+                move = perm_df.random_move()
             elif hasattr(policy, 'nout') and policy.nout == 1:
                 nbrs_tens = to_tensor(_nbrs).to(device)
                 move = policy.forward(nbrs_tens).argmax().item()
@@ -145,9 +140,7 @@ def main(args):
                 move = policy.forward(to_tensor([state])).argmax().item()
             next_state = _nbrs[move]
 
-            # reward is pretty flexible though
-            #done = int(env.is_done(next_state))
-            done = 1 if (env.is_done(state)) else -1
+            done = 1 if (perm_df.is_done(state)) else -1
             reward = get_reward(done)
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
@@ -155,21 +148,21 @@ def main(args):
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
-                bs_nbrs = [n for tup in bs_tups for n in perm_df.neighbors(tup)]
+                bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
                 if args.model == 'linear':
                     if args.doubleq:
-                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
+                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, perm_df.num_nbrs())
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
-                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx)
+                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, perm_df.num_nbrs()).gather(1, opt_nbr_idx)
                     else:
-                        opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs())
+                        opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, perm_df.num_nbrs())
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * opt_nbr_vals + (br * (-bd)))
                                       #args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model == 'dvn':
                     nxt_nbr_vals = target.forward_tup(bs_nbrs) # already nin -> hidden
-                    opt_nbr_idx = nxt_nbr_vals.reshape(-1, env.num_nbrs()).max(dim=1, keepdim=True)[1]
-                    opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                    opt_nbr_idx = nxt_nbr_vals.reshape(-1, perm_df.num_nbrs()).max(dim=1, keepdim=True)[1]
+                    opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, perm_df.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * opt_nbr_vals + (br * (-bd)))
                                       #args.discount * opt_nbr_vals + (br * bd))
@@ -219,7 +212,7 @@ def main(args):
             log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
                      f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
         if e % args.benchlog == 0 and e > 0:
-            bench_results = full_benchmark(policy, perm_df, env, log)
+            bench_results = full_benchmark(policy, perm_df, perm_df, log)
 
         if args.loadfhats:
             return {'prop_correct': benchmark, 'val_results': val_results}
@@ -228,7 +221,7 @@ def main(args):
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
     if not args.skipvalidate:
-        bench_results = full_benchmark(policy, perm_df, env, log)
+        bench_results = full_benchmark(policy, perm_df, perm_df, log)
         return bench_results
 
 if __name__ == '__main__':

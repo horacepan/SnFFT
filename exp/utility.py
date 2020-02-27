@@ -58,7 +58,7 @@ def val_model(policy, max_dist, perm_df, cnt=100, env=None):
     # up to size
     nsolves = {}
     for dist in range(1, max_dist + 1):
-        d_states = perm_df.random_state(dist, cnt)
+        d_states = perm_df.random_states(dist, cnt)
         solves = 0
         for state in d_states:
             solves += can_solve(state, policy, 15, env, perm_df)
@@ -66,7 +66,7 @@ def val_model(policy, max_dist, perm_df, cnt=100, env=None):
     return nsolves
 
 def test_model(policy, scramble_len, cnt, max_moves, perm_df, env):
-    states = [env.random_state(scramble_len) for _ in range(cnt)]
+    states = [env.random_element(scramble_len) for _ in range(cnt)]
     return _test_model(policy, states, max_moves, perm_df, env)
 
 def _test_model(policy, states, max_moves, perm_df, env):

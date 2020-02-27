@@ -1,4 +1,5 @@
 import pdb
+import random
 import numpy as np
 import pandas as pd
 import torch
@@ -12,11 +13,59 @@ class PermDF:
     Container class for holding mapping from perm tuple -> distance
     Use it to evaluate policies (mapping from perm tuple -> number).
     '''
-    def __init__(self, fname, nbr_func):
+    #def __init__(self, fname, ident):
+    def __init__(self, fname, ngenerators):
+        '''
+        Assumption: The first {ngenerator} states of dist 1 from solved state are generators of the puzzle
+        '''
         self.df = self.load_df(fname)
         self.dist_dict = self.load_dist_dict()
-        self.nbr_func = nbr_func
         self.max_dist = self.df['dist'].max()
+        self.generators = S8_GENERATORS
+        self._num_nbrs = ngenerators
+
+        self._done_states = []
+        self._done_states_set = set(self._done_states)
+        for idx, row in self.df[self.df['dist'] == 0].iterrows():
+            self._done_states.append(str2tup(row['state']))
+
+        self.generators = []
+        d1_elements = self.df[self.df['dist'] == 1]['state']
+        for s in d1_elements[:ngenerators]:
+            self.generators.append(str2tup(s))
+
+    def is_done(self, state):
+        return state in self._done_states_set
+
+    def num_nbrs(self):
+        return self._num_nbrs
+
+    def nbrs(self, state):
+        return [px_mult(g, state) for g in self.generators]
+
+    def step(self, state, action_idx):
+        g = self.generators[action_idx]
+        return px_mult(g, state)
+
+    def random_walk(self, length):
+        states = []
+        state = random.choice(self._done_states)
+        states.append(state)
+        for _ in range(length):
+            action = random.randint(0, len(self.generators) - 1)
+            state = self.step(state, action)
+            states.append(state)
+        return states
+
+    def random_move(self):
+        return np.random.choice(self._num_nbrs)
+
+    def random_element(self, scramble_len):
+        state = random.choice(self._done_states)
+        for _ in range(scramble_len):
+            action = random.randint(0, len(self.generators) - 1)
+            state = self.step(state, action)
+        return state
 
     def load_df(self, fname):
         df = pd.read_csv(fname, header=None, dtype={0: str, 1: int})
@@ -26,19 +75,18 @@ class PermDF:
     def load_dist_dict(self):
         return {str2tup(row['state']): row['dist'] for s, row in self.df.iterrows()}
 
-    def __getitem__(self, gtup):
-        return self.dist_dict[gtup]
+    def __getitem__(self, state):
+        return self.dist_dict[state]
 
-    def __call__(self, gtup):
-        return self.dist_dict[gtup]
+    def __call__(self, state):
+        return self.dist_dict[state]
 
-    def benchmark(self, gtups=None):
-        if gtups is None:
-            gtups = list(self.dist_dict.keys())
+    def benchmark(self):
+        states = list(self.dist_dict.keys())
 
         dist_probs = {}
         probs = []
-        for p in gtups:
+        for p in states:
             dist = self.dist_dict[p]
             true_vals = self.nbr_values(p)
             opt_val = min(true_vals.values())
@@ -57,16 +105,16 @@ class PermDF:
 
         return np.mean(probs), res_prob
 
-    def opt_nbr(self, gtup, policy):
+    def opt_nbr(self, state, policy):
         '''
         See if the optimal move given by the policy coicides with the trust
         dist's optimal move
         '''
-        true_vals = self.nbr_values(gtup)
+        true_vals = self.nbr_values(state)
         opt_val = min(true_vals.values())
         opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
 
-        pol_vals = self.nbr_values(gtup, policy)
+        pol_vals = self.nbr_values(state, policy)
 
         if policy.optmin:
             opt_pol_nbr = min(pol_vals, key=pol_vals.get)
@@ -74,20 +122,20 @@ class PermDF:
             opt_pol_nbr = max(pol_vals, key=pol_vals.get)
         return opt_pol_nbr in opt_nbrs
 
-    def nbr_values(self, gtup, func=None):
+    def nbr_values(self, state, func=None):
         if func is None:
             func = self.__call__
 
         vals = {}
-        gtup_nbrs = self.nbr_func(gtup)
+        state_nbrs = self.nbrs(state)
 
         if hasattr(func, 'forward_tup') and hasattr(func, 'nout') and func.nout > 1:
-            res = func.forward_tup([gtup])
-            for i, ntup in enumerate(gtup_nbrs):
+            res = func.forward_tup([state])
+            for i, ntup in enumerate(state_nbrs):
                 vals[ntup] = res[0, i].item()
             return vals
 
-        for ntup in gtup_nbrs:
+        for ntup in state_nbrs:
             if hasattr(func, 'forward_tup'):
                 vals[ntup] = func.forward_tup([ntup]).item()
             else:
@@ -106,22 +154,22 @@ class PermDF:
         train_y = np.array([self.dist_dict[p] for p in train_perms])
         return train_perms, train_y, test_perms, test_y
 
-    def benchmark_policy(self, gtups, policy):
-        if len(gtups) == 0:
+    def benchmark_policy(self, states, policy):
+        if len(states) == 0:
             return -1
 
         with torch.no_grad():
             ncorrect = 0
-            for g in gtups:
+            for g in states:
                 ncorrect += int(self.opt_nbr(g, policy))
-            return ncorrect / len(gtups)
+            return ncorrect / len(states)
 
     def prop_corr_by_dist(self, policy):
         dist_corr = {}
         dist_cnts = {}
         ncorrect = 0
-        for ptup, dist in self.dist_dict.items():
-            correct = int(self.opt_nbr(ptup, policy))
+        for state, dist in self.dist_dict.items():
+            correct = int(self.opt_nbr(state, policy))
             ncorrect += correct
             dist_corr[dist] = dist_corr.get(dist, 0) + correct
             dist_cnts[dist] = dist_cnts.get(dist, 0) + 1
@@ -135,15 +183,15 @@ class PermDF:
         dists = [self.dist_dict[t] for t in tup]
         return dists.index(min(dists))
 
-    def random_state(self, dist, cnt):
+    def random_states(self, dist, cnt):
         subdf = self.df[self.df['dist'] == dist]
         if len(subdf) > cnt:
             subdf = subdf.sample(n=cnt)
         perms = [str2tup(row['state']) for _, row in subdf.iterrows()]
         return perms
 
-    def forward_tup(self, gtup):
-        return self.dist_dict[gtup]
+    def forward_tup(self, state):
+        return self.dist_dict[state]
 
     def all_states(self):
         return self.dist_dict.keys()
