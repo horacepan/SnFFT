@@ -112,7 +112,7 @@ class CubeEnv(gym.Env):
         return self.solve_rew if solved else 0
 
     def penalty_reward(self, solved):
-        return self.solve_rew if solved else -1
+        return -1
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)

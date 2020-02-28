@@ -150,6 +150,20 @@ def main(hparams):
             max_prop = max(max_prop, prop_correct)
             log.info('{:7} | Corr: {:.3f} | {} Updates: {} seen: {} mem: {:.2f}mb'.format(
                 e, prop_correct, str_fmt_dict(dist_correct), nupdates, len(seen_states), check_memory(False)))
+            logger.add_scalar('prop_correct', prop_correct, e)
+
+            for kd, val in dist_correct.items():
+                logger.add_scalar(f'prop_correct/state_{kd}', val, e)
+
+            for ii in range(1, 13):
+                rand_states = env.random_states(ii, 100)
+                # compute forward pass, avg values
+                xr, xi = env.encode_state(rand_states)
+                vals, _ = pol_net.forward_sparse(xr, xi)
+                logger.add_scalar(f'values/median/states_{ii}', vals.median().item(), e)
+                logger.add_scalar(f'values/mean/states_{ii}', vals.mean().item(), e)
+                logger.add_scalar(f'values/std/states_{ii}', vals.std().item(), e)
+
             try:
                 if prop_correct > 0.80:
                     log.info('Saving model!')
@@ -164,7 +178,6 @@ def main(hparams):
     log.info('Total updates: {}'.format(nupdates))
     logger.export_scalars_to_json(os.path.join(savedir, 'summary.json'))
     logger.close()
-    #torch.save(pol_net, os.path.join(savedir, 'model.pt'))
     check_memory()
 
     hparams['val_size'] = 10 * hparams['val_size']
@@ -189,7 +202,7 @@ def val_prop_correct(pol_net, env, hparams):
     ncorrect = 0
     tot = 0
 
-    for d in range(0, 13):
+    for d in range(1, 13):
         states = env.random_states(d, hparams['val_size_per'])
         for state in states:
             corr = correct_move(env, pol_net, state)
