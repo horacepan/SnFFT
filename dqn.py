@@ -273,7 +273,7 @@ def train_batch(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     yr_next, opt_idx = yr_onestep.max(dim=1, keepdim=True)
     yi_next = yi_onestep.gather(1, opt_idx)
 
-    loss = lossfunc((reward * dones) + discount * yr_next.detach(),
+    loss = lossfunc((reward * (-dones)) + discount * yr_next.detach(),
                     discount * yi_next.detach(), yr_pred, yi_pred)
     loss.backward()
     opt.step()

@@ -73,12 +73,6 @@ class PermDF:
     def load_dist_dict(self):
         return {str2tup(row['state']): row['dist'] for s, row in self.df.iterrows()}
 
-    def __getitem__(self, state):
-        return self.dist_dict[state]
-
-    def __call__(self, state):
-        return self.dist_dict[state]
-
     def distance(self, state):
         return self.dist_dict[state]
 
@@ -125,7 +119,7 @@ class PermDF:
 
     def nbr_values(self, state, func=None):
         if func is None:
-            func = self.__call__
+            func = self.distance
 
         vals = {}
         state_nbrs = self.nbrs(state)

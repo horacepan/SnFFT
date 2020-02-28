@@ -5,11 +5,9 @@ import pdb
 import pickle
 
 sys.path.append('./cube/')
+import pandas as pd
 from str_cube import *
 from cube_env import CubeEnv
-from wreath import cyclic_irreps, wreath_rep
-from coset_utils import coset_reps, young_subgroup_perm
-from perm2 import sn
 from cube_irrep import Cube2Irrep
 from utils import check_memory
 import numpy as np
@@ -34,6 +32,17 @@ class Cube2IrrepEnv(CubeEnv):
             self._distances = pickle.load(open('/local/hopan/cube/cube_sym_mod.pkl', 'rb'))
         elif os.path.exists('/scratch/hopan/cube/cube_sym_mod.pkl'):
             self._distances = pickle.load(open('/scratch/hopan/cube/cube_sym_mod.pkl', 'rb'))
+        self._df = self.load_df()
+
+    def load_df(self):
+        if os.path.exists('/local/hopan/cube/cube_sym_mod.txt'):
+            df = pd.read_csv('/local/hopan/cube/cube_sym_mod.txt', header=None, dtype={0: str, 1: int})
+        elif os.path.exists('/scratch/hopan/cube/cube_sym_mod.txt'):
+            df = pd.read_csv('/scratch/hopan/cube/cube_sym_mod.txt', header=None, dtype={0: str, 1: int})
+
+        #df.columns = ['otup', 'ptup', 'dist']
+        df.columns = ['state', 'dist']
+        return df
 
     def reset_solved(self):
         state = super(Cube2IrrepEnv, self).reset(0)
@@ -111,6 +120,23 @@ class Cube2IrrepEnv(CubeEnv):
 
     def distance(self, cube):
         return self._distances[cube]
+
+    def random_states(self, dist, size, str_rep=True):
+        dist_df = self._df[self._df['dist'] == dist]
+        states = []
+        if size > len(dist_df):
+            sampled_df = dist_df
+        else:
+            sampled_df = dist_df.sample(n=size)
+
+        sample = []
+        for idx, row in sampled_df.iterrows():
+            if str_rep:
+                sample.append(row['state'])
+            else:
+                sample.append((row['otup'], row['ptup']))
+
+        return sample
 
 def test(ntrials=100):
     start = time.time()

@@ -98,10 +98,14 @@ def main(hparams):
         pol_net.add_gaussian_noise(0, hparams['noise_std'])
         targ_net.add_gaussian_noise(0, hparams['noise_std'])
 
+    st = time.time()
     env = Cube2IrrepEnv(alpha, parts, solve_rew=hparams['solve_rew'])
-    log.info('env solve reward: {}'.format(env.solve_rew))
+    log.info('Env load time: {:.2f}s'.format(time.time() - st))
+
     optimizer = torch.optim.SGD(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
+    log.info('Memory usage pre replay: {:.2f}mb'.format(check_memory(False)))
     memory = ReplayMemory(hparams['capacity'])
+    log.info('Memory usage post replay: {:.2f}mb'.format(check_memory(False)))
     niter = 0
     nupdates = 0
     seen_states = set()
@@ -113,20 +117,10 @@ def main(hparams):
         val_avg, val_prop, val_time
     ))
     log.info('{}'.format(solves_by_dist))
-    prop_correct, dist_correct, dists = val_prop_correct(pol_net, env, hparams)
-    log.info('Validation | Prop correct: {:.3f} | {} | Dists: {}'.format(
-        prop_correct, str_fmt_dict(dist_correct), str_fmt_dict(dists)
+    prop_correct, dist_correct = val_prop_correct(pol_net, env, hparams)
+    log.info('Validation | Prop correct: {:.3f} | {}'.format(
+        prop_correct, str_fmt_dict(dist_correct)
     ))
-
-    if len(solve_lens) > 0:
-        log.info('Validation | LQ: {:.3f} | MQ: {:.3f} | UQ: {:.3f} | Max: {}'.format(
-            np.percentile(solve_lens, 25),
-            np.percentile(solve_lens, 50),
-            np.percentile(solve_lens, 75),
-            max(solve_lens)
-        ))
-    else:
-        log.info('Validation | No solves!')
 
     for e in range(hparams['epochs']):
         states = random_walk(hparams['trainsteps'], env)
@@ -152,10 +146,10 @@ def main(hparams):
                 nupdates += 1
 
         if e % hparams['logint'] == 0:
-            prop_correct, dist_correct, dists = val_prop_correct(pol_net, env, hparams)
+            prop_correct, dist_correct = val_prop_correct(pol_net, env, hparams)
             max_prop = max(max_prop, prop_correct)
-            log.info('{:7} | Corr: {:.3f} | {} Updates: {} seen: {}'.format(
-                e, prop_correct, str_fmt_dict(dist_correct), nupdates, len(seen_states)))
+            log.info('{:7} | Corr: {:.3f} | {} Updates: {} seen: {} mem: {:.2f}mb'.format(
+                e, prop_correct, str_fmt_dict(dist_correct), nupdates, len(seen_states), check_memory(False)))
             try:
                 if prop_correct > 0.80:
                     log.info('Saving model!')
@@ -193,32 +187,26 @@ def val_prop_correct(pol_net, env, hparams):
     dists = {}
     dists_correct = {}
     ncorrect = 0
-    for _ in range(hparams['val_size']):
-        pone = 1 if random.random() > 0.5 else 0
-        states = random_walk(hparams['max_dist'] + pone, env)
-        state = states[-1]
-        #state = env.reset_fixed(max_dist=hparams['max_dist'])
-        d = env.distance(state)
-        corr = correct_move(env, pol_net, state)
+    tot = 0
 
-        dists[d] = dists.get(d, 0) + 1
-        dists_correct[d] = dists_correct.get(d, 0) + corr
-        ncorrect += corr
+    for d in range(0, 13):
+        states = env.random_states(d, hparams['val_size_per'])
+        for state in states:
+            corr = correct_move(env, pol_net, state)
+            dists[d] = dists.get(d, 0) + 1
+            dists_correct[d] = dists_correct.get(d, 0) + corr
+            ncorrect += corr
+            tot += 1
 
-    for d, val in dists_correct.items():
         dists_correct[d] /= dists[d]
 
-    for d, val in dists.items():
-        dists[d] = dists[d] / hparams['val_size']
-
-    prop_correct = ncorrect / hparams['val_size']
-    return prop_correct, dists_correct, dists
+    prop_correct = ncorrect / tot
+    return prop_correct, dists_correct
 
 def str_fmt_dict(dic):
     dstr = ''
     max_key = max(dic.keys())
-    #for i in range(0, max_key + 1):
-    for i in range(0, 15):
+    for i in range(0, max_key + 1):
         dstr += '{:2d}: {:+.2f} |'.format(i, dic.get(i, -1))
 
     return dstr
@@ -261,6 +249,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_dist', type=int, default=100)
     parser.add_argument('--val_size', type=int, default=200)
     parser.add_argument('--val_size_fullsolve', type=int, default=1000)
+    parser.add_argument('--val_size_per', type=int, default=100)
     parser.add_argument('--explore_proportion', type=float, default=0.2)
     parser.add_argument('--minexp', type=float, default=0.05)
     parser.add_argument('--epochs', type=int, default=10000)
