@@ -41,7 +41,7 @@ def can_solve(state, policy, max_moves, env, perm_df=None):
         neighbors = env.nbrs(curr_state)
         opt_move = policy.opt_move_tup(neighbors)
         curr_state = env.step(curr_state, opt_move)
-        if env.is_done(curr_state) or perm_df[curr_state] == 1:
+        if env.is_done(curr_state) or perm_df.distance(curr_state) == 1:
             return True
 
     return False
@@ -76,7 +76,7 @@ def _test_model(policy, states, max_moves, perm_df, env):
     for s in states:
         solved =  int(can_solve(s, policy, max_moves, env, perm_df))
         solves += solved
-        d = perm_df[s] # should probably avoid this sort of api
+        d = perm_df.distance(s) # should probably avoid this sort of api
         dists[d] = dists.get(d, 0) + 1
         stats[d] = stats.get(d, 0) + solved
 

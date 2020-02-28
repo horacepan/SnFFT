@@ -58,9 +58,8 @@ class WreathPolicy(nn.Module):
         irrep_vecs.append(np.array([[1]]))
         return np.hstack(irrep_vecs)
 
-    def cache_perms(self, perms=None):
-        if perms is None:
-            perms = self.rep_dict[self.irreps[0]].keys()
+    def cache_perms(self):
+        perms = self.rep_dict[self.irreps[0]].keys()
 
         pdict = {}
         for p in perms:

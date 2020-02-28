@@ -37,6 +37,7 @@ class PermDF:
     def is_done(self, state):
         return state in self._done_states_set
 
+    @property
     def num_nbrs(self):
         return self._num_nbrs
 
@@ -57,9 +58,6 @@ class PermDF:
             states.append(state)
         return states
 
-    def random_move(self):
-        return np.random.choice(self._num_nbrs)
-
     def random_element(self, scramble_len):
         state = random.choice(self._done_states)
         for _ in range(scramble_len):
@@ -79,6 +77,9 @@ class PermDF:
         return self.dist_dict[state]
 
     def __call__(self, state):
+        return self.dist_dict[state]
+
+    def distance(self, state):
         return self.dist_dict[state]
 
     def benchmark(self):
@@ -116,7 +117,7 @@ class PermDF:
 
         pol_vals = self.nbr_values(state, policy)
 
-        if policy.optmin:
+        if hasattr(policy, 'optmin') and policy.optmin:
             opt_pol_nbr = min(pol_vals, key=pol_vals.get)
         else:
             opt_pol_nbr = max(pol_vals, key=pol_vals.get)
@@ -142,17 +143,6 @@ class PermDF:
                 vals[ntup] = func(ntup)
 
         return vals
-
-    # TODO: this is not a proper way doing train test split for perm problem
-    def train_test(self, test_ratio):
-        perms = list(self.dist_dict.keys())
-        np.random.shuffle(perms)
-        k = int(test_ratio * len(self.dist_dict))
-        test_perms = perms[:k]
-        train_perms = perms[k:]
-        test_y = np.array([self.dist_dict[p] for p in test_perms])
-        train_y = np.array([self.dist_dict[p] for p in train_perms])
-        return train_perms, train_y, test_perms, test_y
 
     def benchmark_policy(self, states, policy):
         if len(states) == 0:
@@ -196,13 +186,10 @@ class PermDF:
     def all_states(self):
         return self.dist_dict.keys()
 
-def nbrs(p):
-    return [px_mult(g, p) for g in S8_GENERATORS]
-
 def test():
     fname = '/home/hopan/github/idastar/s8_dists_red.txt'
     eye = (1, 2, 3, 4, 5, 6, 7, 8)
-    pdf = PermDF(fname, nbrs)
+    pdf = PermDF(fname, 6)
     policy = lambda g: g.index(8)
     print(pdf.opt_nbr(eye, policy))
 

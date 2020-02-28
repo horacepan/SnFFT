@@ -19,7 +19,7 @@ class FourierPolicyTorch(nn.Module):
     '''
     Wrapper class for fourier linear regression
     '''
-    def __init__(self, irreps, yor_prefix, perms, yors=None, pdict=None):
+    def __init__(self, irreps, yor_prefix, perms, rep_dict=None, pdict=None):
         '''
         irreps: list of tuples
         yor_prefix: directory containing yor pickles
@@ -28,20 +28,22 @@ class FourierPolicyTorch(nn.Module):
         super(FourierPolicyTorch, self).__init__()
         self.size = sum(irreps[0])
         self.irreps = irreps
-        if yors is None:
-            self.yors = {irr: load_yor(irr, yor_prefix) for irr in irreps}
+        if rep_dict is None:
+            self.rep_dict = {irr: load_yor(irr, yor_prefix) for irr in irreps}
         else:
-            self.yors = yors
-        self.irrep_sizes = {irr: self.yors[irr][tuple(range(1, self.size+1))].shape[0] for irr in irreps}
+            self.rep_dict = rep_dict
+        self.irrep_sizes = {irr: self.rep_dict[irr][tuple(range(1, self.size+1))].shape[0] for irr in irreps}
 
         total_size = sum([d ** 2 for d in self.irrep_sizes.values()])
         self.w_torch = nn.Parameter(torch.rand(total_size + 1, 1))
         self.w_torch.data.normal_(std=0.2)
         self.optmin = False
 
-        # this is pretty hacky
+        # this is pretty hacky but used to avoid loading up all the irreps when we have
+        # a target network
+        # solution would be to have a different class be in charge of this cache/tensor conversion
         if pdict is None:
-            self.pdict = self.cache_perms(perms)
+            self.pdict = self.cache_perms()
         else:
             self.pdict = pdict
 
@@ -52,7 +54,7 @@ class FourierPolicyTorch(nn.Module):
         '''
         irrep_vecs = []
         for irr in self.irreps:
-            rep = self.yors[irr][gtup]
+            rep = self.rep_dict[irr][gtup]
             dim = rep.shape[0]
             vec = rep.reshape(1, -1) * np.sqrt(dim)
             irrep_vecs.append(vec)
@@ -99,7 +101,7 @@ class FourierPolicyTorch(nn.Module):
         fhats = {}
 
         for irr in self.irreps:
-            size = self.yors[irr][ident_tup].shape[0]
+            size = self.rep_dict[irr][ident_tup].shape[0]
             mat = self.w_torch[idx: idx + (size * size)]
             fhats[irr] = mat.reshape(size, size)
             idx += size * size
@@ -132,11 +134,13 @@ class FourierPolicyTorch(nn.Module):
         max_nbr_vals, idx = nbr_eval.max(dim=1, keepdim=True)
         return max_nbr_vals.detach(), idx
 
-    def cache_perms(self, perms):
+    def cache_perms(self):
         '''
         perms: list of tuples
         Returns a dictionary mapping tuple to its tensor representation
         '''
+        perms = self.rep_dict[self.irreps[0]].keys()
+
         pdict = {}
         for p in perms:
             pdict[p] = torch.from_numpy(self.to_irrep(p)).float()
@@ -163,8 +167,8 @@ class FourierPolicyTorch(nn.Module):
         return self.opt_move(tens_nbrs)
 
 class FourierPolicyCG(FourierPolicyTorch):
-    def __init__(self, irreps, prefix, perms, yors=None, pdict=None, docg=False):
-        super(FourierPolicyCG, self).__init__(irreps, prefix, perms, yors, pdict)
+    def __init__(self, irreps, prefix, perms, rep_dict=None, pdict=None, docg=False):
+        super(FourierPolicyCG, self).__init__(irreps, prefix, perms, rep_dict, pdict)
         self.s8_chars = pickle.load(open(f'{prefix}/char_dict.pkl', 'rb'))
         if docg:
             self.cg_mats = {(p1, p2, base_p): torch.from_numpy(cg_mat(p1, p2, base_p)).float().to(device)
@@ -216,7 +220,7 @@ class FourierPolicyCG(FourierPolicyTorch):
 
         g_size = 1 # should really be size of the group but doesnt matter much
         pdim = self.irrep_sizes[base_p]
-        rho1 = torch.from_numpy(self.yors[base_p][gelement]).float().to(device)
+        rho1 = torch.from_numpy(self.rep_dict[base_p][gelement]).float().to(device)
         lmat = rho1 + torch.eye(pdim).to(device)
 
         lhs = 0
@@ -225,7 +229,7 @@ class FourierPolicyCG(FourierPolicyTorch):
         for p1 in self.irreps:
             p1_dim = self.irrep_sizes[p1]
             fhat1 = fhats[p1]
-            rhog = torch.from_numpy(self.yors[p1][gelement]).float().to(device)
+            rhog = torch.from_numpy(self.rep_dict[p1][gelement]).float().to(device)
 
             for p2 in self.irreps:
                 p2_dim = self.irrep_sizes[p2]
