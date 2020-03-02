@@ -34,6 +34,9 @@ class Cube2IrrepEnv(CubeEnv):
             self._distances = pickle.load(open('/scratch/hopan/cube/cube_sym_mod.pkl', 'rb'))
         self._df = self.load_df()
 
+    def all_states(self):
+        return list(self._distances.keys())
+
     def load_df(self):
         if os.path.exists('/local/hopan/cube/cube_sym_mod.txt'):
             df = pd.read_csv('/local/hopan/cube/cube_sym_mod.txt', header=None, dtype={0: str, 1: int})

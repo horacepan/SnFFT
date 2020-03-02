@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 from utility import S8_GENERATORS, px_mult
+from wreath_puzzle import PYRAMINX_GENERATORS, px_wreath_mul
 
 def str2tup(s):
     return tuple(int(i) for i in s)
@@ -27,12 +28,14 @@ class PermDF:
         self._done_states = []
         self._done_states_set = set(self._done_states)
         for idx, row in self.df[self.df['dist'] == 0].iterrows():
-            self._done_states.append(str2tup(row['state']))
+            self._done_states.append(self._get_state(row))
 
-        self.generators = []
-        d1_elements = self.df[self.df['dist'] == 1]['state']
-        for s in d1_elements[:ngenerators]:
-            self.generators.append(str2tup(s))
+        self._generators = []
+        d1_elements = self.df[self.df['dist'] == 1]
+        for idx, row in d1_elements.iterrows():
+            self._generators.append(self._get_state(row))
+            if len(self._generators) == ngenerators:
+                break
 
     def is_done(self, state):
         return state in self._done_states_set
@@ -58,7 +61,7 @@ class PermDF:
             states.append(state)
         return states
 
-    def random_element(self, scramble_len):
+    def random_state(self, scramble_len):
         state = random.choice(self._done_states)
         for _ in range(scramble_len):
             action = random.randint(0, len(self.generators) - 1)
@@ -71,7 +74,7 @@ class PermDF:
         return df
 
     def load_dist_dict(self):
-        return {str2tup(row['state']): row['dist'] for s, row in self.df.iterrows()}
+        return {self._get_state(row): row['dist'] for s, row in self.df.iterrows()}
 
     def distance(self, state):
         return self.dist_dict[state]
@@ -171,7 +174,7 @@ class PermDF:
         subdf = self.df[self.df['dist'] == dist]
         if len(subdf) > cnt:
             subdf = subdf.sample(n=cnt)
-        perms = [str2tup(row['state']) for _, row in subdf.iterrows()]
+        perms = [self._get_state(row) for _, row in subdf.iterrows()]
         return perms
 
     def forward_tup(self, state):
@@ -179,6 +182,53 @@ class PermDF:
 
     def all_states(self):
         return self.dist_dict.keys()
+
+    def _get_state(self, df_row):
+        return str2tup(df_row['state'])
+
+class WreathDF(PermDF):
+    def __init__(self, fname, ngenerators, cyc_size=2):
+        '''
+        Assumption: The first {ngenerator} states of dist 1 from solved state are generators of the puzzle
+        '''
+        self.df = self.load_df(fname)
+        self.dist_dict = self.load_dist_dict()
+        self.max_dist = self.df['dist'].max()
+        self.generators = PYRAMINX_GENERATORS
+        self._num_nbrs = ngenerators
+        self.cyc_size = 2
+
+        self._done_states = []
+        self._done_states_set = set(self._done_states)
+        for idx, row in self.df[self.df['dist'] == 0].iterrows():
+            self._done_states.append(self._get_state(row))
+
+        self._generators = []
+        d1_elements = self.df[self.df['dist'] == 1]
+        for idx, row in d1_elements[:ngenerators].iterrows():
+            self._generators.append(self._get_state(row))
+            if len(self._generators) == ngenerators:
+                break
+
+    def load_dist_dict(self):
+        return {self._get_state(row): row['dist'] for s, row in self.df.iterrows()}
+
+    def load_df(self, fname):
+        df = pd.read_csv(fname, header=None, dtype={0: str, 1: str, 2: int})
+        df.columns = ['ostr', 'pstr', 'dist']
+        return df
+
+    def nbrs(self, state):
+        ot, pt = state
+        return [px_wreath_mul(o, p, ot, pt, self.cyc_size) for (o, p) in self.generators]
+
+    def step(self, state, action_idx):
+        g = self.generators[action_idx]
+        ot, pt = state
+        return px_wreath_mul(g[0], g[1], ot, pt, self.cyc_size)
+
+    def _get_state(self, df_row):
+        return (str2tup(df_row['ostr']), str2tup(df_row['pstr']))
 
 def test():
     fname = '/home/hopan/github/idastar/s8_dists_red.txt'

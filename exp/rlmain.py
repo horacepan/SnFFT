@@ -63,10 +63,14 @@ def main(args):
     target = None
     seen_states = set()
     perms = list(permutations(tuple(i for i in range(1, 9))))
+
+    perm_df = PermDF(args.fname, 6)
     if 'onestart' in args.fname:
         env = S8Puzzle(onestart=True)
+        env = perm_df
     else:
         env = S8Puzzle(onestart=False)
+        env = perm_df
 
     if args.irreps:
         try:
@@ -105,8 +109,9 @@ def main(args):
         target.to(device)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
-        policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, env.num_nbrs(), layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(to_tensor([perms[0]]).numel(), args.nhid, env.num_nbrs(), layers=args.layers, to_tensor=to_tensor, std=args.std)
+        nactions = 6
+        policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
     elif args.model == 'onehotlinear':
         policy = LinearPolicy(64, 1, to_tensor, std=args.std)
@@ -115,7 +120,7 @@ def main(args):
         target.to(device)
 
     policy.to(device)
-    perm_df = PermDF(args.fname, nbrs)
+    #perm_df = PermDF(args.fname, 6)
     #score, dists, stats = test_model(policy, 1000, 1000, 20, perm_df, env)
     #log.info(f'Prop correct: {score} | dists: {dists} | stats: {stats}')
     if not args.skipvalidate:
@@ -134,6 +139,7 @@ def main(args):
     updates = 0
     bps = 0
     losses = []
+    nactions = 6
 
     for e in range(args.epochs + 1):
         states = env.random_walk(args.eplen)
@@ -142,7 +148,7 @@ def main(args):
         #for _i in range(args.eplen + 10):
             _nbrs = env.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
-                move = env.random_move()
+                move = np.random.choice(6) # TODO
             elif hasattr(policy, 'nout') and policy.nout == 1:
                 nbrs_tens = to_tensor(_nbrs).to(device)
                 move = policy.forward(nbrs_tens).argmax().item()
@@ -163,18 +169,18 @@ def main(args):
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
                 if args.model == 'linear':
                     if args.doubleq:
-                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
+                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, nactions)
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
-                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx)
+                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, nactions).gather(1, opt_nbr_idx)
                     else:
-                        opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs())
+                        opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, nactions)
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * opt_nbr_vals + (br * (-bd)))
                                       #args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model == 'dvn':
                     nxt_nbr_vals = target.forward_tup(bs_nbrs) # already nin -> hidden
-                    opt_nbr_idx = nxt_nbr_vals.reshape(-1, env.num_nbrs()).max(dim=1, keepdim=True)[1]
-                    opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                    opt_nbr_idx = nxt_nbr_vals.reshape(-1, nactions).max(dim=1, keepdim=True)[1]
+                    opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, nactions).gather(1, opt_nbr_idx).detach()
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * opt_nbr_vals + (br * (-bd)))
                                       #args.discount * opt_nbr_vals + (br * bd))
@@ -213,7 +219,7 @@ def main(args):
                 swr.add_scalar('prop_correct/overall', benchmark, e)
                 for ii in range(1, 9):
                     # sample some number of states that far away, evaluate them, report mean + std
-                    rand_states = perm_df.random_state(ii, 100)
+                    rand_states = perm_df.random_states(ii, 100)
                     rand_tensors = to_tensor(rand_states)
                     vals = policy.forward(rand_tensors)
                     swr.add_scalar(f'values/median/states_{ii}', vals.median().item(), e)

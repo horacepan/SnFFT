@@ -66,7 +66,7 @@ def val_model(policy, max_dist, perm_df, cnt=100, env=None):
     return nsolves
 
 def test_model(policy, scramble_len, cnt, max_moves, perm_df, env):
-    states = [env.random_element(scramble_len) for _ in range(cnt)]
+    states = [env.random_state(scramble_len) for _ in range(cnt)]
     return _test_model(policy, states, max_moves, perm_df, env)
 
 def _test_model(policy, states, max_moves, perm_df, env):

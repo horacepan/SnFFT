@@ -167,6 +167,13 @@ class IrrepLinreg(nn.Module):
         self.wr.data.add_(r_noise)
         self.wi.data.add_(i_noise)
 
+    def rescale_weights(self):
+        z = max(self.wr.data.norm().item(), self.wi.data.norm().item())
+        self.wr.data = self.wr.data / z
+        self.wi.data = self.wi.data / z
+        self.br.data = self.br.data / z
+        self.bi.data = self.bi.data / z
+
 def value(model, env, state):
     xr, xi = env.irrep_inv(state)
     yr, yi = model.forward(xr, xi)

@@ -13,7 +13,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from perm_df import PermDF
-from wreath_df import WreathDF
+#from wreath_df import WreathDF
+from perm_df import WreathDF as WreathDF2
 from yor_dataset import YorConverter
 from rlmodels import MLP, LinearPolicy
 from fourier_policy import FourierPolicyCG
@@ -86,7 +87,7 @@ def main(args):
         target.to(device)
 
     policy.to(device)
-    wreath_df = WreathDF(args.pyrfname)
+    wreath_df = WreathDF2(args.pyrfname, 8, cyc_size=2)
     score, dists, stats = test_model(policy, 1000, 1000, 20, wreath_df, env)
     log.info(f'Prop correct: {score} | dists: {dists} | stats: {stats}')
 
