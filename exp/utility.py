@@ -13,6 +13,8 @@ S8_GENERATORS = [
     (1, 2, 3, 4, 7, 5, 8, 6),
     (1, 2, 3, 4, 6, 8, 5, 7)
 ]
+ONEHOT_PERM_CACHE = {}
+ONEHOT_OTUP_CACHE = {}
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def str_val_results(dic):
@@ -149,33 +151,58 @@ def check_memory(verbose=True):
         print("Consumed {:.2f}mb memory".format(mem))
     return mem
 
-def perm_onehot(perms):
-    '''
-    List of tuples (perms) to create one hot vector tensor for
-    '''
+def onehot_perm_single(perm, cache=True):
+    if perm in ONEHOT_PERM_CACHE:
+        return ONEHOT_PERM_CACHE[perm]
+
+    d = len(perm)
+    tensor = torch.zeros(d * d)
+    k = 0
+
+    for i in perm:
+        tensor[k + i - 1] = 1
+        k += d
+
+    if cache:
+        ONEHOT_PERM_CACHE[perm] = tensor
+    return tensor
+
+def perm_onehot(perms, cache=True):
     d = len(perms[0])
     tensor = torch.zeros(len(perms), d * d)
     k = 0
 
     for idx in range(len(perms)):
         perm = perms[idx]
-        k = 0
-        for i in perm:
-            tensor[idx, i + k - 1] = 1
-            k += d
+        tensor[idx, :] = onehot_perm_single(perm, cache)
 
     return tensor.to(device)
 
+def onehot_otup_single(otup, cyc_size, cache=True):
+    if otup in ONEHOT_OTUP_CACHE:
+        return ONEHOT_OTUP_CACHE[otup, cyc_size]
+
+    n = len(otup)
+    tensor = torch.zeros(n * cyc_size)
+    k = 0
+
+    for o in otup:
+        tensor[k + o - 1] = 1
+        k += cyc_size
+
+    if cache:
+        ONEHOT_OTUP_CACHE[otup, cyc_size] = tensor
+
+    return tensor
+
 def wreath_onehot(wtups, wcyc):
     otups, ptups = zip(*wtups)
-    n = len(perm_tups[0])
-    perm_part = perm_onehot(perm_tups)
+    n = len(otups[0])
+    perm_part = perm_onehot(ptups)
     or_part = torch.zeros(len(otups), wcyc * n)
+
     for idx, otup in enumerate(otups):
-        k = 0
-        for ori in otups:
-            tensor[idx, ori + k] = 1
-            k += wcyc
+        or_part[idx, :] = onehot_otup_single(otup)
 
     return torch.cat([or_part, perm_part], dim=1)
 

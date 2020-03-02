@@ -61,7 +61,8 @@ def main(args):
     irreps = eval(args.irreps)
 
     if args.convert == 'onehot':
-        to_tensor = wreath_onehot
+        # TODO: this incredibly pretty hacky
+        to_tensor = lambda g: wreath_onehot(g, env.cyc_size)
     elif args.convert == 'irrep':
         to_tensor = None
     else:
@@ -82,8 +83,8 @@ def main(args):
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
         ident = env.start_states()[0]
-        policy = MLP(to_tensor([ident], env.cyc_size).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(to_tensor([ident], env.cyc_size).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        policy = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
 
     policy.to(device)
