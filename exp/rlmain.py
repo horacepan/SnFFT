@@ -143,9 +143,7 @@ def main(args):
 
     for e in range(args.epochs + 1):
         states = env.random_walk(args.eplen)
-        #state = env.random_walk(args.eplen)[-1]
         for state in states:
-        #for _i in range(args.eplen + 10):
             _nbrs = env.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
                 move = np.random.choice(6) # TODO
@@ -156,8 +154,6 @@ def main(args):
                 move = policy.forward(to_tensor([state])).argmax().item()
             next_state = _nbrs[move]
 
-            # reward is pretty flexible though
-            #done = int(env.is_done(next_state))
             done = 1 if (env.is_done(state)) else -1
             reward = get_reward(done)
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)

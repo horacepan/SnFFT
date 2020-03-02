@@ -122,7 +122,7 @@ def main(args):
         for state in states:
             _nbrs = perm_df.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
-                move = np.random.choice(perm_df.num_nbrs)
+                move = np.random.choice(nactions)
             elif hasattr(policy, 'nout') and policy.nout == 1:
                 nbrs_tens = to_tensor(_nbrs).to(device)
                 move = policy.forward(nbrs_tens).argmax().item()
@@ -147,6 +147,7 @@ def main(args):
                     else:
                         nbr_eval = policy.forward_tup(bs_nbrs).reshape(-1, nactions)
                         opt_nbr_vals, idx = nbr_eval.max(dim=1, keepdim=True)
+                        opt_nbr_vals = opt_nbr_vals.detach()
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * opt_nbr_vals + (br * (-bd)))
                                       #args.discount * (1 - bd) * opt_nbr_vals + br)
