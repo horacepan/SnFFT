@@ -47,6 +47,10 @@ class FourierPolicyTorch(nn.Module):
         else:
             self.pdict = pdict
 
+    @property
+    def nout(self):
+        return 1
+
     def to_irrep(self, gtup):
         '''
         Loop over irreps -> cat the irrep (via the yor dicts) -> reshape

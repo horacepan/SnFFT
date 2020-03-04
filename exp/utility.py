@@ -29,6 +29,15 @@ def px_mult(p1, p2):
 def nbrs(p):
     return [px_mult(g, p) for g in S8_GENERATORS]
 
+def log_grad_norms(sum_writer, policy, epoch):
+    for name, weight in policy.named_parameters():
+        norm = pgrad.norm().item()
+        _max = pgrad.max().item()
+        _min = pgrad.max().item()
+        sum_writer.add_scalar(f'grad/norm/{name}', norm, epoch)
+        sum_writer.add_scalar(f'grad/max/{name}', _max, epoch)
+        sum_writer.add_scalar(f'grad/min/{name}', _min, epoch)
+
 def can_solve(state, policy, max_moves, env, perm_df=None):
     '''
     state: tuple
@@ -40,8 +49,14 @@ def can_solve(state, policy, max_moves, env, perm_df=None):
     curr_state = state
     for _ in range(max_moves):
         visited[curr_state] = visited.get(curr_state, 0) + 1
-        neighbors = env.nbrs(curr_state)
-        opt_move = policy.opt_move_tup(neighbors)
+        if hasattr(policy, 'nout') and policy.nout == 1:
+            neighbors = env.nbrs(curr_state)
+            opt_move = policy.opt_move_tup(neighbors)
+        elif hasattr(policy, 'nout') and policy.nout > 1: # dqn
+            policy.opt_move(curr_state)
+        else:
+            raise Exception('Dont know how to evaluate policys opt move')
+
         curr_state = env.step(curr_state, opt_move)
         if env.is_done(curr_state) or perm_df.distance(curr_state) == 1:
             return True

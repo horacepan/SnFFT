@@ -16,7 +16,7 @@ from perm_df import PermDF
 from yor_dataset import YorConverter
 from rlmodels import MLP, LinearPolicy
 from fourier_policy import FourierPolicyCG
-from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, can_solve, val_model, test_model, test_all_states
+from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, can_solve, val_model, test_model, test_all_states, log_grad_norms
 from s8puzzle import S8Puzzle
 from logger import get_logger
 from tensorboardX import SummaryWriter
@@ -31,9 +31,8 @@ def get_exp_rate(epoch, explore_epochs, min_exp):
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def get_reward(done):
-    return -1
     if done:
-        return 0
+        return 1
     else:
         return -1
 def full_benchmark(policy, perm_df, env, log):
@@ -48,7 +47,7 @@ def full_benchmark(policy, perm_df, env, log):
 
 def main(args):
     log = get_logger(args.logfile, stdout=args.stdout, tofile=args.savelog)
-    sumdir = os.path.join(f'./logs/nb_summary/{args.notes}')
+    sumdir = os.path.join(f'./logs/nb_summary2/{args.notes}')
     if not os.path.exists(sumdir):
         os.makedirs(sumdir)
 
@@ -113,11 +112,6 @@ def main(args):
         policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target.to(device)
-    elif args.model == 'onehotlinear':
-        policy = LinearPolicy(64, 1, to_tensor, std=args.std)
-        target = LinearPolicy(64, 1, to_tensor, std=args.std)
-        log.info('Using onehot linear policy')
-        target.to(device)
 
     policy.to(device)
     #perm_df = PermDF(args.fname, 6)
@@ -140,6 +134,7 @@ def main(args):
     bps = 0
     losses = []
     nactions = 6
+    dist_vals = {i: [] for i in range(0, 10)}
 
     for e in range(args.epochs + 1):
         states = env.random_walk(args.eplen)
@@ -154,7 +149,7 @@ def main(args):
                 move = policy.forward(to_tensor([state])).argmax().item()
             next_state = _nbrs[move]
 
-            done = 1 if (env.is_done(state)) else -1
+            done = 1 if (env.is_done(state)) else 0
             reward = get_reward(done)
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
@@ -167,32 +162,35 @@ def main(args):
                     if args.doubleq:
                         all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, nactions)
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
-                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, nactions).gather(1, opt_nbr_idx)
+                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, nactions).gather(1, opt_nbr_idx).detach()
                     else:
                         opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, nactions)
+
                     loss = F.mse_loss(policy.forward(bs),
-                                      args.discount * opt_nbr_vals + (br * (-bd)))
-                                      #args.discount * (1 - bd) * opt_nbr_vals + br)
+                                      args.discount * opt_nbr_vals + br)
                 elif args.model ==  'dqn':
                     # get q(s, a), and q(s_next, best_action)
                     curr_vals = policy.forward_tup(bs_tups) # n x nactions
                     qsa = curr_vals.gather(1, ba.long())
 
                     nxt_vals = policy.forward_tup(bns_tups).detach() # already nin -> hidden
-                    nxt_actions = target.forward_tup(bns_tups).argmax(dim=1, keepdim=True).detach()
+                    nxt_actions = policy.forward_tup(bns_tups).argmax(dim=1, keepdim=True).detach()
                     qsan = nxt_vals.gather(1, nxt_actions)
                     loss = F.mse_loss(qsa, qsan)
 
                 loss.backward()
                 losses.append(loss.item())
+                if args.lognorms and bps % args.normiters == 0:
+                    log_grad_norms(swr, policy, e)
                 optim.step()
                 bps += 1
                 if args.savelog:
                     swr.add_scalar('loss', loss.item(), bps)
 
-            #if e % 2000 == 0 and e > 0:
-            #    for ii in range(0, 9):
-            #        print(policy.forward_tup(perm_df.random_states(ii, 100)).mean())
+        #if e % 200 == 0:
+        #    for ii in range(0, 9):
+        #        ii_val = policy.forward_tup(perm_df.random_states(ii, 100)).mean().item()
+        #        dist_vals[ii].append(ii_val)
 
         seen_states.update(states)
         if e % args.qqupdate == 0 and e > 0 and target:
@@ -227,7 +225,7 @@ def main(args):
         if args.loadfhats:
             return {'prop_correct': benchmark, 'val_results': val_results}
             exit()
-
+    pdb.set_trace()
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
     if not args.skipvalidate:
@@ -265,5 +263,7 @@ if __name__ == '__main__':
     parser.add_argument('--fhatdir', type=str, default='/local/hopan/s8cube/fourier/')
     parser.add_argument('--loadfhats', action='store_true', default=False)
     parser.add_argument('--benchlog', type=int, default=5000)
+    parser.add_argument('--lognorms', action='store_true', default=False)
+    parser.add_argument('--normiters', type=int, default=500)
     args = parser.parse_args()
     main(args)
