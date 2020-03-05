@@ -134,14 +134,16 @@ def main(args):
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
-                # do I still learn anything while
+                bs_nbrs_tens = to_tensor(bs_nbrs)
                 if args.model == 'linear' or args.model == 'onehotlinear':
                     if args.doubleq:
                         all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
                         opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     else:
-                        opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, env.num_nbrs())
+                        nbr_vals = policy.forward(bs_nbrs_tens).detach().reshape(-1, nnbrs)
+                        opt_nbr_vals, idx = nbr_vals.max(dim=1, keepdim=True)
+
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * opt_nbr_vals + br)
                                       #args.discount * (1 - bd) * opt_nbr_vals + br)

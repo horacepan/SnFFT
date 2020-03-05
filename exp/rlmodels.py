@@ -34,11 +34,6 @@ class MLP(nn.Module):
         tens_nbrs = self.to_tensor(tup_nbrs).to(device)
         return self.forward(tens_nbrs).argmax()
 
-    def eval_opt_nbr(self, nbr_tups, nnbrs):
-        nbr_eval = self.forward_tup(nbr_tups).reshape(-1, nnbrs)
-        max_nbr_vals, idx = nbr_eval.max(dim=1, keepdim=True)
-        return max_nbr_vals.detach(), idx
-
     def reset_parameters(self, std=0.1):
         for p in self.parameters():
             p.data.normal_(std=std)
@@ -60,11 +55,6 @@ class LinearPolicy(nn.Module):
     def opt_move_tup(self, tup_nbrs):
         tens_nbrs = self.to_tensor(tup_nbrs).to(device)
         return self.forward(tens_nbrs).argmax()
-
-    def eval_opt_nbr(self, nbr_tups, nnbrs):
-        nbr_eval = self.forward_tup(nbr_tups).reshape(-1, nnbrs)
-        max_nbr_vals, idx = nbr_eval.max(dim=1, keepdim=True)
-        return max_nbr_vals.detach(), idx
 
     def reset_parameters(self, std=0.1):
         for p in self.parameters():

@@ -6,23 +6,19 @@ import random
 from itertools import permutations
 import argparse
 
-import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from perm_df import PermDF
-from yor_dataset import YorConverter
-from rlmodels import MLP, LinearPolicy
+from rlmodels import MLP
 from fourier_policy import FourierPolicyCG
-from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, can_solve, val_model, test_model, test_all_states, log_grad_norms
-from s8puzzle import S8Puzzle
+from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms
 from logger import get_logger
 from tensorboardX import SummaryWriter
 import sys
 sys.path.append('../')
-from utils import check_memory
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -30,17 +26,7 @@ def get_exp_rate(epoch, explore_epochs, min_exp):
     #return 1
     return max(min_exp, 1 - (epoch / explore_epochs))
 
-def get_reward(done):
-    if done:
-        return 1
-    else:
-        return -1
 def full_benchmark(policy, perm_df, env, log):
-    #sp_results = val_model(policy, perm_df.max_dist, perm_df, cnt=100, env=env)
-    #benchmark, val_results = perm_df.prop_corr_by_dist(policy)
-    #str_dict = str_val_results(val_results)
-    #log.info('Prop correct moves: {:.3f} | Prop correct by distance: {}'.format(benchmark, str_dict))
-    #log.info('Solve results: {}'.format(sp_results))
     score, dists, stats = test_all_states(policy, 20, perm_df, env)
     log.info(f'Full Prop solves: {score:.4f} | stats: {str_val_results(stats)} | dists: {dists}')
     return {'score': score, 'dists': dists, 'stats': stats}
@@ -66,24 +52,12 @@ def main(args):
     perms = list(permutations(tuple(i for i in range(1, 9))))
 
     perm_df = PermDF(args.fname, 6)
-    if 'onestart' in args.fname:
-        env = S8Puzzle(onestart=True)
-        env = perm_df
-    else:
-        env = S8Puzzle(onestart=False)
-        env = perm_df
-
-    if args.irreps:
-        try:
-            irreps = eval(args.irreps)
-        except:
-            log.info('Invalid input for args.irreps: {}'.format(args.irreps))
-            exit()
+    env = perm_df
+    irreps = eval(args.irreps)
 
     if args.convert == 'onehot':
         to_tensor = perm_onehot
     elif args.convert == 'irrep':
-        #to_tensor = YorConverter(irreps, args.yorprefix, perms)
         to_tensor = None
     else:
         raise Exception('Must pass in convert string')
@@ -91,7 +65,7 @@ def main(args):
     if args.model == 'linear':
         log.info(f'Policy using Irreps: {irreps}')
         policy = FourierPolicyCG(irreps, args.yorprefix, perms)
-        target = FourierPolicyCG(irreps, args.yorprefix, perms, yors=policy.yors, pdict=policy.pdict)
+        target = FourierPolicyCG(irreps, args.yorprefix, perms, rep_dict=policy.rep_dict, pdict=policy.pdict)
         to_tensor = lambda g: policy.to_tensor(g)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
@@ -112,15 +86,12 @@ def main(args):
         res, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, env)
 
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
-    log.info('Memory used pre replay creation: {:.2f}mb'.format(check_memory(False)))
     replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
-    log.info('Memory used post replay creation: {:.2f}mb'.format(check_memory(False)))
 
     max_benchmark = 0
     icnt = 0
     updates = 0
     bps = 0
-    losses = []
     nactions = 6
     dist_vals = {i: [] for i in range(0, 10)}
 
@@ -138,36 +109,40 @@ def main(args):
             next_state = _nbrs[move]
 
             done = 1 if (env.is_done(state)) else 0
-            reward = get_reward(done)
+            reward = 1 if done else -1
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
             icnt += 1
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
-                bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
                 if args.model == 'linear' or args.model == 'dvn':
+                    bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
+                    bs_nbrs_tens = to_tensor(bs_nbrs)
                     if args.doubleq:
-                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, nactions)
-                        opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
-                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, nactions).gather(1, opt_nbr_idx).detach()
+                        all_nbr_vals = policy.forward(bs_nbrs_tens).reshape(-1, nactions)
+                        _, opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)
+                        opt_nbr_vals = target.forward(bs_nbrs_tens).reshape(-1, nactions).gather(1, opt_nbr_idx).detach()
                     else:
-                        opt_nbr_vals, idx = policy.eval_opt_nbr(bs_nbrs, nactions)
+                        nbr_vals = policy.forward(bs_nbrs_tens).detach().reshape(-1, nnbrs)
+                        opt_nbr_vals, idx = nbr_vals.max(dim=1, keepdim=True)
 
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * opt_nbr_vals + br)
                 elif args.model ==  'dqn':
-                    # get q(s, a), and q(s_next, best_action)
-                    curr_vals = policy.forward(bs) # n x nactions
-                    qsa = curr_vals.gather(1, ba.long())
+                    qs = policy.forward(bs)
+                    qsa = qs.gather(1, ba.long())
 
-                    nxt_vals = policy.forward_tup(bns_tups).detach() # already nin -> hidden
-                    nxt_actions = policy.forward_tup(bns_tups).argmax(dim=1, keepdim=True).detach()
-                    qsan = nxt_vals.gather(1, nxt_actions)
-                    loss = F.mse_loss(qsa, qsan)
+                    # if double q, get the next value from target using online's actions
+                    if args.doubleq:
+                        nxt_vals, nxt_actions = policy.forward(bns).detach().max(dim=1, keepdim=True)
+                        qsan = target.forward(bns).gather(1, nxt_actions).detach()
+                    else:
+                        nxt_vals, nxt_actions = target.forward(bns).detach().max(dim=1, keepdim=True)
+                        qsan = policy.forward(bns).gather(1, nxt_actions).detach()
+                    loss = F.mse_loss(qsa, args.discount * qsan + br)
 
                 loss.backward()
-                losses.append(loss.item())
                 if args.lognorms and bps % args.normiters == 0:
                     log_grad_norms(swr, policy, e)
                 optim.step()
@@ -181,16 +156,13 @@ def main(args):
         #        dist_vals[ii].append(ii_val)
 
         seen_states.update(states)
-        if e % args.qqupdate == 0 and e > 0 and target:
+        if e % args.targetupdate == 0 and e > 0:
             update_params(target, policy)
             updates += 1
 
         if e % args.logiters == 0:
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
-            if args.loadfhats:
-                benchmark, val_results = perm_df.prop_corr_by_dist(policy)
-            else:
-                benchmark, val_results = perm_df.prop_corr_by_dist(policy)
+            benchmark, val_results = perm_df.prop_corr_by_dist(policy)
             max_benchmark = max(max_benchmark, benchmark)
             str_dict = str_val_results(val_results)
             if args.savelog:
@@ -205,14 +177,10 @@ def main(args):
                     swr.add_scalar(f'values_std/states_{ii}', vals.std().item(), e)
                     swr.add_scalar(f'prop_correct/dist_{ii}', val_results[ii], e)
 
-            log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
-                     f'exp rate: {exp_rate:.2f} | val: {str_dict} | Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
+            log.info(f'Epoch {e:5d} | exp rate: {exp_rate:.2f} | val: {str_dict} | ' + \
+                     f'Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
         if e % args.benchlog == 0 and e > 0:
             bench_results = full_benchmark(policy, perm_df, env, log)
-
-        if args.loadfhats:
-            return {'prop_correct': benchmark, 'val_results': val_results}
-            exit()
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
@@ -242,7 +210,7 @@ if __name__ == '__main__':
 
     # model params
     parser.add_argument('--convert', type=str, default='irrep')
-    parser.add_argument('--irreps', type=str, default='')
+    parser.add_argument('--irreps', type=str, default='[]')
     parser.add_argument('--model', type=str, default='linear')
     parser.add_argument('--nhid', type=int, default=32)
     parser.add_argument('--layers', type=int, default=2)
@@ -259,6 +227,6 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.005)
     parser.add_argument('--discount', type=float, default=1)
     parser.add_argument('--doubleq', action='store_true', default=False)
-    parser.add_argument('--qqupdate', type=int, default=100)
+    parser.add_argument('--targetupdate', type=int, default=100)
     args = parser.parse_args()
     main(args)
