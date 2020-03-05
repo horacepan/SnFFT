@@ -37,7 +37,6 @@ class FourierPolicyTorch(nn.Module):
         total_size = sum([d ** 2 for d in self.irrep_sizes.values()])
         self.w_torch = nn.Parameter(torch.rand(total_size + 1, 1))
         self.w_torch.data.normal_(std=0.2)
-        self.optmin = False
 
         # this is pretty hacky but used to avoid loading up all the irreps when we have
         # a target network
@@ -111,13 +110,14 @@ class FourierPolicyTorch(nn.Module):
             idx += size * size
         return fhats
 
-    def set_fhats(self, fhat_dict):
-        self.optmin = True
+    def set_fhats(self, fhatdir, irreps):
+        fhat_dict = {irr: np.load('{}/{}.npy'.format(fhatdir, irr)) for irr in irreps}
         idx = 0
         for irr, fhat in fhat_dict.items():
             dsq = fhat.shape[0] ** 2
             coeff = fhat.shape[0] ** 0.5
-            mat = torch.from_numpy(fhat).float().reshape(-1, 1) * coeff
+            # load negative fourier so that the argmax points you to lower distance states
+            mat = torch.from_numpy(-fhat).float().reshape(-1, 1) * coeff
             self.w_torch.data[idx: idx + dsq] = mat
             idx += dsq
 
@@ -162,8 +162,6 @@ class FourierPolicyTorch(nn.Module):
 
     def opt_move(self, x):
         output = self.forward(x)
-        if self.optmin:
-            return output.argmin()
         return output.argmax()
 
     def opt_move_tup(self, tup_nbrs):

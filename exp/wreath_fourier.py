@@ -38,7 +38,6 @@ class WreathPolicy(nn.Module):
             self.pdict = self.cache_perms()
 
         self.w_torch = nn.Parameter(torch.rand(self.get_dim() + 1, 1))
-        self.optmin = False
 
     def get_dim(self):
         n = sum(self.irreps[0][0])
@@ -101,8 +100,6 @@ class WreathPolicy(nn.Module):
 
     def opt_move(self, x):
         output= self.forward(x)
-        if self.optmin:
-            return output.argmin()
         return output.argmax()
 
     def opt_move_tup(self, tup_nbrs):

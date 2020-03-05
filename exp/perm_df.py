@@ -113,11 +113,7 @@ class PermDF:
         opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
 
         pol_vals = self.nbr_values(state, policy)
-
-        if hasattr(policy, 'optmin') and policy.optmin:
-            opt_pol_nbr = min(pol_vals, key=pol_vals.get)
-        else:
-            opt_pol_nbr = max(pol_vals, key=pol_vals.get)
+        opt_pol_nbr = max(pol_vals, key=pol_vals.get)
         return opt_pol_nbr in opt_nbrs
 
     def nbr_values(self, state, func=None):

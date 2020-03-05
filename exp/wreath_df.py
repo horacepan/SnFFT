@@ -45,7 +45,6 @@ class WreathDF:
         self.dist_dict = self.load_dist_dict()
         self.nbr_func = w_nbrs
         self.max_dist = self.df['dist'].max()
-        self.optmin = True # when the true dists is used as a function, best move is the min dist
 
     def load_df(self, fname):
         st = time.time()
@@ -124,11 +123,7 @@ class WreathDF:
         opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
 
         pol_vals = self.nbr_values(gtup, policy)
-
-        if policy.optmin:
-            opt_pol_nbr = min(pol_vals, key=pol_vals.get)
-        else:
-            opt_pol_nbr = max(pol_vals, key=pol_vals.get)
+        opt_pol_nbr = max(pol_vals, key=pol_vals.get)
         return opt_pol_nbr in opt_nbrs
 
     def prop_corr_by_dist(self, policy):

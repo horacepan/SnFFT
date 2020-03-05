@@ -91,31 +91,20 @@ def main(args):
     if args.model == 'linear':
         log.info(f'Policy using Irreps: {irreps}')
         policy = FourierPolicyCG(irreps, args.yorprefix, perms)
+        target = FourierPolicyCG(irreps, args.yorprefix, perms, yors=policy.yors, pdict=policy.pdict)
         to_tensor = lambda g: policy.to_tensor(g)
-        # TODO: make agnostic to args.model
-        if args.loadfhats:
-            fhat_dict = {irr: np.load('{}/{}.npy'.format(
-                                              args.fhatdir, irr))
-                         for irr in irreps}
-            policy.set_fhats(fhat_dict)
-            log.info('Policy using loaded fhats!')
-
-        if args.doubleq:
-            target = FourierPolicyCG(irreps, args.yorprefix, perms, yors=policy.yors, pdict=policy.pdict)
-            target.to(device)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
         policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target.to(device)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
         nactions = 6
         policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target.to(device)
 
     policy.to(device)
+    target.to(device)
     if not args.skipvalidate:
         baseline_corr, corr_dict = perm_df.benchmark()
         log.info('Baseline correct: {}'.format(baseline_corr))
