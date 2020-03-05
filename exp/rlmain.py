@@ -50,6 +50,8 @@ def main(args):
     sumdir = os.path.join(f'./logs/nb_summary2/{args.notes}')
     if not os.path.exists(sumdir):
         os.makedirs(sumdir)
+    else:
+        sumdir += ('_' + str(random.random())[2:4])
 
     if args.savelog:
         swr = SummaryWriter(sumdir)
@@ -114,9 +116,6 @@ def main(args):
         target.to(device)
 
     policy.to(device)
-    #perm_df = PermDF(args.fname, 6)
-    #score, dists, stats = test_model(policy, 1000, 1000, 20, perm_df, env)
-    #log.info(f'Prop correct: {score} | dists: {dists} | stats: {stats}')
     if not args.skipvalidate:
         baseline_corr, corr_dict = perm_df.benchmark()
         log.info('Baseline correct: {}'.format(baseline_corr))
@@ -170,7 +169,7 @@ def main(args):
                                       args.discount * opt_nbr_vals + br)
                 elif args.model ==  'dqn':
                     # get q(s, a), and q(s_next, best_action)
-                    curr_vals = policy.forward_tup(bs_tups) # n x nactions
+                    curr_vals = policy.forward(bs) # n x nactions
                     qsa = curr_vals.gather(1, ba.long())
 
                     nxt_vals = policy.forward_tup(bns_tups).detach() # already nin -> hidden
@@ -212,9 +211,9 @@ def main(args):
                     rand_states = perm_df.random_states(ii, 100)
                     rand_tensors = to_tensor(rand_states)
                     vals = policy.forward(rand_tensors)
-                    swr.add_scalar(f'values/median/states_{ii}', vals.median().item(), e)
-                    swr.add_scalar(f'values/mean/states_{ii}', vals.mean().item(), e)
-                    swr.add_scalar(f'values/std/states_{ii}', vals.std().item(), e)
+                    swr.add_scalar(f'values_median/states_{ii}', vals.median().item(), e)
+                    swr.add_scalar(f'values_mean/states_{ii}', vals.mean().item(), e)
+                    swr.add_scalar(f'values_std/states_{ii}', vals.std().item(), e)
                     swr.add_scalar(f'prop_correct/dist_{ii}', val_results[ii], e)
 
             log.info(f'Epoch {e:5d} | Last {args.logiters} loss: {np.mean(losses[-args.logiters:]):.3f} | ' + \
@@ -225,7 +224,7 @@ def main(args):
         if args.loadfhats:
             return {'prop_correct': benchmark, 'val_results': val_results}
             exit()
-    pdb.set_trace()
+
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
     if not args.skipvalidate:
@@ -235,35 +234,42 @@ def main(args):
 if __name__ == '__main__':
     _prefix = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'
     parser = argparse.ArgumentParser()
+    # log params
     parser.add_argument('--stdout', action='store_true', default=True)
     parser.add_argument('--savelog', action='store_true', default=False)
     parser.add_argument('--logfile', type=str, default=f'./logs/rl/{time.time()}.log')
+    parser.add_argument('--skipvalidate', action='store_true', default=False)
+    parser.add_argument('--benchlog', type=int, default=5000)
+    parser.add_argument('--lognorms', action='store_true', default=False)
+    parser.add_argument('--normiters', type=int, default=10)
+    parser.add_argument('--logiters', type=int, default=1000)
+
+    # file related params
+    parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
+    parser.add_argument('--fhatdir', type=str, default='/local/hopan/s8cube/fourier/')
+    parser.add_argument('--yorprefix', type=str, default=f'/{_prefix}/hopan/irreps/s_8/')
+    parser.add_argument('--loadfhats', action='store_true', default=False)
+    parser.add_argument('--notes', type=str, default='')
+
+    # model params
+    parser.add_argument('--convert', type=str, default='irrep')
+    parser.add_argument('--irreps', type=str, default='')
+    parser.add_argument('--model', type=str, default='linear')
+    parser.add_argument('--nhid', type=int, default=32)
+    parser.add_argument('--layers', type=int, default=2)
+    parser.add_argument('--std', type=float, default=0.1)
+
+    # hparams
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=float, default=0.05)
     parser.add_argument('--update', type=int, default=50)
-    parser.add_argument('--logiters', type=int, default=1000)
     parser.add_argument('--minibatch', type=int, default=128)
-    parser.add_argument('--convert', type=str, default='irrep')
-    parser.add_argument('--yorprefix', type=str, default=f'/{_prefix}/hopan/irreps/s_8/')
     parser.add_argument('--lr', type=float, default=0.005)
     parser.add_argument('--discount', type=float, default=1)
-    parser.add_argument('--model', type=str, default='linear')
-    parser.add_argument('--layers', type=int, default=2)
-    parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
-    parser.add_argument('--notes', type=str, default='')
     parser.add_argument('--doubleq', action='store_true', default=False)
     parser.add_argument('--qqupdate', type=int, default=100)
-    parser.add_argument('--std', type=float, default=0.1)
-    parser.add_argument('--irreps', type=str, default='')
-    parser.add_argument('--nhid', type=int, default=32)
-    parser.add_argument('--skipvalidate', action='store_true', default=False)
-    parser.add_argument('--fhatdir', type=str, default='/local/hopan/s8cube/fourier/')
-    parser.add_argument('--loadfhats', action='store_true', default=False)
-    parser.add_argument('--benchlog', type=int, default=5000)
-    parser.add_argument('--lognorms', action='store_true', default=False)
-    parser.add_argument('--normiters', type=int, default=500)
     args = parser.parse_args()
     main(args)

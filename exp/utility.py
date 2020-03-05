@@ -31,12 +31,13 @@ def nbrs(p):
 
 def log_grad_norms(sum_writer, policy, epoch):
     for name, weight in policy.named_parameters():
-        norm = pgrad.norm().item()
-        _max = pgrad.max().item()
-        _min = pgrad.max().item()
-        sum_writer.add_scalar(f'grad/norm/{name}', norm, epoch)
-        sum_writer.add_scalar(f'grad/max/{name}', _max, epoch)
-        sum_writer.add_scalar(f'grad/min/{name}', _min, epoch)
+        norm = weight.grad.norm().item()
+        _max = weight.grad.max().item()
+        _min = weight.grad.max().item()
+        sum_writer.add_scalar(f'grad_norm/{name}', norm, epoch)
+        sum_writer.add_scalar(f'weight_norm/{name}', weight.norm().item(), epoch)
+        #sum_writer.add_scalar(f'grad_max/{name}', _max, epoch)
+        #sum_writer.add_scalar(f'grad_min/{name}', _min, epoch)
 
 def can_solve(state, policy, max_moves, env, perm_df=None):
     '''
