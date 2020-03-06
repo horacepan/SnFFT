@@ -38,6 +38,15 @@ class MLP(nn.Module):
         for p in self.parameters():
             p.data.normal_(std=std)
 
+    def opt_move_tup(self, gtup):
+        x = self.to_tensor(gtup).to(device)
+        output = self.forward(x)
+        return output.argmax().item()
+
+    def opt_move(self, x):
+        output = self.forward(x)
+        return output.argmax().item()
+
 class LinearPolicy(nn.Module):
     def __init__(self, nin, nout, to_tensor=None, std=0.1):
         super(LinearPolicy, self).__init__()

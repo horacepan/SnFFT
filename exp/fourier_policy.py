@@ -19,7 +19,7 @@ class FourierPolicyTorch(nn.Module):
     '''
     Wrapper class for fourier linear regression
     '''
-    def __init__(self, irreps, yor_prefix, perms, rep_dict=None, pdict=None):
+    def __init__(self, irreps, yor_prefix, perms, rep_dict=None, pdict=None, std=0.1):
         '''
         irreps: list of tuples
         yor_prefix: directory containing yor pickles
@@ -36,7 +36,7 @@ class FourierPolicyTorch(nn.Module):
 
         total_size = sum([d ** 2 for d in self.irrep_sizes.values()])
         self.w_torch = nn.Parameter(torch.rand(total_size + 1, 1))
-        self.w_torch.data.normal_(std=0.2)
+        self.w_torch.data.normal_(std=std)
 
         # this is pretty hacky but used to avoid loading up all the irreps when we have
         # a target network
@@ -142,7 +142,7 @@ class FourierPolicyTorch(nn.Module):
 
         pdict = {}
         for p in perms:
-            pdict[p] = torch.from_numpy(self.to_irrep(p)).float()
+            pdict[p] = torch.from_numpy(self.to_irrep(p)).float().to(device)
         self.pdict = pdict
         return pdict
 

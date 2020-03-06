@@ -23,7 +23,6 @@ sys.path.append('../')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
-    #return 1
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def full_benchmark(policy, perm_df, env, log):
@@ -47,7 +46,6 @@ def main(args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
-    target = None
     seen_states = set()
     perms = list(permutations(tuple(i for i in range(1, 9))))
 
@@ -100,7 +98,7 @@ def main(args):
         for state in states:
             _nbrs = env.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
-                move = np.random.choice(6) # TODO
+                move = np.random.choice(nactions) # TODO
             elif hasattr(policy, 'nout') and policy.nout == 1:
                 nbrs_tens = to_tensor(_nbrs).to(device)
                 move = policy.forward(nbrs_tens).argmax().item()
@@ -116,7 +114,7 @@ def main(args):
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
-                if args.model == 'linear' or args.model == 'dvn':
+                if args.model == 'linear':
                     bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
                     bs_nbrs_tens = to_tensor(bs_nbrs)
                     if args.doubleq:
@@ -124,23 +122,32 @@ def main(args):
                         _, opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)
                         opt_nbr_vals = target.forward(bs_nbrs_tens).reshape(-1, nactions).gather(1, opt_nbr_idx).detach()
                     else:
-                        nbr_vals = policy.forward(bs_nbrs_tens).detach().reshape(-1, nnbrs)
+                        nbr_vals = policy.forward(bs_nbrs_tens).detach().reshape(-1, nactions)
                         opt_nbr_vals, idx = nbr_vals.max(dim=1, keepdim=True)
 
-                    loss = F.mse_loss(policy.forward(bs),
-                                      args.discount * opt_nbr_vals + br)
+                    if args.use_done:
+                        loss = F.mse_loss(policy.forward(bs),
+                                          args.discount * (1 - bd) * opt_nbr_vals + br)
+                    else:
+                        loss = F.mse_loss(policy.forward(bs),
+                                          args.discount * opt_nbr_vals + br)
+                elif args.model == 'dvn':
+                    bs_nbrs_tens = to_tensor([n for tup in bs_tups for n in env.nbrs(tup)])
+                    opt_nbr_vals, _ = target.forward(bs_nbrs_tens).reshape(-1, nactions).max(dim=1, keepdim=True)
+
+                    if args.use_done:
+                        loss = F.mse_loss(policy.forward(bs),
+                                          args.discount * (1 - bd) * opt_nbr_vals.detach() + br)
+                    else:
+                        loss = F.mse_loss(policy.forward(bs),
+                                          args.discount * opt_nbr_vals.detach() + br)
                 elif args.model ==  'dqn':
                     qs = policy.forward(bs)
                     qsa = qs.gather(1, ba.long())
 
-                    # if double q, get the next value from target using online's actions
-                    if args.doubleq:
-                        nxt_vals, nxt_actions = policy.forward(bns).detach().max(dim=1, keepdim=True)
-                        qsan = target.forward(bns).gather(1, nxt_actions).detach()
-                    else:
-                        nxt_vals, nxt_actions = target.forward(bns).detach().max(dim=1, keepdim=True)
-                        qsan = policy.forward(bns).gather(1, nxt_actions).detach()
-                    loss = F.mse_loss(qsa, args.discount * qsan + br)
+                    nxt_vals, nxt_actions = target.forward(bns).detach().max(dim=1, keepdim=True)
+                    qsan = target.forward(bns).gather(1, nxt_actions).detach()
+                    loss = F.mse_loss(qsa, args.discount * (1 - bd) * qsan + br)
 
                 loss.backward()
                 if args.lognorms and bps % args.normiters == 0:
@@ -150,10 +157,13 @@ def main(args):
                 if args.savelog:
                     swr.add_scalar('loss', loss.item(), bps)
 
-        #if e % 200 == 0:
-        #    for ii in range(0, 9):
-        #        ii_val = policy.forward_tup(perm_df.random_states(ii, 100)).mean().item()
-        #        dist_vals[ii].append(ii_val)
+        if e % 10000 == 0:
+            vals = {}
+            for ii in range(0, 9):
+                ii_val = policy.forward(to_tensor(perm_df.random_states(ii, 100))).mean().item()
+                vals[ii] = ii_val
+                #dist_vals[ii].append(ii_val)
+            log.info('      Dist vals: {}'.format(str_val_results(vals)))
 
         seen_states.update(states)
         if e % args.targetupdate == 0 and e > 0:
@@ -228,5 +238,7 @@ if __name__ == '__main__':
     parser.add_argument('--discount', type=float, default=1)
     parser.add_argument('--doubleq', action='store_true', default=False)
     parser.add_argument('--targetupdate', type=int, default=100)
+
+    parser.add_argument('--use_done', action='store_true', default=False)
     args = parser.parse_args()
     main(args)

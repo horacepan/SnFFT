@@ -31,7 +31,6 @@ from utils import check_memory
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
-    return 1
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def get_reward(done):

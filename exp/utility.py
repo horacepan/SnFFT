@@ -54,7 +54,7 @@ def can_solve(state, policy, max_moves, env, perm_df=None):
             neighbors = env.nbrs(curr_state)
             opt_move = policy.opt_move_tup(neighbors)
         elif hasattr(policy, 'nout') and policy.nout > 1: # dqn
-            policy.opt_move(curr_state)
+            opt_move = policy.opt_move_tup([curr_state])
         else:
             raise Exception('Dont know how to evaluate policys opt move')
 

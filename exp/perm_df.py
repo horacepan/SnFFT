@@ -26,9 +26,9 @@ class PermDF:
         self._num_nbrs = ngenerators
 
         self._done_states = []
-        self._done_states_set = set(self._done_states)
         for idx, row in self.df[self.df['dist'] == 0].iterrows():
             self._done_states.append(self._get_state(row))
+        self._done_states_set = set(self._done_states)
 
         self._generators = []
         d1_elements = self.df[self.df['dist'] == 1]
