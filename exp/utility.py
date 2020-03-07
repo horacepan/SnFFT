@@ -39,7 +39,7 @@ def log_grad_norms(sum_writer, policy, epoch):
         #sum_writer.add_scalar(f'grad_max/{name}', _max, epoch)
         #sum_writer.add_scalar(f'grad_min/{name}', _min, epoch)
 
-def can_solve(state, policy, max_moves, env, perm_df=None):
+def can_solve(state, policy, max_moves, perm_df, to_tensor):
     '''
     state: tuple
     policy: nn policy
@@ -51,20 +51,22 @@ def can_solve(state, policy, max_moves, env, perm_df=None):
     for _ in range(max_moves):
         visited[curr_state] = visited.get(curr_state, 0) + 1
         if hasattr(policy, 'nout') and policy.nout == 1:
-            neighbors = env.nbrs(curr_state)
-            opt_move = policy.opt_move_tup(neighbors)
+            neighbors = perm_df.nbrs(curr_state)
+            nbr_tens = to_tensor(neighbors)
+            opt_move = policy.forward(nbr_tens).argmax().item()
         elif hasattr(policy, 'nout') and policy.nout > 1: # dqn
-            opt_move = policy.opt_move_tup([curr_state])
+            st_tens = to_tensor(curr_state)
+            opt_move = policy.forward(st_tens).argmax().item()
         else:
             raise Exception('Dont know how to evaluate policys opt move')
 
-        curr_state = env.step(curr_state, opt_move)
-        if env.is_done(curr_state) or perm_df.distance(curr_state) == 1:
+        curr_state = perm_df.step(curr_state, opt_move)
+        if perm_df.is_done(curr_state) or perm_df.distance(curr_state) == 1:
             return True
 
     return False
 
-def val_model(policy, max_dist, perm_df, cnt=100, env=None):
+def val_model(policy, max_dist, perm_df, to_tensor, cnt=100):
     '''
     To validate a model need:
     - transition function
@@ -79,20 +81,20 @@ def val_model(policy, max_dist, perm_df, cnt=100, env=None):
         d_states = perm_df.random_states(dist, cnt)
         solves = 0
         for state in d_states:
-            solves += can_solve(state, policy, 15, env, perm_df)
+            solves += can_solve(state, policy, 15, perm_df, to_tensor)
         nsolves[dist] = solves / len(d_states)
     return nsolves
 
-def test_model(policy, scramble_len, cnt, max_moves, perm_df, env):
-    states = [env.random_state(scramble_len) for _ in range(cnt)]
-    return _test_model(policy, states, max_moves, perm_df, env)
+def test_model(policy, scramble_len, cnt, max_moves, perm_df, to_tensor):
+    states = [perm_df.random_state(scramble_len) for _ in range(cnt)]
+    return _test_model(policy, states, max_moves, perm_df, to_tensor)
 
-def _test_model(policy, states, max_moves, perm_df, env):
+def _test_model(policy, states, max_moves, perm_df, to_tensor):
     stats =  {}
     dists = {}
     solves = 0
     for s in states:
-        solved =  int(can_solve(s, policy, max_moves, env, perm_df))
+        solved =  int(can_solve(s, policy, max_moves, perm_df, to_tensor))
         solves += solved
         d = perm_df.distance(s) # should probably avoid this sort of api
         dists[d] = dists.get(d, 0) + 1
@@ -103,9 +105,9 @@ def _test_model(policy, states, max_moves, perm_df, env):
 
     return solves/len(states), dists, stats
 
-def test_all_states(policy, max_moves, perm_df, env):
+def test_all_states(policy, max_moves, perm_df, to_tensor):
     states = perm_df.all_states()
-    return _test_model(policy, states, max_moves, perm_df, env)
+    return _test_model(policy, states, max_moves, perm_df, to_tensor)
 
 def s8_move(ptup, gidx):
     '''

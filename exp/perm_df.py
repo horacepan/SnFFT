@@ -86,10 +86,10 @@ class PermDF:
         probs = []
         for p in states:
             dist = self.dist_dict[p]
-            true_vals = self.nbr_values(p)
-            opt_val = min(true_vals.values())
-            opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
-            prob_opt_step = len(opt_nbrs) / len(true_vals)
+            true_nbr_vals = {n: self.distance(n) for n in self.nbrs(p)}
+            opt_val = min(true_nbr_vals.values())
+            opt_nbrs = [n for n, dist in true_nbr_vals.items() if dist == opt_val]
+            prob_opt_step = len(opt_nbrs) / len(true_nbr_vals)
             probs.append(prob_opt_step)
 
             if dist not in dist_probs:
@@ -103,56 +103,54 @@ class PermDF:
 
         return np.mean(probs), res_prob
 
-    def opt_nbr(self, state, policy):
+    def opt_nbr(self, state, policy, to_tensor):
         '''
         See if the optimal move given by the policy coicides with the trust
         dist's optimal move
         '''
-        true_vals = self.nbr_values(state)
-        opt_val = min(true_vals.values())
-        opt_nbrs = [n for n, dist in true_vals.items() if dist == opt_val]
+        true_nbr_vals = {n: self.distance(n) for n in self.nbr_values(state, policy, to_tensor)}
+        opt_val = min(true_nbr_vals.values())
+        opt_nbrs = [n for n, dist in true_nbr_vals.items() if dist == opt_val]
 
-        pol_vals = self.nbr_values(state, policy)
+        pol_vals = self.nbr_values(state, policy, to_tensor)
         opt_pol_nbr = max(pol_vals, key=pol_vals.get)
         return opt_pol_nbr in opt_nbrs
 
-    def nbr_values(self, state, func=None):
-        if func is None:
-            func = self.distance
-
+    def nbr_values(self, state, policy, to_tensor):
         vals = {}
         state_nbrs = self.nbrs(state)
 
-        if hasattr(func, 'forward_tup') and hasattr(func, 'nout') and func.nout > 1:
-            res = func.forward_tup([state])
+        if hasattr(policy, 'nout') and policy.nout > 1:
+            tens = to_tensor([state])
+            res = policy.forward(tens)
             for i, ntup in enumerate(state_nbrs):
                 vals[ntup] = res[0, i].item()
             return vals
+        elif hasattr(policy, 'nout') and policy.nout == 1:
+            for ntup in state_nbrs:
+                tens = to_tensor([ntup])
+                vals[ntup] = policy.forward(tens).item()
+            return vals
+        else:
+            raise Exception('Cant compute nbr vals')
+            return vals
 
-        for ntup in state_nbrs:
-            if hasattr(func, 'forward_tup'):
-                vals[ntup] = func.forward_tup([ntup]).item()
-            else:
-                vals[ntup] = func(ntup)
-
-        return vals
-
-    def benchmark_policy(self, states, policy):
+    def benchmark_policy(self, states, policy, to_tensor):
         if len(states) == 0:
             return -1
 
         with torch.no_grad():
             ncorrect = 0
             for g in states:
-                ncorrect += int(self.opt_nbr(g, policy))
+                ncorrect += int(self.opt_nbr(g, policy, to_tensor))
             return ncorrect / len(states)
 
-    def prop_corr_by_dist(self, policy):
+    def prop_corr_by_dist(self, policy, to_tensor):
         dist_corr = {}
         dist_cnts = {}
         ncorrect = 0
         for state, dist in self.dist_dict.items():
-            correct = int(self.opt_nbr(state, policy))
+            correct = int(self.opt_nbr(state, policy, to_tensor))
             ncorrect += correct
             dist_corr[dist] = dist_corr.get(dist, 0) + correct
             dist_cnts[dist] = dist_cnts.get(dist, 0) + 1
@@ -172,9 +170,6 @@ class PermDF:
             subdf = subdf.sample(n=cnt)
         perms = [self._get_state(row) for _, row in subdf.iterrows()]
         return perms
-
-    def forward_tup(self, state):
-        return self.dist_dict[state]
 
     def all_states(self):
         return self.dist_dict.keys()
@@ -226,12 +221,25 @@ class WreathDF(PermDF):
     def _get_state(self, df_row):
         return (str2tup(df_row['ostr']), str2tup(df_row['pstr']))
 
+'''
+def get_group_df(group_name, df_name):
+    if group_name == 's8_sym':
+        return PermDF()
+    elif group_name == 's8_onestart':
+        return PermDF()
+    elif group_name == 'pyraminx':
+        return WreathDF(fname)
+    elif group_name == 'cube2'
+        return WreathDF(fname, )
+'''
+
 def test():
     fname = '/home/hopan/github/idastar/s8_dists_red.txt'
     eye = (1, 2, 3, 4, 5, 6, 7, 8)
     pdf = PermDF(fname, 6)
     policy = lambda g: g.index(8)
-    print(pdf.opt_nbr(eye, policy))
+    to_tensor = None
+    print(pdf.opt_nbr(eye, policy, to_tensor))
 
 if __name__ == '__main__':
     test()

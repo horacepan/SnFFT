@@ -64,30 +64,15 @@ class FourierPolicyTorch(nn.Module):
         irrep_vecs.append(np.array([[1]]))
         return np.hstack(irrep_vecs)
 
-    def nbr_deltas(self, gtups, nbrs_func):
-        '''
-        gtups: list of tuples to evaluate values of neighbors of
-        Returns: torch tensor of shape n x {num_nbrs}
-        '''
-        gnbrs = []
-        len_nbrs = len(nbrs_func(gtups[0]))
-
-        for g in gtups:
-            for n in nbrs_func(g):
-                gnbrs.append(n)
-
-        y_nbrs = self.forward_tup(gnbrs).reshape(-1, len_nbrs)
-        y_pred = self.forward_tup(gtups)
-        return y_pred, y_nbrs
-
-    def compute_loss(self, perms, y):
+    def compute_loss(self, perms, y, to_tensor):
         '''
         perms: list of tuples
         y: numpy array
         Returns the MSE loss between the model evaluated on the given perms vs y
         '''
         with torch.no_grad():
-            y_pred = self.forward_tup(perms)
+            ptens = to_tensor(perms)
+            y_pred = self.forward(ptens)
             y = torch.from_numpy(y).float().reshape(y_pred.shape).to(device)
             return nn.functional.mse_loss(y_pred, y).item()
 
@@ -146,22 +131,9 @@ class FourierPolicyTorch(nn.Module):
         self.pdict = pdict
         return pdict
 
-    def forward_tup(self, perms):
-        X_th = self.to_tensor(perms).to(device)
-        y_pred = X_th.matmul(self.w_torch)
-        return y_pred
-
     def load(self, fname):
         weight = torch.load(fname)
         self.w_torch = nn.Parameter(weight)
-
-    def opt_move(self, x):
-        output = self.forward(x)
-        return output.argmax()
-
-    def opt_move_tup(self, tup_nbrs):
-        tens_nbrs = self.to_tensor(tup_nbrs).to(device)
-        return self.opt_move(tens_nbrs)
 
 class FourierPolicyCG(FourierPolicyTorch):
     def __init__(self, irreps, prefix, perms, rep_dict=None, pdict=None, docg=False):

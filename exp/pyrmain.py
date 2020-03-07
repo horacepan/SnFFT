@@ -136,9 +136,10 @@ def main(args):
                 bs_nbrs_tens = to_tensor(bs_nbrs)
                 if args.model == 'linear' or args.model == 'onehotlinear':
                     if args.doubleq:
-                        all_nbr_vals = policy.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs())
+                        bs_nbrs_tens = to_tensor(bs_nbrs)
+                        all_nbr_vals = policy.forward_(bs_nbrs_tens).reshape(-1, env.num_nbrs())
                         opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)[1]
-                        opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                        opt_nbr_vals = target.forward(bs_nbrs_tens).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     else:
                         nbr_vals = policy.forward(bs_nbrs_tens).detach().reshape(-1, nnbrs)
                         opt_nbr_vals, idx = nbr_vals.max(dim=1, keepdim=True)
@@ -147,19 +148,19 @@ def main(args):
                                       args.discount * opt_nbr_vals + br)
                                       #args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model == 'dvn':
-                    nxt_nbr_vals = target.forward_tup(bs_nbrs) # already nin -> hidden
+                    nxt_nbr_vals = target.forward(bs_nbrs_tens) # already nin -> hidden
                     opt_nbr_idx = nxt_nbr_vals.reshape(-1, env.num_nbrs()).max(dim=1, keepdim=True)[1]
-                    opt_nbr_vals = target.forward_tup(bs_nbrs).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
+                    opt_nbr_vals = target.forward(bs_nbrs_tens).reshape(-1, env.num_nbrs()).gather(1, opt_nbr_idx).detach()
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * opt_nbr_vals + br)
                                       #args.discount * (1 - bd) * opt_nbr_vals + br)
                 elif args.model ==  'dqn':
                     # get q(s, a), and q(s_next, best_action)
-                    curr_vals = policy.forward_tup(bs_tups) # n x nactions
+                    curr_vals = policy.forward(bs) # n x nactions
                     qsa = curr_vals.gather(1, ba.long())
 
-                    nxt_vals = policy.forward_tup(bns_tups).detach() # already nin -> hidden
-                    nxt_actions = target.forward_tup(bns_tups).argmax(dim=1, keepdim=True).detach()
+                    nxt_vals = policy.forward(to_tensor(bns_tups)).detach() # already nin -> hidden
+                    nxt_actions = target.forward(bns).argmax(dim=1, keepdim=True).detach()
                     qsan = nxt_vals.gather(1, nxt_actions)
                     loss = F.mse_loss(qsa, qsan)
 

@@ -1,4 +1,3 @@
-from GPUtil import showUtilization as gpu_usage
 import pdb
 import os
 import time
@@ -11,22 +10,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from perm_df import PermDF
+from perm_df import PermDF, get_group_df
 from rlmodels import MLP
 from fourier_policy import FourierPolicyCG
-from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms
+from utility import perm_onehot, ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms
 from logger import get_logger
 from tensorboardX import SummaryWriter
 import sys
-sys.path.append('../')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
     return max(min_exp, 1 - (epoch / explore_epochs))
 
-def full_benchmark(policy, perm_df, to_tensor, log):
-    score, dists, stats = test_all_states(policy, 20, perm_df, to_tensor)
+def full_benchmark(policy, perm_df, env, log):
+    score, dists, stats = test_all_states(policy, 20, perm_df, env)
     log.info(f'Full Prop solves: {score:.4f} | stats: {str_val_results(stats)} | dists: {dists}')
     return {'score': score, 'dists': dists, 'stats': stats}
 
@@ -49,20 +47,16 @@ def main(args):
     seen_states = set()
     perms = list(permutations(tuple(i for i in range(1, 9))))
 
-    perm_df = PermDF(args.fname, 6)
+    group_df = get_group_df(args.fname) #PermDF(args.fname, 6)
+    converter = get_converter(args.convert, irreps=eval(args.irreps)) # need to know the irreps
+    env = group_df
+    nactions = group_df.num_nbrs
     irreps = eval(args.irreps)
-
-    if args.convert == 'onehot':
-        to_tensor = perm_onehot
-    elif args.convert == 'irrep':
-        to_tensor = None
-    else:
-        raise Exception('Must pass in convert string')
 
     if args.model == 'linear':
         log.info(f'Policy using Irreps: {irreps}')
-        policy = FourierPolicyCG(irreps, args.yorprefix, perms)
-        target = FourierPolicyCG(irreps, args.yorprefix, perms, rep_dict=policy.rep_dict, pdict=policy.pdict)
+        policy = LinearPolicy(irreps, args.yorprefix, perms)
+        target = LinearPolicy(irreps, args.yorprefix, perms, rep_dict=policy.rep_dict, pdict=policy.pdict)
         to_tensor = lambda g: policy.to_tensor(g)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
@@ -70,17 +64,16 @@ def main(args):
         target = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
-        nactions = 6
         policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
 
     policy.to(device)
     target.to(device)
     if not args.skipvalidate:
-        baseline_corr, corr_dict = perm_df.benchmark()
+        baseline_corr, corr_dict = group_df.benchmark()
         log.info('Baseline correct: {}'.format(baseline_corr))
         log.info(str_val_results(corr_dict))
-        res, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, to_tensor)
+        res, distr, distr_stats = test_model(policy, 1000, 1000, 20, group_df, env)
 
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
@@ -89,13 +82,12 @@ def main(args):
     icnt = 0
     updates = 0
     bps = 0
-    nactions = 6
     dist_vals = {i: [] for i in range(0, 10)}
 
     for e in range(args.epochs + 1):
-        states = perm_df.random_walk(args.eplen)
+        states = env.random_walk(args.eplen)
         for state in states:
-            _nbrs = perm_df.nbrs(state)
+            _nbrs = env.nbrs(state)
             if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
                 move = np.random.choice(nactions) # TODO
             elif hasattr(policy, 'nout') and policy.nout == 1:
@@ -105,7 +97,7 @@ def main(args):
                 move = policy.forward(to_tensor([state])).argmax().item()
             next_state = _nbrs[move]
 
-            done = 1 if (perm_df.is_done(state)) else 0
+            done = 1 if (env.is_done(state)) else 0
             reward = 1 if done else -1
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
 
@@ -114,7 +106,7 @@ def main(args):
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
                 if args.model == 'linear':
-                    bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
+                    bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
                     bs_nbrs_tens = to_tensor(bs_nbrs)
                     if args.doubleq:
                         all_nbr_vals = policy.forward(bs_nbrs_tens).reshape(-1, nactions)
@@ -131,7 +123,7 @@ def main(args):
                         loss = F.mse_loss(policy.forward(bs),
                                           args.discount * opt_nbr_vals + br)
                 elif args.model == 'dvn':
-                    bs_nbrs_tens = to_tensor([n for tup in bs_tups for n in perm_df.nbrs(tup)])
+                    bs_nbrs_tens = to_tensor([n for tup in bs_tups for n in env.nbrs(tup)])
                     opt_nbr_vals, _ = target.forward(bs_nbrs_tens).reshape(-1, nactions).max(dim=1, keepdim=True)
 
                     if args.use_done:
@@ -159,9 +151,9 @@ def main(args):
         if e % 10000 == 0:
             vals = {}
             for ii in range(0, 9):
-                ii_val = policy.forward(to_tensor(perm_df.random_states(ii, 100))).mean().item()
+                tens = to_tensor(group_df.random_states(ii, 100))
+                ii_val = policy.forward(tens).mean().item()
                 vals[ii] = ii_val
-                #dist_vals[ii].append(ii_val)
             log.info('      Dist vals: {}'.format(str_val_results(vals)))
 
         seen_states.update(states)
@@ -171,14 +163,14 @@ def main(args):
 
         if e % args.logiters == 0:
             exp_rate = get_exp_rate(e, args.epochs / 2, args.minexp)
-            benchmark, val_results = perm_df.prop_corr_by_dist(policy, to_tensor)
+            benchmark, val_results = group_df.prop_corr_by_dist(policy)
             max_benchmark = max(max_benchmark, benchmark)
             str_dict = str_val_results(val_results)
             if args.savelog:
                 swr.add_scalar('prop_correct/overall', benchmark, e)
                 for ii in range(1, 9):
                     # sample some number of states that far away, evaluate them, report mean + std
-                    rand_states = perm_df.random_states(ii, 100)
+                    rand_states = group_df.random_states(ii, 100)
                     rand_tensors = to_tensor(rand_states)
                     vals = policy.forward(rand_tensors)
                     swr.add_scalar(f'values_median/states_{ii}', vals.median().item(), e)
@@ -189,13 +181,12 @@ def main(args):
             log.info(f'Epoch {e:5d} | exp rate: {exp_rate:.2f} | val: {str_dict} | ' + \
                      f'Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
         if e % args.benchlog == 0 and e > 0:
-            bench_results = full_benchmark(policy, perm_df, to_tensor, log)
+            bench_results = full_benchmark(policy, group_df, env, log)
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
-    if not args.skipvalidate:
-        bench_results = full_benchmark(policy, perm_df, to_tensor, log)
-        return bench_results
+    bench_results = full_benchmark(policy, group_df, env, log)
+    return bench_results
 
 if __name__ == '__main__':
     _prefix = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'
@@ -212,6 +203,7 @@ if __name__ == '__main__':
 
     # file related params
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
+    parser.add_argument('--puzzname', type=str, default='s8_sym')
     parser.add_argument('--fhatdir', type=str, default='/local/hopan/s8cube/fourier/')
     parser.add_argument('--yorprefix', type=str, default=f'/{_prefix}/hopan/irreps/s_8/')
     parser.add_argument('--loadfhats', action='store_true', default=False)
