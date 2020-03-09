@@ -33,7 +33,7 @@ def full_benchmark(policy, perm_df, to_tensor, log):
 def main(args):
     log = get_logger(args.logfile, stdout=args.stdout, tofile=args.savelog)
     sumdir = os.path.join(f'./logs/nb_summary2/{args.notes}')
-    if not os.path.exists(sumdir):
+    if not os.path.exists(sumdir) and args.savelog:
         os.makedirs(sumdir)
     else:
         sumdir += ('_' + str(random.random())[2:4])
@@ -91,55 +91,76 @@ def main(args):
     bps = 0
     nactions = 6
     dist_vals = {i: [] for i in range(0, 10)}
+    update_pairs = {}
+    exp_moves = 0
+    pol_moves = 0
+    pushes = {}
+    npushes = 0
 
     for e in range(args.epochs + 1):
         states = perm_df.random_walk(args.eplen)
-        for state in states:
+        #for state in states:
+        for idx, state in enumerate(states):
             _nbrs = perm_df.nbrs(state)
-            if random.random() < get_exp_rate(e, args.epochs / 2, args.minexp):
+            if random.random() < get_exp_rate(e, args.epochs * args.exp_prop, args.minexp):
+                exp_moves += 1
                 move = np.random.choice(nactions) # TODO
             elif hasattr(policy, 'nout') and policy.nout == 1:
                 nbrs_tens = to_tensor(_nbrs).to(device)
                 move = policy.forward(nbrs_tens).argmax().item()
+                pol_moves += 1
             elif hasattr(policy, 'nout') and policy.nout > 1:
                 move = policy.forward(to_tensor([state])).argmax().item()
             next_state = _nbrs[move]
 
             done = 1 if (perm_df.is_done(state)) else 0
             reward = 1 if done else -1
-            replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
+            #replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
+            if done:
+                replay.push(to_tensor([next_state]), 0, to_tensor([state]), -1, 0, next_state, state, idx + 1)
+            replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state, idx+1)
+            d1 = perm_df.distance(state)
+            d2 = perm_df.distance(next_state)
+            pushes[(d1, d2, done)] = pushes.get((d1, d2, done), 0) + 1
+            npushes += 1
 
             icnt += 1
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
-                bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
+                bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.minibatch, device)
+                #for b1, b2 in zip(bs_tups, bns_tups):
                 if args.model == 'linear':
-                    bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
-                    bs_nbrs_tens = to_tensor(bs_nbrs)
-                    if args.doubleq:
-                        all_nbr_vals = policy.forward(bs_nbrs_tens).reshape(-1, nactions)
-                        _, opt_nbr_idx = all_nbr_vals.max(dim=1, keepdim=True)
-                        opt_nbr_vals = target.forward(bs_nbrs_tens).reshape(-1, nactions).gather(1, opt_nbr_idx).detach()
-                    else:
-                        nbr_vals = policy.forward(bs_nbrs_tens).detach().reshape(-1, nactions)
-                        opt_nbr_vals, idx = nbr_vals.max(dim=1, keepdim=True)
+                    #bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
+                    #bs_nbrs_tens = to_tensor(bs_nbrs)
+                    opt_nbr_vals = target.forward(bns).detach()
+
+                    for index, nbr_tup in enumerate(bns_tups):
+                        d1 = perm_df.distance(bs_tups[index])
+                        d2 = perm_df.distance(nbr_tup)
+                        don = bd[index].item()
+                        update_pairs[d1, d2, don]  = update_pairs.get((d1, d2, don), 0) + 1
 
                     if args.use_done:
                         loss = F.mse_loss(policy.forward(bs),
                                           args.discount * (1 - bd) * opt_nbr_vals + br)
                     else:
-                        loss = F.mse_loss(policy.forward(bs),
-                                          args.discount * opt_nbr_vals + br)
+                        y_pred = policy.forward(bs)
+                        y_step = args.discount * opt_nbr_vals + br
+                        if args.scale_dist:
+                            deltas = (y_pred - y_step).pow(2) * (1 / bidx)
+                        else:
+                            deltas = (y_pred - y_step).pow(2)
+                        loss = deltas.sum()
+                        #loss = F.mse_loss(policy.forward(bs),
+                        #                  args.discount * opt_nbr_vals + br)
                 elif args.model == 'dvn':
-                    bs_nbrs_tens = to_tensor([n for tup in bs_tups for n in perm_df.nbrs(tup)])
-                    opt_nbr_vals, _ = target.forward(bs_nbrs_tens).reshape(-1, nactions).max(dim=1, keepdim=True)
-
-                    if args.use_done:
-                        loss = F.mse_loss(policy.forward(bs),
-                                          args.discount * (1 - bd) * opt_nbr_vals.detach() + br)
+                    if args.replay_only:
+                        opt_nbr_vals = target.forward(bns).detach()
                     else:
-                        loss = F.mse_loss(policy.forward(bs),
-                                          args.discount * opt_nbr_vals.detach() + br)
+                        bs_nbrs_tens = to_tensor([n for tup in bs_tups for n in perm_df.nbrs(tup)])
+                        opt_nbr_vals, _ = target.forward(bs_nbrs_tens).reshape(-1, nactions).max(dim=1, keepdim=True)
+                    loss = F.mse_loss(policy.forward(bs),
+                                      args.discount * (1 - bd) * opt_nbr_vals.detach() + br)
                 elif args.model ==  'dqn':
                     qs = policy.forward(bs)
                     qsa = qs.gather(1, ba.long())
@@ -156,14 +177,15 @@ def main(args):
                 if args.savelog:
                     swr.add_scalar('loss', loss.item(), bps)
 
-        if e % 10000 == 0:
+        if e % 1000 == 0:
             vals = {}
             for ii in range(0, 9):
                 ii_val = policy.forward(to_tensor(perm_df.random_states(ii, 100))).mean().item()
                 vals[ii] = ii_val
                 #dist_vals[ii].append(ii_val)
             log.info('      Dist vals: {}'.format(str_val_results(vals)))
-
+        #if e % 2000 == 0 and e > 0:
+        #    log.info('(0, 1, 1) transitions: {} | (1, 0, 0) transitions: {}'.format(update_pairs[(0,1,1)], update_pairs[(1,0,0)]))
         seen_states.update(states)
         if e % args.targetupdate == 0 and e > 0:
             update_params(target, policy)
@@ -235,9 +257,11 @@ if __name__ == '__main__':
     parser.add_argument('--minibatch', type=int, default=128)
     parser.add_argument('--lr', type=float, default=0.005)
     parser.add_argument('--discount', type=float, default=1)
-    parser.add_argument('--doubleq', action='store_true', default=False)
     parser.add_argument('--targetupdate', type=int, default=100)
 
     parser.add_argument('--use_done', action='store_true', default=False)
+    parser.add_argument('--scale_dist', action='store_true', default=False)
+    parser.add_argument('--exp_prop', type=float, default=0.4)
+    parser.add_argument('--replay_only', action='store_true', default=False)
     args = parser.parse_args()
     main(args)

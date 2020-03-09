@@ -49,6 +49,9 @@ def can_solve(state, policy, max_moves, perm_df, to_tensor):
     visited = {}
     curr_state = state
     for _ in range(max_moves):
+        if perm_df.is_done(curr_state) or perm_df.distance(curr_state) == 1:
+            return True
+
         visited[curr_state] = visited.get(curr_state, 0) + 1
         if hasattr(policy, 'nout') and policy.nout == 1:
             neighbors = perm_df.nbrs(curr_state)
@@ -61,8 +64,6 @@ def can_solve(state, policy, max_moves, perm_df, to_tensor):
             raise Exception('Dont know how to evaluate policys opt move')
 
         curr_state = perm_df.step(curr_state, opt_move)
-        if perm_df.is_done(curr_state) or perm_df.distance(curr_state) == 1:
-            return True
 
     return False
 
@@ -81,6 +82,7 @@ def val_model(policy, max_dist, perm_df, to_tensor, cnt=100):
         d_states = perm_df.random_states(dist, cnt)
         solves = 0
         for state in d_states:
+            # TODO: allowable moves should be a param
             solves += can_solve(state, policy, 15, perm_df, to_tensor)
         nsolves[dist] = solves / len(d_states)
     return nsolves
@@ -234,11 +236,13 @@ class ReplayBuffer:
         self.rewards = torch.zeros(capacity, 1)
         self.actions = torch.zeros(capacity, 1)
         self.dones = torch.zeros(capacity, 1)
+        self.idxs = torch.zeros(capacity, 1)
         self.capacity = capacity
         self.filled = 0
         self._idx = 0
 
-    def push(self, state, action, next_state, reward, done, state_tup, next_state_tup):
+    #def push(self, state, action, next_state, reward, done, state_tup, next_state_tup):
+    def push(self, state, action, next_state, reward, done, state_tup, next_state_tup, idx):
         self.states[self._idx] = state
         self.actions[self._idx] = action
         self.next_states[self._idx] = next_state
@@ -247,6 +251,7 @@ class ReplayBuffer:
         self.filled = min(self.capacity, self.filled + 1)
         self.state_tups[self._idx] = state_tup
         self.next_state_tups[self._idx] = next_state_tup
+        self.idxs[self._idx] = idx
         self._idx = (self._idx + 1) % self.capacity
 
     def sample(self, batch_size, device):
@@ -263,7 +268,8 @@ class ReplayBuffer:
         bns = self.next_states[idxs].to(device)
         br = self.rewards[idxs].to(device)
         bd = self.dones[idxs].to(device)
-        return bs, ba, bns, br, bd, tups, next_tups
+        bidx = self.idxs[idxs].to(device)
+        return bs, ba, bns, br, bd, tups, next_tups, bidx
 
 # Source: https://github.com/ikostrikov/pytorch-ddpg-naf/blob/master/ddpg.py#L15
 def update_params(target, source):
