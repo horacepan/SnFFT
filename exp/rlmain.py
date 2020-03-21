@@ -7,14 +7,16 @@ from itertools import permutations
 import argparse
 
 import numpy as np
+import pandas as pd
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from perm_df import PermDF
-from rlmodels import MLP
+from rlmodels import MLP, ResidualBlock, MLPResBlock
 from fourier_policy import FourierPolicyCG
-from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms
+from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms, check_memory
 from logger import get_logger
 from tensorboardX import SummaryWriter
 import sys
@@ -31,12 +33,10 @@ def full_benchmark(policy, perm_df, to_tensor, log):
     return {'score': score, 'dists': dists, 'stats': stats}
 
 def main(args):
-    log = get_logger(args.logfile, stdout=args.stdout, tofile=args.savelog)
-    sumdir = os.path.join(f'./logs/nb_summary2/{args.notes}')
+    log = get_logger(args.logfile, stdout=not args.nostdout, tofile=args.savelog)
+    sumdir = os.path.join(f'./logs/{args.sumdir}/{args.notes}/seed_{args.seed}')
     if not os.path.exists(sumdir) and args.savelog:
         os.makedirs(sumdir)
-    else:
-        sumdir += ('_' + str(random.random())[2:4])
 
     if args.savelog:
         swr = SummaryWriter(sumdir)
@@ -68,6 +68,14 @@ def main(args):
         log.info('Using MLP DVN')
         policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+    elif args.model == 'res':
+        log.info('Using MLP DVN')
+        policy = ResidualBlock(to_tensor([perms[0]]).numel(), args.nhid, nout=1, to_tensor=to_tensor, std=args.std)
+        target = ResidualBlock(to_tensor([perms[0]]).numel(), args.nhid, nout=1, to_tensor=to_tensor, std=args.std)
+    elif args.model == 'mlp_res':
+        log.info('Using MLPRes')
+        policy = MLPResBlock(to_tensor([perms[0]]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
+        target = MLPResBlock(to_tensor([perms[0]]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
         nactions = 6
@@ -96,6 +104,12 @@ def main(args):
     pol_moves = 0
     pushes = {}
     npushes = 0
+
+    save_epochs = []
+    save_prop_corr = []
+    save_solve_corr = []
+    save_seen = []
+    save_updates = []
 
     for e in range(args.epochs + 1):
         states = perm_df.random_walk(args.eplen)
@@ -128,12 +142,12 @@ def main(args):
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
                 bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.minibatch, device)
+                seen_states.update(bs_tups)
                 #for b1, b2 in zip(bs_tups, bns_tups):
                 if args.model == 'linear':
-                    #bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
-                    #bs_nbrs_tens = to_tensor(bs_nbrs)
-                    opt_nbr_vals = target.forward(bns).detach()
-
+                    bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
+                    bs_nbrs_tens = to_tensor(bs_nbrs)
+                    opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).max(dim=1, keepdim=True)
                     for index, nbr_tup in enumerate(bns_tups):
                         d1 = perm_df.distance(bs_tups[index])
                         d2 = perm_df.distance(nbr_tup)
@@ -144,16 +158,9 @@ def main(args):
                         loss = F.mse_loss(policy.forward(bs),
                                           args.discount * (1 - bd) * opt_nbr_vals + br)
                     else:
-                        y_pred = policy.forward(bs)
-                        y_step = args.discount * opt_nbr_vals + br
-                        if args.scale_dist:
-                            deltas = (y_pred - y_step).pow(2) * (1 / bidx)
-                        else:
-                            deltas = (y_pred - y_step).pow(2)
-                        loss = deltas.sum()
-                        #loss = F.mse_loss(policy.forward(bs),
-                        #                  args.discount * opt_nbr_vals + br)
-                elif args.model == 'dvn':
+                        loss = F.mse_loss(policy.forward(bs),
+                                          args.discount * opt_nbr_vals + br)
+                elif args.model == 'dvn' or args.model == 'mlp_res':
                     if args.replay_only:
                         opt_nbr_vals = target.forward(bns).detach()
                     else:
@@ -186,7 +193,7 @@ def main(args):
             log.info('      Dist vals: {}'.format(str_val_results(vals)))
         #if e % 2000 == 0 and e > 0:
         #    log.info('(0, 1, 1) transitions: {} | (1, 0, 0) transitions: {}'.format(update_pairs[(0,1,1)], update_pairs[(1,0,0)]))
-        seen_states.update(states)
+        #seen_states.update(states)
         if e % args.targetupdate == 0 and e > 0:
             update_params(target, policy)
             updates += 1
@@ -208,6 +215,17 @@ def main(args):
                     swr.add_scalar(f'values_std/states_{ii}', vals.std().item(), e)
                     swr.add_scalar(f'prop_correct/dist_{ii}', val_results[ii], e)
 
+                val_corr, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, to_tensor)
+                # save epoch num, prop correct
+                # do a full benchmark??
+                # random scramble 1000 cubes scrambled 1000 moves, prop solved within 20 moves
+                save_epochs.append(e)
+                save_prop_corr.append(benchmark)
+                save_solve_corr.append(val_corr)
+                save_seen.append(len(seen_states))
+                save_updates.append(updates)
+
+
             log.info(f'Epoch {e:5d} | exp rate: {exp_rate:.2f} | val: {str_dict} | ' + \
                      f'Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
         if e % args.benchlog == 0 and e > 0:
@@ -215,19 +233,30 @@ def main(args):
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
-    if not args.skipvalidate:
+    if not args.skipvalidate and args.savelog:
         bench_results = full_benchmark(policy, perm_df, to_tensor, log)
+        stats_dict = {'epochs': save_epochs,
+                      'updates': save_updates,
+                      'prop_corr': save_prop_corr,
+                      'solve_corr': save_solve_corr,
+                      'seen': save_seen,
+                      'updates': save_updates,
+                      'final_benchmark': bench_results}
+
+        json.dump(stats_dict, open(os.path.join(sumdir, 'stats.csv'), 'w'))
+        json.dump(args.__dict__, open(os.path.join(sumdir, 'args.csv'), 'w'))
         return bench_results
 
 if __name__ == '__main__':
     _prefix = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'
     parser = argparse.ArgumentParser()
     # log params
-    parser.add_argument('--stdout', action='store_true', default=True)
+    parser.add_argument('--nostdout', action='store_true', default=False)
+    parser.add_argument('--sumdir', type=str, default='test')
     parser.add_argument('--savelog', action='store_true', default=False)
     parser.add_argument('--logfile', type=str, default=f'./logs/rl/{time.time()}.log')
     parser.add_argument('--skipvalidate', action='store_true', default=False)
-    parser.add_argument('--benchlog', type=int, default=5000)
+    parser.add_argument('--benchlog', type=int, default=50000)
     parser.add_argument('--lognorms', action='store_true', default=False)
     parser.add_argument('--normiters', type=int, default=10)
     parser.add_argument('--logiters', type=int, default=1000)
@@ -252,7 +281,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--capacity', type=int, default=10000)
     parser.add_argument('--eplen', type=int, default=15)
-    parser.add_argument('--minexp', type=float, default=0.05)
+    parser.add_argument('--minexp', type=float, default=1.0)
     parser.add_argument('--update', type=int, default=50)
     parser.add_argument('--minibatch', type=int, default=128)
     parser.add_argument('--lr', type=float, default=0.005)
