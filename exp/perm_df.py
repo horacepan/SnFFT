@@ -190,9 +190,9 @@ class WreathDF(PermDF):
         self.cyc_size = 2
 
         self._done_states = []
-        self._done_states_set = set(self._done_states)
         for idx, row in self.df[self.df['dist'] == 0].iterrows():
             self._done_states.append(self._get_state(row))
+        self._done_states_set = set(self._done_states)
 
         self._generators = []
         d1_elements = self.df[self.df['dist'] == 1]
@@ -234,12 +234,12 @@ def get_group_df(group_name, df_name):
 '''
 
 def test():
-    fname = '/home/hopan/github/idastar/s8_dists_red.txt'
+    #fname = '/home/hopan/github/idastar/s8_dists_red.txt'
+    fname = '/local/hopan/pyraminx/dists.txt'
     eye = (1, 2, 3, 4, 5, 6, 7, 8)
-    pdf = PermDF(fname, 6)
-    policy = lambda g: g.index(8)
+    pdf = WreathDF(fname, 8, 2)
     to_tensor = None
-    print(pdf.opt_nbr(eye, policy, to_tensor))
+    pdb.set_trace()
 
 if __name__ == '__main__':
     test()

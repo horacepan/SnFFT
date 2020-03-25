@@ -222,7 +222,7 @@ def wreath_onehot(wtups, wcyc):
     or_part = torch.zeros(len(otups), wcyc * n)
 
     for idx, otup in enumerate(otups):
-        or_part[idx, :] = onehot_otup_single(otup)
+        or_part[idx, :] = onehot_otup_single(otup, wcyc)
 
     return torch.cat([or_part, perm_part], dim=1)
 

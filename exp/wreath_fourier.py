@@ -38,6 +38,7 @@ class WreathPolicy(nn.Module):
             self.pdict = self.cache_perms()
 
         self.w_torch = nn.Parameter(torch.rand(self.get_dim() + 1, 1))
+        self.nout = 1
 
     def get_dim(self):
         n = sum(self.irreps[0][0])

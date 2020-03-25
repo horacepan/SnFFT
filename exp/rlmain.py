@@ -13,14 +13,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from perm_df import PermDF
+from perm_df import PermDF, WreathDF
 from rlmodels import MLP, ResidualBlock, MLPResBlock
+from wreath_fourier import WreathPolicy
 from fourier_policy import FourierPolicyCG
-from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms, check_memory
+from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms, check_memory, wreath_onehot
 from logger import get_logger
 from tensorboardX import SummaryWriter
 import sys
 sys.path.append('../')
+
+import pyr_irreps
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -48,12 +51,25 @@ def main(args):
     random.seed(args.seed)
     seen_states = set()
     perms = list(permutations(tuple(i for i in range(1, 9))))
+    if args.env == 's8':
+        ident = tuple(range(1, 9))
+        ident = perms[0]
+    elif args.env == 'pyraminx':
+        ident = ((0, 0, 0,0, 0, 0), tuple(range(1, 7)))
+    else:
+        raise Exception(f'{args.env} is not a supported env!')
 
-    perm_df = PermDF(args.fname, 6)
-    irreps = eval(args.irreps)
+    if args.env == 's8':
+        perm_df = PermDF(args.fname, 6)
+        irreps = eval(args.irreps)
+    elif args.env == 'pyraminx':
+        perm_df = WreathDF(args.fname, 8, cyc_size=2)
+        irreps = pyr_irreps.get_topk_irreps(args.num_pyr_irreps)
 
-    if args.convert == 'onehot':
+    if args.convert == 'onehot' and args.env == 's8':
         to_tensor = perm_onehot
+    elif args.convert == 'onehot' and args.env == 'pyraminx':
+        to_tensor = lambda g: wreath_onehot(g, 2)
     elif args.convert == 'irrep':
         to_tensor = None
     else:
@@ -61,26 +77,31 @@ def main(args):
 
     if args.model == 'linear':
         log.info(f'Policy using Irreps: {irreps}')
-        policy = FourierPolicyCG(irreps, args.yorprefix, perms)
-        target = FourierPolicyCG(irreps, args.yorprefix, perms, rep_dict=policy.rep_dict, pdict=policy.pdict)
+        if args.env == 's8':
+            policy = FourierPolicyCG(irreps, args.yorprefix, perms)
+            target = FourierPolicyCG(irreps, args.yorprefix, perms, rep_dict=policy.rep_dict, pdict=policy.pdict)
+        else:
+            policy = WreathPolicy(irreps, args.pyrprefix)
+            target = WreathPolicy(irreps, args.pyrprefix, rep_dict=policy.rep_dict, pdict=policy.pdict)
         to_tensor = lambda g: policy.to_tensor(g)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
-        policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(to_tensor([perms[0]]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        policy = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
     elif args.model == 'res':
         log.info('Using MLP DVN')
-        policy = ResidualBlock(to_tensor([perms[0]]).numel(), args.nhid, nout=1, to_tensor=to_tensor, std=args.std)
-        target = ResidualBlock(to_tensor([perms[0]]).numel(), args.nhid, nout=1, to_tensor=to_tensor, std=args.std)
+        policy = ResidualBlock(to_tensor([ident]).numel(), args.nhid, nout=1, to_tensor=to_tensor, std=args.std)
+        target = ResidualBlock(to_tensor([ident]).numel(), args.nhid, nout=1, to_tensor=to_tensor, std=args.std)
     elif args.model == 'mlp_res':
+
         log.info('Using MLPRes')
-        policy = MLPResBlock(to_tensor([perms[0]]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
-        target = MLPResBlock(to_tensor([perms[0]]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
+        policy = MLPResBlock(to_tensor([ident]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
+        target = MLPResBlock(to_tensor([ident]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
         nactions = 6
-        policy = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
-        target = MLP(to_tensor([perms[0]]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        policy = MLP(to_tensor([ident]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLP(to_tensor([ident]).numel(), args.nhid, nactions, layers=args.layers, to_tensor=to_tensor, std=args.std)
 
     policy.to(device)
     target.to(device)
@@ -91,13 +112,12 @@ def main(args):
         res, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, to_tensor)
 
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
-    replay = ReplayBuffer(to_tensor([perms[0]]).numel(), args.capacity)
-
+    replay = ReplayBuffer(to_tensor([ident]).numel(), args.capacity)
     max_benchmark = 0
     icnt = 0
     updates = 0
     bps = 0
-    nactions = 6
+    nactions = perm_df.num_nbrs
     dist_vals = {i: [] for i in range(0, 10)}
     update_pairs = {}
     exp_moves = 0
@@ -110,6 +130,7 @@ def main(args):
     save_solve_corr = []
     save_seen = []
     save_updates = []
+    check_memory()
 
     for e in range(args.epochs + 1):
         states = perm_df.random_walk(args.eplen)
@@ -161,11 +182,8 @@ def main(args):
                         loss = F.mse_loss(policy.forward(bs),
                                           args.discount * opt_nbr_vals + br)
                 elif args.model == 'dvn' or args.model == 'mlp_res':
-                    if args.replay_only:
-                        opt_nbr_vals = target.forward(bns).detach()
-                    else:
-                        bs_nbrs_tens = to_tensor([n for tup in bs_tups for n in perm_df.nbrs(tup)])
-                        opt_nbr_vals, _ = target.forward(bs_nbrs_tens).reshape(-1, nactions).max(dim=1, keepdim=True)
+                    bs_nbrs_tens = to_tensor([n for tup in bs_tups for n in perm_df.nbrs(tup)])
+                    opt_nbr_vals, _ = target.forward(bs_nbrs_tens).reshape(-1, nactions).max(dim=1, keepdim=True)
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * (1 - bd) * opt_nbr_vals.detach() + br)
                 elif args.model ==  'dqn':
@@ -184,16 +202,14 @@ def main(args):
                 if args.savelog:
                     swr.add_scalar('loss', loss.item(), bps)
 
-        if e % 1000 == 0:
-            vals = {}
-            for ii in range(0, 9):
-                ii_val = policy.forward(to_tensor(perm_df.random_states(ii, 100))).mean().item()
-                vals[ii] = ii_val
-                #dist_vals[ii].append(ii_val)
-            log.info('      Dist vals: {}'.format(str_val_results(vals)))
-        #if e % 2000 == 0 and e > 0:
-        #    log.info('(0, 1, 1) transitions: {} | (1, 0, 0) transitions: {}'.format(update_pairs[(0,1,1)], update_pairs[(1,0,0)]))
-        #seen_states.update(states)
+        #if e % 1000 == 0:
+        #    vals = {}
+        #    for ii in range(0, 9):
+        #        ii_val = policy.forward(to_tensor(perm_df.random_states(ii, 100))).mean().item()
+        #        vals[ii] = ii_val
+        #        #dist_vals[ii].append(ii_val)
+        #    log.info('      Dist vals: {}'.format(str_val_results(vals)))
+
         if e % args.targetupdate == 0 and e > 0:
             update_params(target, policy)
             updates += 1
@@ -216,9 +232,6 @@ def main(args):
                     swr.add_scalar(f'prop_correct/dist_{ii}', val_results[ii], e)
 
                 val_corr, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, to_tensor)
-                # save epoch num, prop correct
-                # do a full benchmark??
-                # random scramble 1000 cubes scrambled 1000 moves, prop solved within 20 moves
                 save_epochs.append(e)
                 save_prop_corr.append(benchmark)
                 save_solve_corr.append(val_corr)
@@ -233,21 +246,24 @@ def main(args):
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
+    bench_results = full_benchmark(policy, perm_df, to_tensor, log)
+    _prop_corr, _ = perm_df.prop_corr_by_dist(policy, to_tensor)
+    bench_results['prop_correct'] = _prop_corr
+    stats_dict = {'epochs': save_epochs,
+                  'updates': save_updates,
+                  'prop_corr': save_prop_corr,
+                  'solve_corr': save_solve_corr,
+                  'seen': save_seen,
+                  'updates': save_updates}
+    bench_results.update(stats_dict)
+
     if not args.skipvalidate and args.savelog:
-        bench_results = full_benchmark(policy, perm_df, to_tensor, log)
-        stats_dict = {'epochs': save_epochs,
-                      'updates': save_updates,
-                      'prop_corr': save_prop_corr,
-                      'solve_corr': save_solve_corr,
-                      'seen': save_seen,
-                      'updates': save_updates,
-                      'final_benchmark': bench_results}
+        json.dump(bench_results, open(os.path.join(sumdir, 'stats.json'), 'w'))
+        json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'))
+    print(f'Done with: {irreps}')
+    return bench_results
 
-        json.dump(stats_dict, open(os.path.join(sumdir, 'stats.csv'), 'w'))
-        json.dump(args.__dict__, open(os.path.join(sumdir, 'args.csv'), 'w'))
-        return bench_results
-
-if __name__ == '__main__':
+def get_args():
     _prefix = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'
     parser = argparse.ArgumentParser()
     # log params
@@ -263,10 +279,10 @@ if __name__ == '__main__':
 
     # file related params
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
-    parser.add_argument('--fhatdir', type=str, default='/local/hopan/s8cube/fourier/')
     parser.add_argument('--yorprefix', type=str, default=f'/{_prefix}/hopan/irreps/s_8/')
-    parser.add_argument('--loadfhats', action='store_true', default=False)
     parser.add_argument('--notes', type=str, default='')
+    parser.add_argument('--env', type=str, default='s8')
+    parser.add_argument('--pyrprefix', type=str, default=f'/{_prefix}/hopan/pyraminx/irreps/')
 
     # model params
     parser.add_argument('--convert', type=str, default='irrep')
@@ -289,8 +305,14 @@ if __name__ == '__main__':
     parser.add_argument('--targetupdate', type=int, default=100)
 
     parser.add_argument('--use_done', action='store_true', default=False)
-    parser.add_argument('--scale_dist', action='store_true', default=False)
     parser.add_argument('--exp_prop', type=float, default=0.4)
-    parser.add_argument('--replay_only', action='store_true', default=False)
+
+    # env specific
+    parser.add_argument('--num_pyr_irreps', type=int, default=1)
+    parser.add_argument('--ncpu', type=int, default=2)
     args = parser.parse_args()
+    return args
+
+if __name__ == '__main__':
+    args = get_args()
     main(args)

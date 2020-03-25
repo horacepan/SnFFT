@@ -134,6 +134,7 @@ def main(args):
                 bs, ba, bns, br, bd, bs_tups, bns_tups = replay.sample(args.minibatch, device)
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
                 bs_nbrs_tens = to_tensor(bs_nbrs)
+                seen_states.update(bs_tups)
                 if args.model == 'linear' or args.model == 'onehotlinear':
                     if args.doubleq:
                         bs_nbrs_tens = to_tensor(bs_nbrs)
@@ -171,7 +172,7 @@ def main(args):
                 if args.savelog:
                     swr.add_scalar('loss', loss.item(), bps)
 
-        seen_states.update(states)
+        #seen_states.update(states)
         if e % args.qqupdate == 0 and e > 0 and target:
             update_params(target, policy)
             updates += 1
