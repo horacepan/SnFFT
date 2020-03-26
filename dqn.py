@@ -22,6 +22,7 @@ import str_cube
 from tensorboardX import SummaryWriter
 
 CUBE2_SIZE = 40320 * (3**7)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_logger(fname=None, stdout=True, tofile=True):
     '''
@@ -104,6 +105,9 @@ class IrrepLinreg(nn.Module):
         return xr, xi
 
     def forward_sparse(self, xr, xi):
+        xr = xr.to(device)
+        xi = xi.to(device)
+
         xr, xi = cmm_sparse(xr, xi, self.wr, self.wi)
         xr = self.br + xr
         xi = self.bi + xi
@@ -162,8 +166,8 @@ class IrrepLinreg(nn.Module):
     def add_gaussian_noise(self, mu, std):
         _mu = torch.zeros(self.wr.size()) + mu
         _std = torch.zeros(self.wr.size()) + std
-        r_noise = torch.normal(_mu, _std)
-        i_noise = torch.normal(_mu, _std)
+        r_noise = torch.normal(_mu, _std).to(device)
+        i_noise = torch.normal(_mu, _std).to(device)
         self.wr.data.add_(r_noise)
         self.wi.data.add_(i_noise)
 
@@ -173,6 +177,12 @@ class IrrepLinreg(nn.Module):
         self.wi.data = self.wi.data / z
         self.br.data = self.br.data / z
         self.bi.data = self.bi.data / z
+
+    def cuda(self):
+        self.wr.to(device)
+        self.wi.to(device)
+        self.br.to(device)
+        self.bi.to(device)
 
 def value(model, env, state):
     xr, xi = env.irrep_inv(state)
@@ -254,6 +264,7 @@ def train_batch(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     lossfunc: loss function
     opt: torch optim
     '''
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     opt.zero_grad()
     if hparams['lossfunc'] == 'cmse_real':
         lossfunc = cmse_real
@@ -263,14 +274,26 @@ def train_batch(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
         lossfunc = cmse
     discount = hparams['discount']
 
-    reward = torch.from_numpy(batch.reward)#.astype(np.float32))
-    dones = torch.from_numpy(batch.done)
+    st = time.time()
+    reward = torch.from_numpy(batch.reward).to(device)#.astype(np.float32))
+    dones = torch.from_numpy(batch.done).to(device)
     sr, si = env.encode_state(batch.state)
-    yr_pred, yi_pred = pol_net.forward_sparse(sr, si)
 
     nbrs = [n for s in batch.state for n in str_cube.neighbors_fixed_core_small(s)]
     nsr, nsi = env.encode_state(nbrs)
+    _et = time.time() -st
 
+    st = time.time()
+    if torch.cuda.is_available():
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        sr = sr.to(device)
+        si = si.to(device)
+        nsr = nsr.to(device)
+        nsi = nsi.to(device)
+    _ct = time.time() - st
+
+    st = time.time()
+    yr_pred, yi_pred = pol_net.forward_sparse(sr, si)
     if hparams['usetarget']:
         yr_onestep, yi_onestep = targ_net.forward_sparse(nsr, nsi)
     else:
@@ -279,9 +302,9 @@ def train_batch(env, pol_net, targ_net, batch, opt, hparams, logger, nupdate):
     yi_onestep = yi_onestep.reshape(-1, env.actions)
     yr_next, opt_idx = yr_onestep.max(dim=1, keepdim=True)
     yi_next = yi_onestep.gather(1, opt_idx)
-
     loss = lossfunc((reward * (-dones)) + discount * yr_next.detach(),
                     discount * yi_next.detach(), yr_pred, yi_pred)
+    _ft = time.time() - st
     loss.backward()
     opt.step()
     return loss.item()

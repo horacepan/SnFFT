@@ -74,7 +74,7 @@ def gen_th_pkl(np_pkl, th_pkl):
             print('makedirs: Director already exists {}? {}'.format(dirname, os.path.exists(dirname)))
     print('trying to open: {}'.format(np_pkl))
     with open(np_pkl, 'rb') as f:
-        ydict = pickle.load(f) 
+        ydict = pickle.load(f)
 
     check_memory()
     print('after loading {}'.format(np_pkl))
@@ -94,8 +94,8 @@ def gen_th_pkl(np_pkl, th_pkl):
     # hacky way to assign this
     sparse_tdict['size'] = size
 
-    #with open(th_pkl, 'wb') as f:
-    #    pickle.dump(sparse_tdict, f, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(th_pkl, 'wb') as f:
+        pickle.dump(sparse_tdict, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Created:', th_pkl)
     del sparse_tdict
@@ -131,7 +131,9 @@ def gen_pickle_name(suffix, alpha, p):
 
 def test():
     alphas = [(2, 3, 3)]
+    alphas = [(2, 6, 0)]
     parts = [((2,), (1, 1, 1), (1, 1, 1))]
+    parts = [((2,), (1, 1, 1, 1, 1, 1), ())]
     pset = set()
     pkls = []
     mem_usg = [0]
