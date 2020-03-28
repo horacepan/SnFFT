@@ -15,11 +15,23 @@ PYRAMINX_GENERATORS = [
     ((0, 0, 0, 1, 0, 1), (1, 2, 3, 6, 4, 5))
 ]
 
+CUBE2_IDENT = ((0,) * 8, tuple(range(1, 9)))
+CUBE2_GENERATORS = [
+    ((0, 0, 0, 0, 0, 0, 0, 0), (4, 2, 3, 5, 8, 6, 7, 1)),
+    ((0, 0, 0, 0, 0, 0, 0, 0), (8, 2, 3, 1, 4, 6, 7, 5)),
+    ((2, 1, 0, 0, 0, 0, 2, 1), (2, 7, 3, 4, 5, 6, 8, 1)),
+    ((2, 1, 0, 0, 0, 0, 2, 1), (8, 1, 3, 4, 5, 6, 2, 7)),
+    ((1, 2, 1, 2, 0, 0, 0, 0), (2, 3, 4, 1, 5, 6, 7, 8)),
+    ((1, 2, 1, 2, 0, 0, 0, 0), (4, 1, 2, 3, 5, 6, 7, 8))
+]
+
 def px_perm_inv(p):
     return tuple(p.index(i) + 1 for i in range(1, len(p) + 1))
 
 def px_perm_dot(perm, tup):
     pinv = px_perm_inv(perm)
+    return tuple(tup[p - 1] for p in pinv)
+    '''
     return (
         tup[pinv[0]-1],
         tup[pinv[1]-1],
@@ -28,6 +40,7 @@ def px_perm_dot(perm, tup):
         tup[pinv[4]-1],
         tup[pinv[5]-1]
     )
+    '''
 
 def px_cyc_add(c1, c2, n):
     return tuple(

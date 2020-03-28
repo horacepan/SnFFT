@@ -19,8 +19,10 @@ ONEHOT_OTUP_CACHE = {}
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def str_val_results(dic):
     dstr = ''
-    for i, num in dic.items():
-        dstr += '{}: {:.2f} |'.format(i, num)
+    keys = sorted(list(dic.keys()))
+    for k in keys:
+        num = dic[k]
+        dstr += '{}: {:.2f} |'.format(k, num)
     return dstr
 
 def px_mult(p1, p2):
@@ -89,9 +91,13 @@ def val_model(policy, max_dist, perm_df, to_tensor, cnt=100):
 
 def test_model(policy, scramble_len, cnt, max_moves, perm_df, to_tensor):
     states = [perm_df.random_state(scramble_len) for _ in range(cnt)]
-    return _test_model(policy, states, max_moves, perm_df, to_tensor)
+    return test_model_states(policy, states, max_moves, perm_df, to_tensor)
 
-def _test_model(policy, states, max_moves, perm_df, to_tensor):
+def test_model_states(policy, states, max_moves, perm_df, to_tensor):
+    '''
+    Returns a tuple of the percentage of solves, dict of distance of samples,
+        dict of solve stats by distance
+    '''
     stats =  {}
     dists = {}
     solves = 0
@@ -109,7 +115,7 @@ def _test_model(policy, states, max_moves, perm_df, to_tensor):
 
 def test_all_states(policy, max_moves, perm_df, to_tensor):
     states = perm_df.all_states()
-    return _test_model(policy, states, max_moves, perm_df, to_tensor)
+    return test_model_states(policy, states, max_moves, perm_df, to_tensor)
 
 def s8_move(ptup, gidx):
     '''
@@ -223,6 +229,7 @@ def wreath_onehot(wtups, wcyc):
 
     for idx, otup in enumerate(otups):
         or_part[idx, :] = onehot_otup_single(otup, wcyc)
+    or_part = or_part.to(device)
 
     return torch.cat([or_part, perm_part], dim=1)
 

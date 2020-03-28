@@ -1,10 +1,12 @@
 import pdb
 import random
+from tqdm import tqdm
 import numpy as np
 import pandas as pd
+import pickle
 import torch
 from utility import S8_GENERATORS, px_mult
-from wreath_puzzle import PYRAMINX_GENERATORS, px_wreath_mul
+from wreath_puzzle import PYRAMINX_GENERATORS, px_wreath_mul, CUBE2_GENERATORS
 
 def str2tup(s):
     return tuple(int(i) for i in s)
@@ -36,6 +38,7 @@ class PermDF:
             self._generators.append(self._get_state(row))
             if len(self._generators) == ngenerators:
                 break
+        self._all_states = list(self.dist_dict.keys())
 
     def is_done(self, state):
         return state in self._done_states_set
@@ -145,19 +148,31 @@ class PermDF:
                 ncorrect += int(self.opt_nbr(g, policy, to_tensor))
             return ncorrect / len(states)
 
-    def prop_corr_by_dist(self, policy, to_tensor):
+    def prop_corr_by_dist(self, policy, to_tensor, distance_check=None, cnt=0):
         dist_corr = {}
         dist_cnts = {}
         ncorrect = 0
-        for state, dist in self.dist_dict.items():
+
+        if len(self.dist_dict) > 50000 and distance_check:
+            states = []
+            for d in distance_check:
+                sample_df = self.df[self.df['dist'] == d]
+                states.extend(self.random_states(d, cnt))
+        else:
+            states = self.dist_dict.keys()
+
+        for state in states:
+            dist = self.dist_dict[state]
             correct = int(self.opt_nbr(state, policy, to_tensor))
             ncorrect += correct
             dist_corr[dist] = dist_corr.get(dist, 0) + correct
             dist_cnts[dist] = dist_cnts.get(dist, 0) + 1
 
         for i in range(self.max_dist + 1):
+            if i not in dist_cnts or i not in dist_corr:
+                continue
             dist_corr[i] = dist_corr[i] / dist_cnts[i]
-        prop_corr = ncorrect / len(self.dist_dict)
+        prop_corr = ncorrect / len(states)
         return prop_corr, dist_corr
 
     def opt_move_tup(self, tup):
@@ -172,41 +187,46 @@ class PermDF:
         return perms
 
     def all_states(self):
-        return self.dist_dict.keys()
+        return self._all_states
 
     def _get_state(self, df_row):
         return str2tup(df_row['state'])
 
 class WreathDF(PermDF):
-    def __init__(self, fname, ngenerators, cyc_size=2):
+    def __init__(self, fname, ngenerators, cyc_size, dist_dict_pkl=None):
         '''
         Assumption: The first {ngenerator} states of dist 1 from solved state are generators of the puzzle
         '''
         self.df = self.load_df(fname)
-        self.dist_dict = self.load_dist_dict()
+        self.dist_dict = self.load_dist_dict(dist_dict_pkl)
         self.max_dist = self.df['dist'].max()
-        self.generators = PYRAMINX_GENERATORS
+        #self.generators = PYRAMINX_GENERATORS
         self._num_nbrs = ngenerators
-        self.cyc_size = 2
+        self.cyc_size = cyc_size
 
         self._done_states = []
         for idx, row in self.df[self.df['dist'] == 0].iterrows():
             self._done_states.append(self._get_state(row))
         self._done_states_set = set(self._done_states)
 
-        self._generators = []
+        self.generators = []
         d1_elements = self.df[self.df['dist'] == 1]
         for idx, row in d1_elements[:ngenerators].iterrows():
-            self._generators.append(self._get_state(row))
-            if len(self._generators) == ngenerators:
+            self.generators.append(self._get_state(row))
+            if len(self.generators) == ngenerators:
                 break
+        self._all_states = list(self.dist_dict.keys())
 
-    def load_dist_dict(self):
-        return {self._get_state(row): row['dist'] for s, row in self.df.iterrows()}
+    def load_dist_dict(self, dist_dict_pkl=None):
+        if dist_dict_pkl:
+            return pickle.load(open(dist_dict_pkl, 'rb'))
+        return {self._get_state(row): row['dist'] for s, row in tqdm(self.df.iterrows())}
 
     def load_df(self, fname):
         df = pd.read_csv(fname, header=None, dtype={0: str, 1: str, 2: int})
-        df.columns = ['ostr', 'pstr', 'dist']
+        df[0] = df[0].apply(str2tup)
+        df[1] = df[1].apply(str2tup)
+        df.columns = ['otup', 'ptup', 'dist']
         return df
 
     def nbrs(self, state):
@@ -219,7 +239,7 @@ class WreathDF(PermDF):
         return px_wreath_mul(g[0], g[1], ot, pt, self.cyc_size)
 
     def _get_state(self, df_row):
-        return (str2tup(df_row['ostr']), str2tup(df_row['pstr']))
+        return (df_row['otup'], df_row['ptup'])
 
 '''
 def get_group_df(group_name, df_name):
