@@ -81,23 +81,18 @@ class Cube2IrrepEnv(CubeEnv):
         else:
             return rep.reshape(shape)
 
-    def real_imag_irrep_torch(self, cube_state):
-        re, im = self._cubeirrep.str_to_irrep_th(cube_state)
-        return re, im
-
     def real_imag_irrep(self, cube_state):
         irrep = self._cubeirrep.str_to_irrep_np(cube_state).ravel()
         return torch.from_numpy(irrep.real), torch.from_numpy(irrep.imag)
 
-    def real_imag_irrep_sp(self, cube_state):
-        re, im = self._cubeirrep.str_to_irrep_sp(cube_state)
-        return re, im
-
     def irrep(self, cube_state):
         if self.sparse:
+            re, im = self._cubeirrep.str_to_irrep_sp(cube_state)
+            return re, im
             return self.real_imag_irrep_sp(cube_state)
         else:
-            return self.real_imag_irrep_torch(cube_state)
+            re, im = self._cubeirrep.str_to_irrep_th(cube_state)
+            return re, im
 
     def irrep_inv(self, cube_state):
         re, im = self._cubeirrep.str_to_irrep_sp_inv(cube_state)

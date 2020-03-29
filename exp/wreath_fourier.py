@@ -13,7 +13,10 @@ from cg_utility import proj, compute_rhs_block, compute_reduced_block
 from logger import get_logger
 
 sys.path.append('../')
+sys.path.append('../cube/')
 from utils import check_memory
+from cube_irrep import Cube2Irrep
+from complex_utils import cmm
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_pyraminx_irreps(alpha, parts, prefix):
@@ -122,9 +125,85 @@ class WreathPolicy(nn.Module):
             idx += dsq
         self.optmin = True
 
+class CubePolicy(nn.Module):
+    '''
+    Needs to implement:
+    - to_tensor
+    - forward
+    - nout
+    '''
+    def __init__(self, irreps, std=0.1, irrep_loaders=None):
+        super(CubePolicy, self).__init__()
+        self.irreps = irreps
+        self.alphas = [i[0] for i in irreps]
+        self.parts = [i[1] for i in irreps]
+        if irrep_loaders is None:
+            self.irrep_loaders = self.load_all_irreps()
+        else:
+            self.irrep_loaders = irrep_loaders
+
+        self.dim = self._get_dim()
+        self.nout = 1
+        self.wi = nn.Parameter(torch.zeros(self.dim, 1))
+        self.wr = nn.Parameter(torch.zeros(self.dim, 1))
+        self.init_params()
+
+    def init_params(self):
+        self.wi.data.normal_(std=0.1)
+        self.wr.data.normal_(std=0.1)
+
+    def _get_dim(self):
+        ident = ((0,) * 8, tuple(range(1, 9)))
+        re, im = self.to_tensor([ident])
+        return re.numel()
+
+    def load_all_irreps(self):
+        irrep_loaders = []
+        print('Starting load')
+        st = time.time()
+        for a, p in self.irreps:
+            irrep_loaders.append(Cube2Irrep(a, p, sparse=True))
+            print(f'done loading {a}, {p} | Elapsed: {time.time()-st:.2f}s')
+
+        return irrep_loaders
+
+    def to_tensor(self, gs):
+        res = []
+        ims = []
+        for g in gs:
+            g_res = []
+            g_ims = []
+            for loader in self.irrep_loaders:
+                re, im = loader.tup_to_irrep_sp(g[0], g[1])
+                g_res.append(re)
+                g_ims.append(im)
+
+            res.append(torch.cat(g_res, dim=1))
+            ims.append(torch.cat(g_ims, dim=1))
+
+        return torch.cat(res, dim=0), torch.cat(ims, dim=0)
+
+    def forward_complex(self, xr, xi):
+        try:
+            return cmm(xr, xi, self.wr, self.wi)
+        except:
+            pdb.set_trace()
+
+    def forward(self, re_im_tensor):
+        xr, xi = re_im_tensor
+        yr, yi = self.forward_complex(xr, xi)
+        return yr
+
 def main():
-    irreps = [((4, 2), ((2, 2), (1, 1)))]
-    pol = WreathPolicy(irreps, '/local/hopan/pyraminx/irreps/')
+    irreps = [
+        ((2, 3, 3), ((2,), (1, 1, 1), (1, 1, 1))),
+        ((2, 3, 3), ((2,), (3,), (1, 1, 1)))
+    ]
+    #irreps = [((4, 2), ((2, 2), (1, 1)))]
+    #pol = WreathPolicy(irreps, '/local/hopan/pyraminx/irreps/')
+    ident = ((0,) * 8, tuple(range(1, 9)))
+    w = CubePolicy(irreps)
+    w.to_tensor(ident)
 
 if __name__ == '__main__':
     main()

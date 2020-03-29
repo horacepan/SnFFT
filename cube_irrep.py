@@ -40,7 +40,9 @@ class Cube2Irrep(object):
         # cache orientation tuple -> cyclic irrep
         self.cyclic_irreps_re = {}
         self.cyclic_irreps_im = {}
+        st = time.time()
         self.fill_cyclic_irreps()
+        print(f'Done caching cyclic irreps: {time.time() - st:.2f}s')
 
         # also cache the cyclic irreps
         if numpy:
@@ -113,6 +115,12 @@ class Cube2Irrep(object):
         block_scalars = block_cyclic_irreps(otup, self.cos_reps, self.cyc_irrep_func)
         rep_re, rep_im = get_sparse_mat(ptup, self.np_yor_dict, block_scalars)
         return rep_re, rep_im
+
+    def tup_to_irrep_sp(self, otup, ptup):
+        re = self.yor_dict[ptup]
+        rem = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[otup], re.size()))
+        imm = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_im[otup], re.size()))
+        return rem, imm
 
     def str_to_irrep_sp(self, cube_str):
         '''

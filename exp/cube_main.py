@@ -17,14 +17,15 @@ import torch.nn.functional as F
 from perm_df import WreathDF
 from rlmodels import MLP, ResidualBlock, MLPResBlock
 from complex_policy import ComplexLinear
-from wreath_fourier import WreathPolicy
+from wreath_fourier import WreathPolicy, CubePolicy
 from fourier_policy import FourierPolicyCG
 from utility import ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms, check_memory, wreath_onehot
+from replay_buffer import ReplayBufferMini
 from logger import get_logger
 from tensorboardX import SummaryWriter
 import sys
 sys.path.append('../')
-
+from complex_utils import cmse, cmse_real
 import pyr_irreps
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -57,6 +58,7 @@ def main(args):
         log.info('Starting to load cube')
         perm_df = WreathDF(args.cubefn, 6, 3, args.tup_pkl)
         ident = ((0,) * 8, tuple(range(1, 9)))
+        irreps = eval(args.cube_irreps)
         log.info('done loading cube')
 
     if args.convert == 'onehot' and args.env == 'cube2':
@@ -70,8 +72,8 @@ def main(args):
 
     if args.model == 'linear':
         log.info(f'Policy using Irreps: {irreps}')
-        policy = WreathPolicy(irreps, args.pyrprefix)
-        target = WreathPolicy(irreps, args.pyrprefix, rep_dict=policy.rep_dict, pdict=policy.pdict)
+        policy = CubePolicy(irreps, std=args.std)
+        target = CubePolicy(irreps, std=args.std, irrep_loaders=policy.irrep_loaders)
         to_tensor = lambda g: policy.to_tensor(g)
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
@@ -81,7 +83,11 @@ def main(args):
     policy.to(device)
     target.to(device)
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
-    replay = ReplayBuffer(to_tensor([ident]).numel(), args.capacity)
+    if args.convert == 'onehot':
+        replay = ReplayBuffer(to_tensor([ident]).numel(), args.capacity)
+    elif args.convert == 'irrep':
+        log.info('Creating mini replay')
+        replay = ReplayBufferMini(args.capacity)
 
     max_benchmark = 0
     max_rand_benchmark = 0
@@ -113,9 +119,10 @@ def main(args):
 
             done = 1 if (perm_df.is_done(state)) else 0
             reward = 1 if done else -1
-            if done:
-                replay.push(to_tensor([next_state]), 0, to_tensor([state]), -1, 0, next_state, state, idx + 1)
-            replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state, idx+1)
+            if args.convert == 'onehot':
+                replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state, idx+1)
+            else:
+                replay.push(state, move, next_state, reward, done)
             d1 = perm_df.distance(state)
             d2 = perm_df.distance(next_state)
             pushes[(d1, d2, done)] = pushes.get((d1, d2, done), 0) + 1
@@ -124,9 +131,29 @@ def main(args):
             icnt += 1
             if icnt % args.update == 0 and icnt > 0:
                 optim.zero_grad()
-                bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.minibatch, device)
+                if args.convert == 'onehot':
+                    bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.minibatch, device)
+                else:
+                    try:
+                        bs_tups, ba, bns_tups, br, bd = replay.sample(args.minibatch, device)
+                    except:
+                        pdb.set_trace()
+
                 seen_states.update(bs_tups)
-                if args.model == 'linear' or args.model == 'dvn':
+                if args.convert == 'irrep':
+                    try:
+                        bs_re, bs_im = to_tensor(bs_tups)
+                    except:
+                        pdb.set_trace()
+                    bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
+                    bs_nbrs_re, bs_nbrs_im = to_tensor(bs_nbrs)
+                    nr, ni = target.forward_complex(bs_nbrs_re, bs_nbrs_im)
+                    opt_nbr_vals_re, opt_idx = nr.reshape(-1, nactions).max(dim=1, keep_dim=True)
+                    opt_nbr_vals_im = ni.reshape(-1, nactions).gather(1, opt_idx)
+                    loss = cmse(bs_re, bs_im,
+                                args.discount * opt_nbr_vals_re + br,
+                                args.discount * opt_nbr_vals_im)
+                elif args.convert == 'onehot' and args.model == 'dvn':
                     bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
                     bs_nbrs_tens = to_tensor(bs_nbrs)
                     opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).max(dim=1, keepdim=True)
@@ -150,7 +177,7 @@ def main(args):
             update_params(target, policy)
             updates += 1
 
-        if e % args.logiters == 0:
+        if e % args.logiters == 0 and e > 0:
             exp_rate = 1.0
             distance_check = range(1, 13)
             cnt = 200
@@ -175,16 +202,16 @@ def main(args):
                 save_seen.append(len(seen_states))
                 save_updates.append(updates)
 
-            log.info(f'Epoch {e:5d} | Dist corr: {benchmark:.3f} | solves: {val_corr:.2f} | val: {str_dict}' + \
+            log.info(f'Epoch {e:5d} | Dist corr: {benchmark:.3f} | solves: {val_corr:.3f} | val: {str_dict}' + \
                      f'Updates: {updates}, bps: {bps} | seen: {len(seen_states)}')
 
-        if e % args.benchlog == 0 and e > 0:
-            bench_results = test_model(policy, 1000, 1000, 20, perm_df, to_tensor)
+        if e % args.saveiters == 0 and e > 0:
+            torch.save(policy.state_dict(), os.path.join(sumdir, 'model_{e}.pt'))
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
     bench_results = test_model(policy, 1000, 10000, 20, perm_df, to_tensor)
-    _prop_corr, _ = perm_df.prop_corr_by_dist(policy, to_tensor)
+    _prop_corr, _ = perm_df.prop_corr_by_dist(policy, to_tensor, range(1, 14), 100)
     bench_results['prop_correct'] = _prop_corr
     stats_dict = {'epochs': save_epochs,
                   'updates': save_updates,
@@ -197,7 +224,8 @@ def main(args):
     if args.savelog:
         json.dump(bench_results, open(os.path.join(sumdir, 'stats.json'), 'w'))
         json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'))
-    print(f'Done with: {irreps}')
+        torch.save(policy.state_dict(), os.path.join(sumdir, 'model_final.pt'))
+    print(f'Done with: {args.cube_irreps}')
     return bench_results
 
 def get_args():
@@ -210,6 +238,7 @@ def get_args():
     parser.add_argument('--logfile', type=str, default=f'./logs/rl/{time.time()}.log')
     parser.add_argument('--skipvalidate', action='store_true', default=False)
     parser.add_argument('--benchlog', type=int, default=50000)
+    parser.add_argument('--saveiters', type=int, default=50000)
     parser.add_argument('--lognorms', action='store_true', default=False)
     parser.add_argument('--normiters', type=int, default=10)
     parser.add_argument('--logiters', type=int, default=1000)
@@ -226,6 +255,7 @@ def get_args():
     # model params
     parser.add_argument('--convert', type=str, default='irrep')
     parser.add_argument('--irreps', type=str, default='[]')
+    parser.add_argument('--cube_irreps', type=str, default='[((2, 3, 3), ((2,), (1, 1, 1), (1, 1, 1)))]')
     parser.add_argument('--model', type=str, default='linear')
     parser.add_argument('--nhid', type=int, default=32)
     parser.add_argument('--layers', type=int, default=2)
