@@ -75,6 +75,7 @@ def main(args):
         policy = CubePolicy(irreps, std=args.std)
         target = CubePolicy(irreps, std=args.std, irrep_loaders=policy.irrep_loaders)
         to_tensor = lambda g: policy.to_tensor(g)
+        log.info('Cube policy dim: {}'.format(policy.dim))
     elif args.model == 'dvn':
         log.info('Using MLP DVN')
         policy = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
@@ -134,23 +135,18 @@ def main(args):
                 if args.convert == 'onehot':
                     bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.minibatch, device)
                 else:
-                    try:
-                        bs_tups, ba, bns_tups, br, bd = replay.sample(args.minibatch, device)
-                    except:
-                        pdb.set_trace()
+                    bs_tups, ba, bns_tups, br, bd = replay.sample(args.minibatch, device)
 
                 seen_states.update(bs_tups)
                 if args.convert == 'irrep':
-                    try:
-                        bs_re, bs_im = to_tensor(bs_tups)
-                    except:
-                        pdb.set_trace()
+                    bs_re, bs_im = to_tensor(bs_tups)
+                    val_re, val_im = policy.forward_complex(bs_re, bs_im)
                     bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
                     bs_nbrs_re, bs_nbrs_im = to_tensor(bs_nbrs)
                     nr, ni = target.forward_complex(bs_nbrs_re, bs_nbrs_im)
-                    opt_nbr_vals_re, opt_idx = nr.reshape(-1, nactions).max(dim=1, keep_dim=True)
+                    opt_nbr_vals_re, opt_idx = nr.reshape(-1, nactions).max(dim=1, keepdim=True)
                     opt_nbr_vals_im = ni.reshape(-1, nactions).gather(1, opt_idx)
-                    loss = cmse(bs_re, bs_im,
+                    loss = cmse(val_re, val_im,
                                 args.discount * opt_nbr_vals_re + br,
                                 args.discount * opt_nbr_vals_im)
                 elif args.convert == 'onehot' and args.model == 'dvn':
@@ -177,7 +173,7 @@ def main(args):
             update_params(target, policy)
             updates += 1
 
-        if e % args.logiters == 0 and e > 0:
+        if e % args.logiters == 0:
             exp_rate = 1.0
             distance_check = range(1, 13)
             cnt = 200
@@ -240,7 +236,7 @@ def get_args():
     parser.add_argument('--benchlog', type=int, default=50000)
     parser.add_argument('--saveiters', type=int, default=50000)
     parser.add_argument('--lognorms', action='store_true', default=False)
-    parser.add_argument('--normiters', type=int, default=10)
+    parser.add_argument('--normiters', type=int, default=2000)
     parser.add_argument('--logiters', type=int, default=1000)
 
     # file related params

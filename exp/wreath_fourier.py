@@ -181,13 +181,10 @@ class CubePolicy(nn.Module):
             res.append(torch.cat(g_res, dim=1))
             ims.append(torch.cat(g_ims, dim=1))
 
-        return torch.cat(res, dim=0), torch.cat(ims, dim=0)
+        return torch.cat(res, dim=0).to(device), torch.cat(ims, dim=0).to(device)
 
     def forward_complex(self, xr, xi):
-        try:
-            return cmm(xr, xi, self.wr, self.wi)
-        except:
-            pdb.set_trace()
+        return cmm(xr, xi, self.wr, self.wi)
 
     def forward(self, re_im_tensor):
         xr, xi = re_im_tensor
