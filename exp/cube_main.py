@@ -36,12 +36,16 @@ def full_benchmark(policy, perm_df, to_tensor, log):
     return {'score': score, 'dists': dists, 'stats': stats}
 
 def main(args):
-    log = get_logger(args.logfile, stdout=not args.nostdout, tofile=args.savelog)
     sumdir = os.path.join(f'./logs/{args.sumdir}/{args.notes}/seed_{args.seed}')
     if not os.path.exists(sumdir) and args.savelog:
         os.makedirs(sumdir)
     if args.savelog:
         swr = SummaryWriter(sumdir)
+        json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'))
+        logfile = os.path.join(sumdir, 'output.log')
+    else:
+        logfile = args.logfile
+    log = get_logger(logfile, stdout=not args.nostdout, tofile=args.savelog)
 
     log.info(f'Starting ... Saving logs in: {args.logfile} | summary writer: {sumdir}')
     log.info('Args: {}'.format(args))
@@ -60,11 +64,17 @@ def main(args):
         ident = ((0,) * 8, tuple(range(1, 9)))
         irreps = eval(args.cube_irreps)
         log.info('done loading cube')
+    elif args.env == 'cubetest':
+        log.info('Starting to load test cube')
+        perm_df = WreathDF(args.cubefn, 3, 3, args.tup_pkl)
+        ident = ((0,) * 8, tuple(range(1, 9)))
 
     if args.convert == 'onehot' and args.env == 'cube2':
         to_tensor = lambda g: wreath_onehot(g, 3)
     elif args.convert == 'onehot' and args.env == 'pyraminx':
         to_tensor = lambda g: wreath_onehot(g, 2)
+    elif args.convert == 'onehot' and args.env == 'cubetest':
+        to_tensor = lambda g: wreath_onehot(g, 3)
     elif args.convert == 'irrep':
         to_tensor = None
     else:
@@ -103,11 +113,13 @@ def main(args):
     pushes = {}
     npushes = 0
 
-    save_epochs = []
-    save_prop_corr = []
-    save_solve_corr = []
-    save_seen = []
-    save_updates = []
+    stats_dict = {
+        'save_epochs': [],
+        'save_prop_corr': [],
+        'save_solve_corr': [],
+        'save_seen': [],
+        'save_updates': []
+    }
     check_memory()
 
     for e in range(args.epochs + 1):
@@ -192,34 +204,26 @@ def main(args):
                     swr.add_scalar(f'values_median/states_{ii}', vals.median().item(), e)
                     swr.add_scalar(f'prop_correct/dist_{ii}', val_results[ii], e)
 
-                save_epochs.append(e)
-                save_prop_corr.append(benchmark)
-                save_solve_corr.append(val_corr)
-                save_seen.append(len(seen_states))
-                save_updates.append(updates)
+                stats_dict['save_epochs'].append(e)
+                stats_dict['save_updates'].append(updates)
+                stats_dict['save_prop_corr'].append(benchmark)
+                stats_dict['save_solve_corr'].append(val_corr)
+                stats_dict['save_seen'].append(len(seen_states))
 
             log.info(f'Epoch {e:5d} | Dist corr: {benchmark:.3f} | solves: {val_corr:.3f} | val: {str_dict}' + \
                      f'Updates: {updates}, bps: {bps} | seen: {len(seen_states)}')
 
         if e % args.saveiters == 0 and e > 0:
-            torch.save(policy.state_dict(), os.path.join(sumdir, 'model_{e}.pt'))
+            torch.save(policy.state_dict(), os.path.join(sumdir, f'model_{e}.pt'))
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {args.logfile}')
-    bench_results = test_model(policy, 1000, 10000, 20, perm_df, to_tensor)
-    _prop_corr, _ = perm_df.prop_corr_by_dist(policy, to_tensor, range(1, 14), 100)
-    bench_results['prop_correct'] = _prop_corr
-    stats_dict = {'epochs': save_epochs,
-                  'updates': save_updates,
-                  'prop_corr': save_prop_corr,
-                  'solve_corr': save_solve_corr,
-                  'seen': save_seen,
-                  'updates': save_updates}
+    score, dists, stats = test_model(policy, 1000, 10000, 20, perm_df, to_tensor)
     bench_results.update(stats_dict)
+    log.info('Final solve corr: {}'.format(bench_results['score']))
 
     if args.savelog:
         json.dump(bench_results, open(os.path.join(sumdir, 'stats.json'), 'w'))
-        json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'))
         torch.save(policy.state_dict(), os.path.join(sumdir, 'model_final.pt'))
     print(f'Done with: {args.cube_irreps}')
     return bench_results
