@@ -36,7 +36,7 @@ def full_benchmark(policy, perm_df, to_tensor, log):
     return {'score': score, 'dists': dists, 'stats': stats}
 
 def main(args):
-    sumdir = os.path.join(f'./logs/{args.sumdir}/{args.notes}/seed_{args.seed}')
+    sumdir = os.path.join(f'{args.savedir}', f'{args.sumdir}', f'{args.notes}/seed_{args.seed}')
     if not os.path.exists(sumdir) and args.savelog:
         os.makedirs(sumdir)
     if args.savelog:
@@ -159,7 +159,7 @@ def main(args):
                     opt_nbr_vals_re, opt_idx = nr.reshape(-1, nactions).max(dim=1, keepdim=True)
                     opt_nbr_vals_im = ni.reshape(-1, nactions).gather(1, opt_idx)
                     loss = cmse(val_re, val_im,
-                                args.discount * opt_nbr_vals_re + br,
+                                args.discount * opt_nbr_vals_re + args.br,
                                 args.discount * opt_nbr_vals_im)
                 elif args.convert == 'onehot' and args.model == 'dvn':
                     bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
@@ -233,6 +233,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     # log params
     parser.add_argument('--nostdout', action='store_true', default=False)
+    parser.add_argument('--savedir', type=str, default='/scratch/hopan/cube/irreps')
     parser.add_argument('--sumdir', type=str, default='test')
     parser.add_argument('--savelog', action='store_true', default=False)
     parser.add_argument('--logfile', type=str, default=f'./logs/rl/{time.time()}.log')
@@ -279,6 +280,7 @@ def get_args():
     # env specific
     parser.add_argument('--num_pyr_irreps', type=int, default=1)
     parser.add_argument('--ncpu', type=int, default=2)
+    parser.add_argument('--br', type=int, default=-1)
     args = parser.parse_args()
     return args
 
