@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from perm_df import WreathDF
-from rlmodels import MLP, ResidualBlock, MLPResBlock
+from rlmodels import MLP
 from complex_policy import ComplexLinear
 from wreath_fourier import WreathPolicy, CubePolicy
 from fourier_policy import FourierPolicyCG
@@ -96,11 +96,16 @@ def main(args):
 
     if args.use_mask and args.convert =='irrep':
         masks = {}
-        re_fn = os.path.join(args.maskdir, f'real_{args.mask_p}.th')
-        im_fn = os.path.join(args.maskdir, f'im_{args.mask_p}.th')
-        log.info(f'Loading Masks from {re_fn}:')
-        masks['wr'] = torch.load(re_fn).to(device)
-        masks['wi'] = torch.load(im_fn).to(device)
+        if args.random_mask:
+            log.info(f'Random Masks with p = {args.mask_p}')
+            masks['wr'] = (torch.rand(policy.wr.data.shape) > (args.mask_p / 100)).float().to(device)
+            masks['wi'] = (torch.rand(policy.wr.data.shape) > (args.mask_p / 100)).float().to(device)
+        else:
+            re_fn = os.path.join(args.maskdir, f'real_{args.mask_p}.th')
+            im_fn = os.path.join(args.maskdir, f'im_{args.mask_p}.th')
+            log.info(f'Loading Masks from {re_fn}:')
+            masks['wr'] = torch.load(re_fn).to(device)
+            masks['wi'] = torch.load(im_fn).to(device)
 
         policy.wr.data *= masks['wr']
         policy.wi.data *= masks['wi']
@@ -305,6 +310,7 @@ def get_args():
 
     # zero mask
     parser.add_argument('--use_mask', action='store_true', default=False)
+    parser.add_argument('--random_mask', action='store_true', default=False)
     parser.add_argument('--maskdir', type=str, default='/scratch/hopan/cube/masks/top1')
     parser.add_argument('--mask_p', type=int, default='50')
     args = parser.parse_args()
