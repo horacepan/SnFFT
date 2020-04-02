@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from perm_df import WreathDF
-from rlmodels import MLP
+from rlmodels import MLP, MLPResModel
 from complex_policy import ComplexLinear
 from wreath_fourier import WreathPolicy, CubePolicy
 from fourier_policy import FourierPolicyCG
@@ -90,6 +90,10 @@ def main(args):
         log.info('Using MLP DVN')
         policy = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+    elif args.model == 'res':
+        log.info('Using Residual Network')
+        policy = MLPResModel(to_tensor([ident]).numel(), args.resfc1, args.resfc2, 1, args.nres, std=args.std, to_tensor=to_tensor)
+        target = MLPResModel(to_tensor([ident]).numel(), args.resfc1, args.resfc2, 1, args.nres, std=args.std, to_tensor=to_tensor)
 
     policy.to(device)
     target.to(device)
@@ -181,27 +185,22 @@ def main(args):
                     loss = cmse(val_re, val_im,
                                 args.discount * opt_nbr_vals_re + args.br,
                                 args.discount * opt_nbr_vals_im)
-                    loss.backward()
 
                     if args.use_mask and args.convert == 'irrep':
                         if hasattr(policy, 'wr'):
                             policy.wr.grad *= masks['wr']
                         if hasattr(policy, 'wi'):
                             policy.wi.grad *= masks['wi']
-                elif args.convert == 'onehot' and args.model == 'dvn':
+                elif args.convert == 'onehot' and (args.model == 'dvn' or args.model == 'res'):
                     bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
                     bs_nbrs_tens = to_tensor(bs_nbrs)
                     opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).max(dim=1, keepdim=True)
 
-                    if args.use_done or args.model == 'dvn':
-                        loss = F.mse_loss(policy.forward(bs),
-                                          args.discount * (1 - bd) * opt_nbr_vals + br)
-                    else:
-                        loss = F.mse_loss(policy.forward(bs),
-                                          args.discount * opt_nbr_vals + br)
-
+                    loss = F.mse_loss(policy.forward(bs),
+                                      args.discount * (1 - bd) * opt_nbr_vals + br)
                 if args.lognorms and bps % args.normiters == 0:
                     log_grad_norms(swr, policy, e)
+                loss.backward()
                 optim.step()
                 bps += 1
                 if args.savelog:
@@ -291,7 +290,7 @@ def get_args():
     # hparams
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--capacity', type=int, default=10000)
+    parser.add_argument('--capacity', type=int, default=100000)
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=float, default=1.0)
     parser.add_argument('--update', type=int, default=25)
@@ -299,13 +298,10 @@ def get_args():
     parser.add_argument('--lr', type=float, default=0.005)
     parser.add_argument('--discount', type=float, default=1)
     parser.add_argument('--targetupdate', type=int, default=100)
-
     parser.add_argument('--use_done', action='store_true', default=False)
-    parser.add_argument('--exp_prop', type=float, default=0.4)
 
     # env specific
     parser.add_argument('--num_pyr_irreps', type=int, default=1)
-    parser.add_argument('--ncpu', type=int, default=2)
     parser.add_argument('--br', type=int, default=-1)
 
     # zero mask
@@ -313,6 +309,11 @@ def get_args():
     parser.add_argument('--random_mask', action='store_true', default=False)
     parser.add_argument('--maskdir', type=str, default='/scratch/hopan/cube/masks/top1')
     parser.add_argument('--mask_p', type=int, default='50')
+
+    # res params
+    parser.add_argument('--resfc1', type=int, default='1024')
+    parser.add_argument('--resfc2', type=int, default='256')
+    parser.add_argument('--nres', type=int, default='1')
     args = parser.parse_args()
     return args
 
