@@ -27,7 +27,6 @@ import sys
 sys.path.append('../')
 from complex_utils import cmse, cmse_real
 import pyr_irreps
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def full_benchmark(policy, perm_df, to_tensor, log):
@@ -68,6 +67,7 @@ def main(args):
         log.info('Starting to load test cube')
         perm_df = WreathDF(args.cubefn, 3, 3, args.tup_pkl)
         ident = ((0,) * 8, tuple(range(1, 9)))
+        irreps = eval(args.cube_irreps)
 
     if args.convert == 'onehot' and args.env == 'cube2':
         to_tensor = lambda g: wreath_onehot(g, 3)
@@ -93,6 +93,21 @@ def main(args):
 
     policy.to(device)
     target.to(device)
+
+    if args.use_mask and args.convert =='irrep':
+        masks = {}
+        re_fn = os.path.join(args.maskdir, f'real_{args.mask_p}.th')
+        im_fn = os.path.join(args.maskdir, f'im_{args.mask_p}.th')
+        log.info(f'Loading Masks from {re_fn}:')
+        masks['wr'] = torch.load(re_fn).to(device)
+        masks['wi'] = torch.load(im_fn).to(device)
+
+        policy.wr.data *= masks['wr']
+        policy.wi.data *= masks['wi']
+
+        target.wr.data *= masks['wr']
+        target.wi.data *= masks['wi']
+
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     if args.convert == 'onehot':
         replay = ReplayBuffer(to_tensor([ident]).numel(), args.capacity)
@@ -161,6 +176,13 @@ def main(args):
                     loss = cmse(val_re, val_im,
                                 args.discount * opt_nbr_vals_re + args.br,
                                 args.discount * opt_nbr_vals_im)
+                    loss.backward()
+
+                    if args.use_mask and args.convert == 'irrep':
+                        if hasattr(policy, 'wr'):
+                            policy.wr.grad *= masks['wr']
+                        if hasattr(policy, 'wi'):
+                            policy.wi.grad *= masks['wi']
                 elif args.convert == 'onehot' and args.model == 'dvn':
                     bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
                     bs_nbrs_tens = to_tensor(bs_nbrs)
@@ -173,7 +195,6 @@ def main(args):
                         loss = F.mse_loss(policy.forward(bs),
                                           args.discount * opt_nbr_vals + br)
 
-                loss.backward()
                 if args.lognorms and bps % args.normiters == 0:
                     log_grad_norms(swr, policy, e)
                 optim.step()
@@ -248,7 +269,7 @@ def get_args():
     parser.add_argument('--fname', type=str, default='/home/hopan/github/idastar/s8_dists_red.txt')
     parser.add_argument('--yorprefix', type=str, default=f'/{_prefix}/hopan/irreps/s_8/')
     parser.add_argument('--notes', type=str, default='')
-    parser.add_argument('--env', type=str, default='s8')
+    parser.add_argument('--env', type=str, default='cube2')
     parser.add_argument('--pyrprefix', type=str, default=f'/{_prefix}/hopan/pyraminx/irreps/')
     parser.add_argument('--cubefn', type=str, default=f'/{_prefix}/hopan/cube/cube_sym_mod_tup.txt')
     parser.add_argument('--tup_pkl', type=str, default=f'/{_prefix}/hopan/cube/cube_sym_mod_tup.pkl')
@@ -281,6 +302,11 @@ def get_args():
     parser.add_argument('--num_pyr_irreps', type=int, default=1)
     parser.add_argument('--ncpu', type=int, default=2)
     parser.add_argument('--br', type=int, default=-1)
+
+    # zero mask
+    parser.add_argument('--use_mask', action='store_true', default=False)
+    parser.add_argument('--maskdir', type=str, default='/scratch/hopan/cube/masks/top1')
+    parser.add_argument('--mask_p', type=int, default='50')
     args = parser.parse_args()
     return args
 
