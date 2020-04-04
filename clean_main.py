@@ -23,9 +23,9 @@ from tensorboardX import SummaryWriter
 
 from dqn import * #ReplayMemory, IrrepLinreg, get_logger, update, explore_rate
 from memory import ReplayMemory
-
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# this is gross
 IRREP_SIZE = {
     ((2, 3, 3), ((2,), (1, 1, 1), (1, 1, 1))): 560,
     ((2, 3, 3), ((1, 1), (3,), (3,))): 560,
@@ -68,6 +68,27 @@ def random_state(max_len, env):
         state, _, _, _ = env.step(action)
     return state
 
+class MLP_DVN(nn.Module):
+    def __init__(self, nin, nhids, nout):
+        super(MLP_DVN, self).__init__()
+        self.nin = nin
+        self.nhids= nhids
+        self.nout = nout
+
+        prev = nin
+        for idx, h in enumerate(nhids):
+            layer = nn.Linear(prev, h)
+            setattr(self, f'fc_{idx}', layer)
+            prev = h
+        self.fc_out = nn.Linear(nhids[-1], nout)
+
+    def forward(self, x):
+        for idx in range(self.hids):
+            layer = getattr(self, f'fc_{idx}')
+            x = layer(x)
+            x = nn.ReLU(x)
+        return self.fc_out(x)
+
 def main(hparams):
     logfname = get_logdir(hparams['logdir'], hparams['savename'])
     if not os.path.exists(hparams['logdir']):
@@ -95,11 +116,10 @@ def main(hparams):
     size = IRREP_SIZE[(alpha, parts)]
     pol_net = IrrepLinreg(size * size)
     targ_net = IrrepLinreg(size * size)
-    if torch.cuda.is_available():
-        pol_net.to(device)
-        targ_net.to(device)
+    pol_net.to(device)
+    targ_net.to(device)
 
-    if not hparams['init']:
+    if hparams['init'] == 'fourier':
         log.info('Loading fourier')
         pol_net.loadnp(NP_IRREP_FMT.format(str(alpha), str(parts)))
         targ_net.loadnp(NP_IRREP_FMT.format(str(alpha), str(parts)))
@@ -108,13 +128,11 @@ def main(hparams):
         pol_net.normal_init(hparams['noise_std'])
         targ_net.normal_init(hparams['noise_std'])
 
-    if hparams['noise_std'] > 0:
-        log.info('Adding noise: {}'.format(hparams['noise_std']))
-        pol_net.add_gaussian_noise(0, hparams['noise_std'])
-        targ_net.add_gaussian_noise(0, hparams['noise_std'])
-
     st = time.time()
-    env = Cube2IrrepEnv(alpha, parts, solve_rew=hparams['solve_rew'])
+    if args.convert:
+        env = CubeOnehot()
+    else:
+        env = Cube2IrrepEnv(alpha, parts, solve_rew=1)
     log.info('Env load time: {:.2f}s'.format(time.time() - st))
 
     # optimizer = torch.optim.SGD(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
@@ -127,28 +145,11 @@ def main(hparams):
     seen_states = set()
     max_prop = 0
 
-    '''
-    log.info('Before any training:')
-    val_avg, val_prop, val_time, solve_lens, solves_by_dist = val_model(pol_net, env, hparams)
-    log.info('Validation | avg solve length: {:.4f} | solve prop: {:.4f} | time: {:.2f}s'.format(
-        val_avg, val_prop, val_time
-    ))
-    log.info('{}'.format(solves_by_dist))
-    prop_correct, dist_correct = val_prop_correct(pol_net, env, hparams)
-    log.info('Validation | Prop correct: {:.3f} | {}'.format(
-        prop_correct, str_fmt_dict(dist_correct)
-    ))
-    '''
-
     for e in range(hparams['epochs']):
         states = random_walk(hparams['trainsteps'], env)
 
         for state in states:
-            if random.random() < explore_rate(e, hparams['epochs'] * hparams['explore_proportion'], hparams['minexp']):
-                action = random.randint(0, env.action_space.n - 1)
-            else:
-                action = get_action(env, pol_net, state)
-
+            action = random.randint(0, env.action_space.n - 1)
             ns, rew, done, _ = env.step(action, irrep=False)
             done = 1 if done == 1 else -1
             memory.push(state, action, ns, rew, done)
@@ -173,19 +174,9 @@ def main(hparams):
 
             for ii in range(1, 13):
                 rand_states = env.random_states(ii, 100)
-                # compute forward pass, avg values
                 xr, xi = env.encode_state(rand_states)
                 vals, _ = pol_net.forward_sparse(xr, xi)
                 logger.add_scalar(f'values/median/states_{ii}', vals.median().item(), e)
-                logger.add_scalar(f'values/mean/states_{ii}', vals.mean().item(), e)
-                logger.add_scalar(f'values/std/states_{ii}', vals.std().item(), e)
-
-            try:
-                if prop_correct > 0.80:
-                    log.info('Saving model!')
-                    torch.save(pol_net.state_dict(), os.path.join(savedir, 'model_{}_{}.pt'.format(e, prop_correct)))
-            except:
-                pdb.set_trace()
 
         if e % 4000 == 0:
             val_avg, val_prop, solve_lens, solves_by_dist, dists = val_model(pol_net, env, hparams)
@@ -194,8 +185,8 @@ def main(hparams):
             ))
             log.info('{}'.format(solves_by_dist))
 
-        #if e % hparams['updatetarget'] == 0 and e > 0:
-        #    targ_net.load_state_dict(pol_net.state_dict())
+        if e % hparams['updatetarget'] == 0 and e > 0:
+            targ_net.load_state_dict(pol_net.state_dict())
 
     log.info('Total updates: {}'.format(nupdates))
     logger.export_scalars_to_json(os.path.join(savedir, 'summary.json'))
@@ -225,7 +216,6 @@ def val_prop_correct(pol_net, env, hparams):
     tot = 0
 
     for _ in range(1, 11):
-        #states = env.random_states(d, hparams['val_size_per'])
         states = [random_state(1000, env) for _ in range(100)]
         for state in states:
             corr = correct_move(env, pol_net, state)
@@ -262,7 +252,6 @@ def val_model(pol_net, env, hparams):
         start_state = state
         true_dist = env.distance(start_state)
         all_dists[true_dist] = all_dists.get(true_dist, 0) + 1
-        #for i in range(hparams['maxsteps']):
         for i in range(hparams['maxsteps']):
             action = get_action(env, pol_net, state)
             ns, rew, done, _ = env.step(action, irrep=False)
@@ -287,10 +276,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--max_dist', type=int, default=100)
     parser.add_argument('--val_size', type=int, default=200)
-    parser.add_argument('--val_size_fullsolve', type=int, default=1000)
-    parser.add_argument('--val_size_per', type=int, default=100)
-    parser.add_argument('--explore_proportion', type=float, default=0.2)
-    parser.add_argument('--minexp', type=float, default=0.05)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--maxsteps', type=int, default=15)
     parser.add_argument('--trainsteps', type=int, default=10)
@@ -311,7 +296,6 @@ if __name__ == '__main__':
     parser.add_argument('--init', type=str, default=None)
     parser.add_argument('--noise_std', type=float, default=0.1)
     parser.add_argument('--lossfunc', type=str, default='cmse')
-    parser.add_argument('--solve_rew', type=int, default=1)
     parser.add_argument('--alpha', type=str, default='(2, 3, 3)')
     parser.add_argument('--parts', type=str, default='((2,), (2, 1), (2, 1))')
     args = parser.parse_args()

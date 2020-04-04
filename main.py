@@ -117,7 +117,8 @@ def main(hparams):
     env = Cube2IrrepEnv(alpha, parts, solve_rew=hparams['solve_rew'])
     log.info('Env load time: {:.2f}s'.format(time.time() - st))
 
-    optimizer = torch.optim.SGD(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
+    # optimizer = torch.optim.SGD(pol_net.parameters(), lr=hparams['lr'], momentum=hparams['momentum'])
+    optimizer = torch.optim.Adam(pol_net.parameters(), lr=hparams['lr'])
     log.info('Memory usage pre replay: {:.2f}mb'.format(check_memory(False)))
     memory = ReplayMemory(hparams['capacity'])
     log.info('Memory usage post replay: {:.2f}mb'.format(check_memory(False)))
@@ -282,9 +283,8 @@ def val_model(pol_net, env, hparams):
     return avg_solve, prop_solve, solved_lens, solves_by_dist, all_dists
 
 if __name__ == '__main__':
-    _prefix = 'local' if os.path.exists('/local/hopan/cube/pickles_sparse') else 'scratch'
+    _prefix = 'scratch' if os.path.exists('/local/hopan/cube/pickles_sparse') else 'local'
     parser = argparse.ArgumentParser()
-    parser.add_argument('--max_dist', type=int, default=100)
     parser.add_argument('--val_size', type=int, default=200)
     parser.add_argument('--val_size_fullsolve', type=int, default=1000)
     parser.add_argument('--val_size_per', type=int, default=100)

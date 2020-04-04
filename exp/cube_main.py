@@ -34,6 +34,20 @@ def full_benchmark(policy, perm_df, to_tensor, log):
     log.info(f'Full Prop solves: {score:.4f} | stats: {str_val_results(stats)} | dists: {dists}')
     return {'score': score, 'dists': dists, 'stats': stats}
 
+def try_load_weights(sumdir, policy, target):
+    files = os.listdir(sumdir)
+    models = [f for f in files if 'model_' in f]
+    if len(models) == 0:
+        return False, 0
+
+    max_ep = max([int(f[6:f.index('.')]) for f in models])
+    fname = os.path.join(sumdir, f'model_{max_ep}.pt')
+    sd = torch.load(fname, map_location=device)
+
+    policy.load_state_dict(sd)
+    target.load_state_dict(sd)
+    return True, max_ep
+
 def main(args):
     sumdir = os.path.join(f'{args.savedir}', f'{args.sumdir}', f'{args.notes}/seed_{args.seed}')
     if not os.path.exists(sumdir) and args.savelog:
@@ -42,11 +56,15 @@ def main(args):
         swr = SummaryWriter(sumdir)
         json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'))
         logfile = os.path.join(sumdir, 'output.log')
+        _cnt = 1
+        while os.path.exists(logfile):
+            logfile = os.path.join(sumdir, f'output{_cnt}.log')
+            _cnt += 1
     else:
         logfile = args.logfile
     log = get_logger(logfile, stdout=not args.nostdout, tofile=args.savelog)
 
-    log.info(f'Starting ... Saving logs in: {args.logfile} | summary writer: {sumdir}')
+    log.info(f'Starting ... Saving logs in: {logfile} | summary writer: {sumdir}')
     log.info('Args: {}'.format(args))
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -97,6 +115,9 @@ def main(args):
 
     policy.to(device)
     target.to(device)
+    start_epochs = 0
+    loaded, start_epochs = try_load_weights(sumdir, policy, target)
+    log.info(f'Loaded from old: {loaded}')
 
     if args.use_mask and args.convert =='irrep':
         masks = {}
@@ -146,7 +167,7 @@ def main(args):
     }
     check_memory()
 
-    for e in range(args.epochs + 1):
+    for e in range(start_epochs, start_epochs  + args.epochs + 1):
         states = perm_df.random_walk(args.eplen)
         #for state in states:
         for idx, state in enumerate(states):
@@ -182,9 +203,15 @@ def main(args):
                     nr, ni = target.forward_complex(bs_nbrs_re, bs_nbrs_im)
                     opt_nbr_vals_re, opt_idx = nr.reshape(-1, nactions).max(dim=1, keepdim=True)
                     opt_nbr_vals_im = ni.reshape(-1, nactions).gather(1, opt_idx)
-                    loss = cmse(val_re, val_im,
-                                args.discount * opt_nbr_vals_re + args.br,
-                                args.discount * opt_nbr_vals_im)
+
+                    if args.use_done:
+                        loss = cmse(val_re, val_im,
+                                    args.discount * opt_nbr_vals_re + br,
+                                    args.discount * opt_nbr_vals_im)
+                    else:
+                        loss = cmse(val_re, val_im,
+                                    (1 - bd) * args.discount * opt_nbr_vals_re + br,
+                                    (1 - bd) * args.discount * opt_nbr_vals_im)
 
                     if args.use_mask and args.convert == 'irrep':
                         if hasattr(policy, 'wr'):
@@ -242,7 +269,7 @@ def main(args):
             torch.save(policy.state_dict(), os.path.join(sumdir, f'model_{e}.pt'))
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
-    log.info(f'Done training | log saved in: {args.logfile}')
+    log.info(f'Done training | log saved in: {logfile}')
     score, dists, stats = test_model(policy, 1000, 10000, 20, perm_df, to_tensor)
     bench_results.update(stats_dict)
     log.info('Final solve corr: {}'.format(bench_results['score']))
