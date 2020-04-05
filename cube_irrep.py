@@ -5,7 +5,7 @@ import numpy as np
 from perm2 import sn
 from coset_utils import young_subgroup_perm, coset_reps
 from wreath import wreath_rep, get_mat, cyclic_irreps, block_cyclic_irreps, get_sparse_mat, WreathCycSn
-from utils import load_pkl, load_sparse_pkl
+from utils import load_pkl, load_sparse_pkl, check_memory
 from young_tableau import wreath_dim
 import time
 import torch
@@ -42,7 +42,8 @@ class Cube2Irrep(object):
         self.cyclic_irreps_im = {}
         st = time.time()
         self.fill_cyclic_irreps()
-        print(f'Done caching cyclic irreps: {time.time() - st:.2f}s')
+        mem = check_memory(verbose=False)
+        print(f'Done caching cyclic irreps: {time.time() - st:.2f}s | Mem used: {mem:.2f}mb')
 
         # also cache the cyclic irreps
         if numpy:

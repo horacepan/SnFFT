@@ -119,6 +119,12 @@ def main(args):
     loaded, start_epochs = try_load_weights(sumdir, policy, target)
     log.info(f'Loaded from old: {loaded}')
 
+    if len(args.loadsaved) > 0:
+        sd = torch.load(args.loadsaved, map_location=device)
+        policy.load_state_dict(sd)
+        target.load_state_dict(sd)
+        log.info('Loaded model from: {}'.format(args.loadsaved))
+
     if args.use_mask and args.convert =='irrep':
         masks = {}
         if args.random_mask:
@@ -198,20 +204,26 @@ def main(args):
                 if args.convert == 'irrep':
                     bs_re, bs_im = to_tensor(bs_tups)
                     val_re, val_im = policy.forward_complex(bs_re, bs_im)
-                    bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
-                    bs_nbrs_re, bs_nbrs_im = to_tensor(bs_nbrs)
-                    nr, ni = target.forward_complex(bs_nbrs_re, bs_nbrs_im)
-                    opt_nbr_vals_re, opt_idx = nr.reshape(-1, nactions).max(dim=1, keepdim=True)
-                    opt_nbr_vals_im = ni.reshape(-1, nactions).gather(1, opt_idx)
+
+                    # backprop on a random sample!
+                    if args.dorandom and (random.random() < args.minexp):
+                        bns_re, bns_im = to_tensor(bns_tups)
+                        opt_nbr_vals_re, opt_nbr_vals_im = target.forward_complex(bns_re, bns_im)
+                    else:
+                        bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
+                        bs_nbrs_re, bs_nbrs_im = to_tensor(bs_nbrs)
+                        nr, ni = target.forward_complex(bs_nbrs_re, bs_nbrs_im)
+                        opt_nbr_vals_re, opt_idx = nr.reshape(-1, nactions).max(dim=1, keepdim=True)
+                        opt_nbr_vals_im = ni.reshape(-1, nactions).gather(1, opt_idx)
 
                     if args.use_done:
                         loss = cmse(val_re, val_im,
-                                    args.discount * opt_nbr_vals_re + br,
-                                    args.discount * opt_nbr_vals_im)
+                                    args.discount * opt_nbr_vals_re.detach() + br,
+                                    args.discount * opt_nbr_vals_im.detach())
                     else:
                         loss = cmse(val_re, val_im,
-                                    (1 - bd) * args.discount * opt_nbr_vals_re + br,
-                                    (1 - bd) * args.discount * opt_nbr_vals_im)
+                                    (1 - bd) * args.discount * opt_nbr_vals_re.detach() + br,
+                                    (1 - bd) * args.discount * opt_nbr_vals_im.detach())
 
                     if args.use_mask and args.convert == 'irrep':
                         if hasattr(policy, 'wr'):
@@ -219,9 +231,12 @@ def main(args):
                         if hasattr(policy, 'wi'):
                             policy.wi.grad *= masks['wi']
                 elif args.convert == 'onehot' and (args.model == 'dvn' or args.model == 'res'):
-                    bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
-                    bs_nbrs_tens = to_tensor(bs_nbrs)
-                    opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).max(dim=1, keepdim=True)
+                    if args.dorandom and (random.random() < args.minexp):
+                        opt_nbr_vals = target.forward(bns).detach()
+                    else:
+                        bs_nbrs = [n for tup in bs_tups for n in perm_df.nbrs(tup)]
+                        bs_nbrs_tens = to_tensor(bs_nbrs)
+                        opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).max(dim=1, keepdim=True)
 
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * (1 - bd) * opt_nbr_vals + br)
@@ -320,6 +335,7 @@ def get_args():
     parser.add_argument('--capacity', type=int, default=100000)
     parser.add_argument('--eplen', type=int, default=15)
     parser.add_argument('--minexp', type=float, default=1.0)
+    parser.add_argument('--dorandom', action='store_true', default=False)
     parser.add_argument('--update', type=int, default=25)
     parser.add_argument('--minibatch', type=int, default=128)
     parser.add_argument('--lr', type=float, default=0.005)
@@ -341,6 +357,8 @@ def get_args():
     parser.add_argument('--resfc1', type=int, default='1024')
     parser.add_argument('--resfc2', type=int, default='256')
     parser.add_argument('--nres', type=int, default='1')
+
+    parser.add_argument('--loadsaved', type=str, default='')
     args = parser.parse_args()
     return args
 

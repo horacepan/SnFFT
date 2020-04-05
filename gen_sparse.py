@@ -120,10 +120,10 @@ def test_th_pkl(np_pkl, th_pkl):
     check_memory()
 
 def gen_pickle_name(suffix, alpha, p):
-    if os.path.exists('/local/hopan'):
-        return '/local/hopan/cube/{}/{}/{}.pkl'.format(suffix, alpha, p)
-    elif os.path.exists('/scratch/hopan/'):
+    if os.path.exists('/scratch/hopan/'):
         return '/scratch/hopan/cube/{}/{}/{}.pkl'.format(suffix, alpha, p)
+    elif os.path.exists('/local/hopan'):
+        return '/local/hopan/cube/{}/{}/{}.pkl'.format(suffix, alpha, p)
     elif os.path.exists('/project2/risi'):
         return '/project2/risi/cube/{}/{}/{}.pkl'.format(suffix, alpha, p)
     else:
@@ -131,9 +131,9 @@ def gen_pickle_name(suffix, alpha, p):
 
 def test():
     alphas = [(2, 3, 3)]
-    alphas = [(2, 6, 0)]
+    alphas = [(4, 2, 2)]
     parts = [((2,), (1, 1, 1), (1, 1, 1))]
-    parts = [((2,), (1, 1, 1, 1, 1, 1), ())]
+    parts = [((2,1,1), (2), (1, 1))]
     pset = set()
     pkls = []
     mem_usg = [0]
