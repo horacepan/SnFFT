@@ -1,4 +1,5 @@
 import pdb
+import argparse
 from queue import PriorityQueue
 import time
 import random
@@ -7,7 +8,7 @@ from tqdm import tqdm
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-
+import json
 from perm_df import WreathDF
 from rlmodels import MLP, MLPResModel
 from wreath_fourier import CubePolicy
@@ -34,7 +35,7 @@ def a_star(state, done_state, perm_df, heuristic, max_explorable):
             elif n in visited:
                 continue
 
-            fitness = heuristic(n)
+            fitness = heuristic(n) + dist
             to_visit.put((fitness, dist + 1, n, perm_df.distance(n)))
 
         visited.add(curr_node)
@@ -55,6 +56,7 @@ def test_heuristic(perm_df, func, _states=None, max_explorable=100):
     st = time.time()
 
     for state in tqdm(_states):
+    #for state in (_states):
         solved, explored = a_star(state, done_state, perm_df, func, max_explorable=max_explorable)
         astar_solves.append(solved)
         states.append(state)
@@ -81,8 +83,9 @@ def get_model(irreps, fn):
     model.load_state_dict(sd)
     return model
 
-def main():
+def main(args):
     log = get_logger(None, stdout=True, tofile=False)
+    log.info('Saving in: {}'.format(args.saveloc))
     res_fn = '/scratch/hopan/cube/irreps/cube2res/nres1_512_1024_25len/seed_1/model_270000.pt'
     irr1_fn = '/home/hopan//github/SnFFT/exp/logs/cube2test/233_2111111_100k/seed_0/model_{e}.pt'
     irr2_fn = '/home/hopan//github/SnFFT/exp/logs/cube2test/2111111_41111_200kcap_gpu_nodone/seed_1/model_80000.pt'
@@ -108,26 +111,44 @@ def main():
     irr1_heuristic = gen_irrep_heuristic(irrep1_net)
     irr2_heuristic = gen_irrep_heuristic(irrep2_net)
 
-    cnt = 1000
-    max_explorable = 1000
+    cnt = args.cnt
+    max_explorable = args.max_exp
     _states = [perm_df.random_state(1000 + (1 if random.random() < 0.5 else 0)) for _ in range(cnt)]
 
     st = time.time()
     log.info('Starting 2 irreps...')
     solve_status_2, _, explored2 = test_heuristic(perm_df, irr2_heuristic, _states, max_explorable=100)
-    log.info('2 irrep | Solves: {:.3f} | Avg: {:.2f} | Elapsed: {:.2f}mins'.format(sum(solve_status_2) / len(_states), np.mean(explored2), (time.time()-st) / 60))
+    log.info('2 irrep | Solves: {:.3f} | Avg: {:.2f} | Median: {:.2f} | Elapsed: {:.2f}mins'.format(sum(solve_status_2) / len(_states), np.mean(explored2),
+             np.median(explored2), (time.time()-st) / 60))
 
     st = time.time()
     log.info('Starting 1 irreps...')
     solve_status_1, _, explored1 = test_heuristic(perm_df, irr1_heuristic, _states, max_explorable=100)
-    log.info('1 irrep | Solves: {:.3f} | Avg: {:.2f} | Elapsed: {:.2f}mins'.format(sum(solve_status_1) / len(_states), np.mean(explored1), (time.time()-st) / 60))
+    log.info('1 irrep | Solves: {:.3f} | Avg: {:.2f} | Median: {:.2f} | Elapsed: {:.2f}mins'.format(sum(solve_status_1) / len(_states), np.mean(explored1),
+             np.median(explored1), (time.time()-st) / 60))
 
     st = time.time()
+    true_solves = []
     log.info('Starting res with max exp budget = {} | cnt = {} ...'.format(max_explorable, cnt))
-    solve_status_res, _states, explored = test_heuristic(perm_df, heuristic, _states, max_explorable=1000)
-    log.info('Res net | Solves: {:.3f} | Elapsed: {:.2f}mins'.format(sum(solve_status_res) / len(_states), (time.time() - st) / 60))
+    solve_status_res, _states, explored = test_heuristic(perm_df, heuristic, _states, max_explorable=max_explorable)
+    for _s, _exp in zip(solve_status_res, explored):
+        if _s:
+            true_solves.append(_exp)
+    log.info('Res net | Solves: {:.3f} | Avg: {:.2f} | Median: {:.2f} | Elapsed: {:.2f}mins'.format(sum(solve_status_res) / len(_states),
+             np.mean(true_solves), np.median(true_solves), (time.time() - st) / 60))
 
-    pdb.set_trace()
+    results = {
+        'states': _states,
+        'irrep1': {'solved': solve_status_1, 'explored': explored1, 'model': irr1_fn},
+        'irrep2': {'solved': solve_status_2, 'explored': explored2, 'model': irr2_fn},
+        'res_model': {'solved': solve_status_res, 'explored': explored, 'model': res_fn},
+    }
+    json.dump(results, open(args.saveloc, 'w'))
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cnt', type=int, default=100)
+    parser.add_argument('--max_exp', type=int, default=100)
+    parser.add_argument('--saveloc', type=str, default=f'/scratch/hopan/cube/eval_logs/{time.time()}.json')
+    args = parser.parse_args()
+    main(args)
