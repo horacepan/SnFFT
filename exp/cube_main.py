@@ -36,7 +36,7 @@ def full_benchmark(policy, perm_df, to_tensor, log):
 
 def try_load_weights(sumdir, policy, target):
     files = os.listdir(sumdir)
-    models = [f for f in files if 'model_' in f]
+    models = [f for f in files if 'model_' in f and 'last' not in f]
     if len(models) == 0:
         return False, 0
 
@@ -54,7 +54,7 @@ def main(args):
         os.makedirs(sumdir)
     if args.savelog:
         swr = SummaryWriter(sumdir)
-        json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'))
+        json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'), indent=2)
         logfile = os.path.join(sumdir, 'output.log')
         _cnt = 1
         while os.path.exists(logfile):
@@ -224,6 +224,7 @@ def main(args):
                         loss = cmse(val_re, val_im,
                                     (1 - bd) * args.discount * opt_nbr_vals_re.detach() + br,
                                     (1 - bd) * args.discount * opt_nbr_vals_im.detach())
+                    loss.backward()
 
                     if args.use_mask and args.convert == 'irrep':
                         if hasattr(policy, 'wr'):
@@ -240,9 +241,10 @@ def main(args):
 
                     loss = F.mse_loss(policy.forward(bs),
                                       args.discount * (1 - bd) * opt_nbr_vals + br)
+                    loss.backward()
                 if args.lognorms and bps % args.normiters == 0:
                     log_grad_norms(swr, policy, e)
-                loss.backward()
+
                 optim.step()
                 bps += 1
                 if args.savelog:
@@ -279,6 +281,8 @@ def main(args):
 
             log.info(f'Epoch {e:5d} | Dist corr: {benchmark:.3f} | solves: {val_corr:.3f} | val: {str_dict}' + \
                      f'Updates: {updates}, bps: {bps} | seen: {len(seen_states)}')
+
+            torch.save(policy.state_dict(), os.path.join(sumdir, f'model_last.pt'))
 
         if e % args.saveiters == 0 and e > 0:
             torch.save(policy.state_dict(), os.path.join(sumdir, f'model_{e}.pt'))
