@@ -25,6 +25,13 @@ CUBE2_GENERATORS = [
     ((1, 2, 1, 2, 0, 0, 0, 0), (4, 1, 2, 3, 5, 6, 7, 8))
 ]
 
+def convert_cyc(cyc, mx):
+    ptup = list(range(1, mx+1))
+    for idx, val in enumerate(cyc):
+        ptup[val - 1] = cyc[(idx + 1) % len(cyc)]
+    return tuple(ptup)
+
+
 def px_perm_inv(p):
     return tuple(p.index(i) + 1 for i in range(1, len(p) + 1))
 
@@ -55,6 +62,14 @@ def px_wreath_mul(c1, p1, c2, p2, n):
     ori = px_cyc_add(c1, p1_dot_c2, n)
     perm = px_mul(p1, p2)
     return ori, perm
+
+def px_cyc_inv(t, n):
+    return tuple((n - x) % n for x in t)
+
+def px_wreath_inv(tup, perm, n):
+    pinv = px_perm_inv(perm)
+    twinv = px_cyc_inv(px_perm_dot(pinv, tup), n)
+    return (twinv, pinv)
 
 class WreathPuzzle(GroupPuzzle):
     def __init__(self):
