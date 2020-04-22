@@ -221,10 +221,10 @@ def onehot_otup_single(otup, cyc_size, cache=True):
 
     return tensor
 
-def wreath_onehot(wtups, wcyc):
+def wreath_onehot(wtups, wcyc, cache=True):
     otups, ptups = zip(*wtups)
     n = len(otups[0])
-    perm_part = perm_onehot(ptups)
+    perm_part = perm_onehot(ptups, cache)
     or_part = torch.zeros(len(otups), wcyc * n)
 
     for idx, otup in enumerate(otups):
