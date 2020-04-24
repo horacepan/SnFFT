@@ -1,8 +1,10 @@
 import pdb
+import random
 from wreath_puzzle import px_wreath_inv, px_wreath_mul, convert_cyc
 from utility import wreath_onehot
 import torch
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CUBE3_GENS = [
     ((0, 0, 0, 0, 0, 0, 0, 0), (2, 3, 4, 1, 5, 6, 7, 8), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (2, 3, 4, 1, 5, 6, 7, 8, 9, 10, 11, 12)),
     ((0, 0, 1, 2, 0, 0, 2, 1), (1, 2, 7, 3, 5, 6, 8, 4), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (1, 2, 7, 4, 5, 6, 11, 3, 9, 10, 8, 12)),
@@ -33,6 +35,9 @@ class Cube3(object):
         self._moves = ['U', 'D', 'L', 'R', 'F', 'B']
         self.moves = CUBE3_GENS
 
+    def start_state(self):
+        return CUBE3_START
+
     def nbrs(self, state):
         _nbrs = []
         ct, cp, et, ep = state
@@ -43,30 +48,26 @@ class Cube3(object):
             _nbrs.append((nbr_ct, nbr_cp, nbr_et, nbr_ep))
         return _nbrs
 
-    def step(self, state, action_idx):
-        ct, cp, et, ep = state
-        nct, ncp, net, nep = self.moves[action_idx]
-        nbr_ct, nbr_cp = px_wreath_mul(nct, ncp, ct, cp, 3)
-        nbr_et, nbr_ep = px_wreath_mul(net, nep, et, ep, 2)
-        return (nbr_ct, nbr_cp, nbr_et, nbr_ep)
-
     def to_tensor(self, states):
         corner_tups = [(s[0], s[1]) for s in states]
         edge_tups = [(s[2], s[3]) for s in states]
         t1 = wreath_onehot(corner_tups, 3, cache=False)
         t2 = wreath_onehot(edge_tups, 2, cache=False)
-        return torch.cat([t1, t2], dim=1)
-        
-    def _step(self, state, move):
+        return torch.cat([t1, t2], dim=1).to(device)
+
+    def step_idx(self, state, idx):
         '''
         state: 4 tuple of the (cube orientation tuple, cube permutation, edge orientation tuple, edge permutation)
         move: string
         '''
+        move = self.moves[idx]
+        return self.step(state, move)
+
+    def step(self, state, move):
         ct, cp, et, ep = state
-        nct, ncp, net, nep = self.gens[move]
+        nct, ncp, net, nep = move
         nbr_ct, nbr_cp = px_wreath_mul(nct, ncp, ct, cp, 3)
         nbr_et, nbr_ep = px_wreath_mul(net, nep, et, ep, 2)
-        # order should be consistent with the ordering of the dictionaries
         return (nbr_ct, nbr_cp, nbr_et, nbr_ep)
 
     def _inv_step(self, state, move):
@@ -78,6 +79,26 @@ class Cube3(object):
 
     def is_done(self, state):
         return state == CUBE3_START
+
+    def random_walk(self, length):
+        state = self.start_state()
+        states = [state]
+
+        for _ in range(length):
+            move = random.choice(self.moves)
+            state =  self.step(state, move)
+            states.append(state)
+        return states
+
+    def random_move(self):
+        return random.choice(self.moves)
+
+    def random_state(self, length):
+        state = self.start_state()
+        for _ in range(length):
+            move = random.choice(self.moves)
+            state = self.step(state, move)
+        return state
 
 def test():
     cube = Cube3()
