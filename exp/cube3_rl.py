@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import random
 from tqdm import tqdm
 from logger import get_logger
-from cube3 import Cube3
+from cube3 import Cube3, Cube3Edge
 from rlmodels import MLPResModel, DVN
 from utility import ReplayBuffer, update_params, check_memory
 import pdb
@@ -34,8 +34,8 @@ def can_solve(model, env, state, max_steps):
         nbr_vals = model.forward(env.to_tensor(nbrs)).detach()
         if any(env.is_done(n) for n in nbrs):
             return True
-        best_action = nbr_vals.argmax().item()
-        state = env.step_idx(state, best_action)
+        best_action = nbr_vals.argmin().item()
+        state = env.step(state, best_action)
 
     return False
 
@@ -51,11 +51,17 @@ def main(args):
     set_seed(args.seed)
     log = get_logger(fname=None, stdout=True, tofile=False)
     log.info("Starting ...")
-    start = (0,) * 8, tuple(range(1, 9)), (0,) * 12, tuple(range(1, 13))
-    env = Cube3()
+
+    if args.env == 'Cube3':
+        env = Cube3()
+    elif args.env == 'Cube3Edge':
+        env = Cube3Edge()
+    else:
+        log.info(f'{args.env} is not a valid env')
+        exit()
 
     nactions = len(env.moves)
-    nin = env.to_tensor([start]).numel()
+    nin = env.to_tensor([env.start_state()]).numel()
     nout = 1
 
     replay = ReplayBuffer(nin, args.capacity)
@@ -63,6 +69,11 @@ def main(args):
     target = MLPResModel(nin, args.resfc1, args.resfc2, nout, args.nres, to_tensor=env.to_tensor, std=args.std)
     policy.to(device)
     target.to(device)
+
+    if args.init == 'xavier':
+        policy.xinit()
+        target.xinit()
+
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     log.info("Done setup ...")
 
@@ -72,9 +83,9 @@ def main(args):
         states = env.random_walk(args.rw_length)
         for state in states:
             action = random.randint(0, len(env.moves) - 1)
-            move = env.moves[action]
-            next_state = env.step(state, move)
+            next_state = env.step(state, action)
             reward = 1 if env.is_done(state) else -1
+            reward = 0 if env.is_done(state) else 1
             done = 1 if env.is_done(state) else 0
             replay.push(env.to_tensor([state]), action, env.to_tensor([next_state]), reward, done, state, next_state, icnt+1)
 
@@ -83,7 +94,7 @@ def main(args):
                 bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.batchsize, device)
                 bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
                 bs_nbrs_tens = env.to_tensor(bs_nbrs)
-                opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).max(dim=1, keepdim=True)
+                opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).min(dim=1, keepdim=True)
                 loss = F.mse_loss(policy.forward(bs), args.discount * (1 - bd) * opt_nbr_vals + br)
                 loss.backward()
                 optim.step()
@@ -101,6 +112,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--env', type=str, default='Cube3')
 
     # hyperparams
     parser.add_argument('--lr', type=float, default=0.001)
@@ -123,6 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--resfc1', type=int, default='1024')
     parser.add_argument('--resfc2', type=int, default='2048')
     parser.add_argument('--nres', type=int, default='1')
+    parser.add_argument('--init', type=str, default='default')
 
     args = parser.parse_args()
     main(args)
