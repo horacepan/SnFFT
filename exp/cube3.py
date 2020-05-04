@@ -20,9 +20,11 @@ CUBE3_GENS = [
     ((1, 2, 0, 0, 2, 1, 0, 0), (2, 6, 3, 4, 1, 5, 7, 8), (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), (6, 2, 3, 4, 1, 9, 7, 8, 5, 10, 11, 12)),
 ]
 CUBE3_EDGE_GENS = [(f[2], f[3]) for f in CUBE3_GENS]
+CUBE3_CORNER_GENS = [(f[0], f[1]) for f in CUBE3_GENS]
 
 CUBE3_START = (0,) * 8, tuple(range(1, 9)), (0,) * 12, tuple(range(1, 13))
 CUBE3_EDGE_START = (0,) * 12, tuple(range(1, 13))
+CUBE3_CORNER_START = (0,) * 8, tuple(range(1, 9))
 
 def convert_gens(generators):
     gens = {}
@@ -98,28 +100,36 @@ class Cube3Edge(Cube3):
         self._moves = ['U', 'D', 'L', 'R', 'F', 'B']
         self.moves = CUBE3_EDGE_GENS
         self._start_state = CUBE3_EDGE_START
+        self._cyc_size = 2
 
     def start_state(self):
-        return CUBE3_EDGE_START
+        return self._start_state
 
     def nbrs(self, state):
         _nbrs = []
         et, ep = state
 
         for net, nep in self.moves:
-            nbr_et, nbr_ep = px_wreath_mul(net, nep, et, ep, 2)
+            nbr_et, nbr_ep = px_wreath_mul(net, nep, et, ep, self._cyc_size)
             _nbrs.append((nbr_et, nbr_ep))
 
         return _nbrs
 
     def to_tensor(self, states):
-        return wreath_onehot(states, 2, cache=False).to(device)
+        return wreath_onehot(states, self._cyc_size, cache=False).to(device)
 
     def _step(self, state, move):
         et, ep = state
         net, nep = move
-        nbr_et, nbr_ep = px_wreath_mul(net, nep, et, ep, 2)
+        nbr_et, nbr_ep = px_wreath_mul(net, nep, et, ep, self._cyc_size)
         return nbr_et, nbr_ep
+
+class Cube3Corner(Cube3Edge):
+    def __init__(self):
+        self._moves = ['U', 'D', 'L', 'R', 'F', 'B']
+        self.moves = CUBE3_CORNER_GENS
+        self._start_state = CUBE3_CORNER_START
+        self._cyc_size = 3
 
 def test():
     cube = Cube3()
