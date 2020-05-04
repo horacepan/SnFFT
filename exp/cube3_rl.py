@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 import sys
+import os
+import json
 sys.path.append('/home/hopan/github/SnFFT/exp/')
 
 import argparse
@@ -49,7 +51,15 @@ def benchmark(model, env, trials, max_steps, scramble_len=1000):
 
 def main(args):
     set_seed(args.seed)
-    log = get_logger(fname=None, stdout=True, tofile=False)
+    sumdir = os.path.join(f'{args.savedir}', f'{args.env}', f'{args.notes}/seed_{args.seed}')
+    if not os.path.exists(sumdir) and args.savelog:
+        os.makedirs(sumdir)
+        log = get_logger(fname=os.path.join(sumdir, 'output.log'), stdout=True, tofile=True)
+        log.info('Saving in: {}'.format(sumdir))
+        # save the json too
+        json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'), indent=2)
+    else:
+        log = get_logger(fname=None, stdout=True, tofile=False)
     log.info("Starting ...")
 
     if args.env == 'Cube3':
@@ -109,10 +119,18 @@ def main(args):
             correct = benchmark(policy, env, trials=args.trials, max_steps=args.max_steps, scramble_len=args.scramble_len)
             log.info(f'Epoch: {e:4d} | Solves: {correct/args.trials:.3f} | Updates: {updates:4d} | Iters: {icnt:6d} | Mem: {check_memory(verbose=False):.2f}mb')
 
+            torch.save(policy.state_dict(), os.path.join(sumdir, f'model_last.pt'))
+
+        if e % 10000 == 0 and e > 0:
+            torch.save(policy.state_dict(), os.path.join(sumdir, f'model_{e}.pt'))
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--env', type=str, default='Cube3')
+    parser.add_argument('--savedir', type=str, default='/scratch/hopan/cube/irreps/')
+    parser.add_argument('--savelog', action='store_true', default=False)
+    parser.add_argument('--notes', type=str, default='test')
 
     # hyperparams
     parser.add_argument('--lr', type=float, default=0.001)
