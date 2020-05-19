@@ -17,7 +17,7 @@ import torch.nn.functional as F
 from perm_df import WreathDF
 from rlmodels import MLP, MLPResModel
 from complex_policy import ComplexLinear
-from wreath_fourier import WreathPolicy, CubePolicy
+from wreath_fourier import WreathPolicy, CubePolicy, CubePolicyLowRank
 from fourier_policy import FourierPolicyCG
 from utility import ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms, check_memory, wreath_onehot
 from replay_buffer import ReplayBufferMini
@@ -102,6 +102,12 @@ def main(args):
         log.info(f'Policy using Irreps: {irreps}')
         policy = CubePolicy(irreps, std=args.std)
         target = CubePolicy(irreps, std=args.std, irrep_loaders=policy.irrep_loaders)
+        to_tensor = lambda g: policy.to_tensor(g)
+        log.info('Cube policy dim: {}'.format(policy.dim))
+    elif args.model == 'lowrank':
+        log.info(f'Policy using Irreps: {irreps} | Rank: {args.rank}')
+        policy = CubePolicyLowRank(irreps, rank=args.rank, std=args.std)
+        target = CubePolicyLowRank(irreps, rank=args.rank, std=args.std, irrep_loaders=policy.irrep_loaders)
         to_tensor = lambda g: policy.to_tensor(g)
         log.info('Cube policy dim: {}'.format(policy.dim))
     elif args.model == 'dvn':
@@ -329,6 +335,7 @@ def get_args():
     parser.add_argument('--irreps', type=str, default='[]')
     parser.add_argument('--cube_irreps', type=str, default='[((2, 3, 3), ((2,), (1, 1, 1), (1, 1, 1)))]')
     parser.add_argument('--model', type=str, default='linear')
+    parser.add_argument('--rank', type=int, default=10)
     parser.add_argument('--nhid', type=int, default=32)
     parser.add_argument('--layers', type=int, default=2)
     parser.add_argument('--std', type=float, default=0.1)

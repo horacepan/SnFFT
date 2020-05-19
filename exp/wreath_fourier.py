@@ -146,11 +146,11 @@ class CubePolicy(nn.Module):
         self.nout = 1
         self.wi = nn.Parameter(torch.zeros(self.dim, 1))
         self.wr = nn.Parameter(torch.zeros(self.dim, 1))
-        self.init_params()
+        self.init_params(std)
 
-    def init_params(self):
-        self.wi.data.normal_(std=0.1)
-        self.wr.data.normal_(std=0.1)
+    def init_params(self, std):
+        for p in self.parameters():
+            p.data.normal_(std)
 
     def _get_dim(self):
         ident = ((0,) * 8, tuple(range(1, 9)))
@@ -190,6 +190,43 @@ class CubePolicy(nn.Module):
         xr, xi = re_im_tensor
         yr, yi = self.forward_complex(xr, xi)
         return yr
+
+class CubePolicyLowRank(CubePolicy):
+    def __init__(self, irreps, rank, std=0.1, irrep_loaders=None):
+        super(CubePolicyLowRank, self).__init__(irreps, std=std, irrep_loaders=irrep_loaders)
+        # this is kind of hacky...
+        if hasattr(self, 'wr'):
+            del self.wr
+        if hasattr(self, 'wi'):
+            del self.wi
+
+        self.irreps = irreps
+        self.alphas = [i[0] for i in irreps]
+        self.parts = [i[1] for i in irreps]
+        if irrep_loaders is None:
+            self.irrep_loaders = self.load_all_irreps()
+        else:
+            self.irrep_loaders = irrep_loaders
+
+        self.dim = self._get_dim()
+        self._n = int(self.dim ** 0.5)
+        self.nout = 1
+        self.uvecs_r = nn.Parameter(torch.zeros(self._n, rank))
+        self.uvecs_i = nn.Parameter(torch.zeros(self._n, rank))
+        self.vvecs_r = nn.Parameter(torch.zeros(self._n, rank))
+        self.vvecs_i = nn.Parameter(torch.zeros(self._n, rank))
+        self.sigmas = nn.Parameter(torch.zeros(rank))
+        self.init_params(std)
+
+    def _get_w(self):
+        svvecs_r = self.sigmas * self.vvecs_r
+        svvecs_i = self.sigmas * self.vvecs_i
+        wr, wi = cmm(self.uvecs_r, self.uvecs_i, svvecs_r.T, svvecs_i.T)
+        return wr, wi
+
+    def forward_complex(self, xr, xi):
+        wr, wi = self._get_w()
+        return cmm(xr, xi, wr.view(self.dim, 1), wi.view(self.dim, 1))
 
 def main():
     irreps = [
