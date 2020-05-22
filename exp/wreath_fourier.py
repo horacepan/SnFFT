@@ -215,18 +215,54 @@ class CubePolicyLowRank(CubePolicy):
         self.uvecs_i = nn.Parameter(torch.zeros(self._n, rank))
         self.vvecs_r = nn.Parameter(torch.zeros(self._n, rank))
         self.vvecs_i = nn.Parameter(torch.zeros(self._n, rank))
-        self.sigmas = nn.Parameter(torch.zeros(rank))
+        #self.sigmas = nn.Parameter(torch.zeros(rank))
         self.init_params(std)
 
     def _get_w(self):
-        svvecs_r = self.sigmas * self.vvecs_r
-        svvecs_i = self.sigmas * self.vvecs_i
+        #svvecs_r = self.sigmas * self.vvecs_r
+        #svvecs_i = self.sigmas * self.vvecs_i
+        svvecs_r = self.vvecs_r
+        svvecs_i = self.vvecs_i
+
         wr, wi = cmm(self.uvecs_r, self.uvecs_i, svvecs_r.T, svvecs_i.T)
         return wr, wi
 
     def forward_complex(self, xr, xi):
         wr, wi = self._get_w()
         return cmm(xr, xi, wr.view(self.dim, 1), wi.view(self.dim, 1))
+
+class CubePolicyLowRankEig(CubePolicy):
+    def __init__(self, irreps, rank, std=0.1, irrep_loaders=None):
+        super(CubePolicyLowRankEig, self).__init__(irreps, std=std, irrep_loaders=irrep_loaders)
+        # this is kind of hacky...
+        if hasattr(self, 'wr'):
+            del self.wr
+        if hasattr(self, 'wi'):
+            del self.wi
+
+        self.irreps = irreps
+        self.alphas = [i[0] for i in irreps]
+        self.parts = [i[1] for i in irreps]
+        if irrep_loaders is None:
+            self.irrep_loaders = self.load_all_irreps()
+        else:
+            self.irrep_loaders = irrep_loaders
+
+        self.dim = self._get_dim()
+        self._n = int(self.dim ** 0.5)
+        self.nout = 1
+        self.uvecs_r = nn.Parameter(torch.zeros(self._n, rank))
+        self.uvecs_i = nn.Parameter(torch.zeros(self._n, rank))
+        self.init_params(std)
+
+    def _get_w(self):
+        wr, wi = cmm(self.uvecs_r, self.uvecs_i, self.uvecs_r.T, self.uvecs_i.T)
+        return wr, wi
+
+    def forward_complex(self, xr, xi):
+        wr, wi = self._get_w()
+        return cmm(xr, xi, wr.view(self.dim, 1), wi.view(self.dim, 1))
+
 
 def main():
     irreps = [

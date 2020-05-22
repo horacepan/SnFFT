@@ -17,7 +17,7 @@ import torch.nn.functional as F
 from perm_df import WreathDF
 from rlmodels import MLP, MLPResModel
 from complex_policy import ComplexLinear
-from wreath_fourier import WreathPolicy, CubePolicy, CubePolicyLowRank
+from wreath_fourier import WreathPolicy, CubePolicy, CubePolicyLowRank, CubePolicyLowRankEig
 from fourier_policy import FourierPolicyCG
 from utility import ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms, check_memory, wreath_onehot
 from replay_buffer import ReplayBufferMini
@@ -108,6 +108,12 @@ def main(args):
         log.info(f'Policy using Irreps: {irreps} | Rank: {args.rank}')
         policy = CubePolicyLowRank(irreps, rank=args.rank, std=args.std)
         target = CubePolicyLowRank(irreps, rank=args.rank, std=args.std, irrep_loaders=policy.irrep_loaders)
+        to_tensor = lambda g: policy.to_tensor(g)
+        log.info('Cube policy dim: {}'.format(policy.dim))
+    elif args.model == 'lowrankeig':
+        log.info(f'Policy using Irreps: {irreps} | Rank: {args.rank} | Low rank eig')
+        policy = CubePolicyLowRankEig(irreps, rank=args.rank, std=args.std)
+        target = CubePolicyLowRankEig(irreps, rank=args.rank, std=args.std, irrep_loaders=policy.irrep_loaders)
         to_tensor = lambda g: policy.to_tensor(g)
         log.info('Cube policy dim: {}'.format(policy.dim))
     elif args.model == 'dvn':
