@@ -73,6 +73,13 @@ class MLPResModel(nn.Module):
         for p in self.parameters():
             p.data.normal_(std=std)
 
+    def xinit(self):
+        for p in self.parameters():
+            try:
+                nn.init.xavier_normal_(p)
+            except:
+                pdb.set_trace()
+
 class LinearPolicy(nn.Module):
     def __init__(self, nin, nout, to_tensor=None, std=0.1):
         super(LinearPolicy, self).__init__()

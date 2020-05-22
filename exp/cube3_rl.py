@@ -16,13 +16,18 @@ import torch.nn.functional as F
 import random
 from tqdm import tqdm
 from logger import get_logger
-from cube3 import Cube3, Cube3Edge
+from cube3 import Cube3, Cube3Edge, Cube3Corner
+from wreath_fourier import CubePolicy, CubePolicyLowRank, CubePolicyLowRankEig
 from rlmodels import MLPResModel, DVN
 from utility import ReplayBuffer, update_params, check_memory
+from replay_buffer import ReplayBufferMini
 import pdb
 
 from astar import a_star, gen_mlp_model
 from cube_main import try_load_weights
+
+sys.path.append('../')
+from complex_utils import cmse, cmse_real
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -37,7 +42,8 @@ def can_solve(model, env, state, max_steps, argmin=True):
 
     for _ in range(max_steps):
         nbrs = env.nbrs(state)
-        nbr_vals = model.forward(env.to_tensor(nbrs)).detach()
+        # this is suspect
+        nbr_vals = model.forward(model.to_tensor(nbrs)).detach()
         if any(env.is_done(n) for n in nbrs):
             return True
         if argmin:
@@ -48,12 +54,15 @@ def can_solve(model, env, state, max_steps, argmin=True):
 
     return False
 
-def astar_bench(policy, env, trials, max_exp, scramble_len):
+def astar_bench(policy, env, trials, max_exp, scramble_len, argmin=True):
     correct = 0
     solve_lens = []
 
     done_state = env.start_state()
-    hfunc = lambda s: policy.forward(env.to_tensor([s])).item()
+    if argmin:
+        hfunc = lambda s: policy.forward(policy.to_tensor([s]))[0].item()
+    else:
+        hfunc = lambda s: -policy.forward(policy.to_tensor([s]))[0].item()
 
     for _ in range(trials):
         start = env.random_state(scramble_len + (1 if random.random() < 0.5 else 0))
@@ -99,6 +108,8 @@ def main(args):
         env = Cube3()
     elif args.env == 'Cube3Edge':
         env = Cube3Edge()
+    elif args.env == 'Cube3Corner':
+        env = Cube3Corner()
     else:
         log.info(f'{args.env} is not a valid env')
         exit()
@@ -110,9 +121,32 @@ def main(args):
     icnt = 0
     start_ep = 0
 
-    replay = ReplayBuffer(nin, args.capacity)
-    policy = MLPResModel(nin, args.resfc1, args.resfc2, nout, args.nres, to_tensor=env.to_tensor, std=args.std)
-    target = MLPResModel(nin, args.resfc1, args.resfc2, nout, args.nres, to_tensor=env.to_tensor, std=args.std)
+    if args.convert == 'onehot':
+        replay = ReplayBuffer(nin, args.capacity)
+    else:
+        log.info('Creating mini replay')
+        replay = ReplayBufferMini(args.capacity)
+
+    if args.model == 'resmlp':
+        policy = MLPResModel(nin, args.resfc1, args.resfc2, nout, args.nres, to_tensor=env.to_tensor, std=args.std)
+        target = MLPResModel(nin, args.resfc1, args.resfc2, nout, args.nres, to_tensor=env.to_tensor, std=args.std)
+        to_tensor = lambda g: wreath_onehot(g, 3)
+    elif args.model == 'linear':
+        irreps = eval(args.cube_irreps)
+        log.info(f'Policy using Irreps: {irreps}')
+        policy = CubePolicy(irreps, std=args.std)
+        target = CubePolicy(irreps, std=args.std, irrep_loaders=policy.irrep_loaders)
+        to_tensor = lambda g: policy.to_tensor(g)
+        log.info('Cube policy dim: {}'.format(policy.dim))
+    elif args.model == 'lowrank':
+        irreps = eval(args.cube_irreps)
+        log.info(f'Policy using Irreps: {irreps} | Rank: {args.rank}')
+        policy = CubePolicyLowRank(irreps, rank=args.rank, std=args.std)
+        target = CubePolicyLowRank(irreps, rank=args.rank, std=args.std, irrep_loaders=policy.irrep_loaders)
+        to_tensor = lambda g: policy.to_tensor(g)
+        log.info('Cube policy dim: {}'.format(policy.dim))
+    else:
+        log.info('Not a valid model!')
     policy.to(device)
     target.to(device)
 
@@ -124,6 +158,7 @@ def main(args):
         loaded, start_ep = try_load_weights(sumdir, policy, target)
         if loaded:
             log.info(f'Loaded models! | Starting at epoch: {start_ep}')
+            set_seed(args.seed + start_ep)
 
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     log.info("Done setup ...")
@@ -134,19 +169,40 @@ def main(args):
             action = random.randint(0, len(env.moves) - 1)
             next_state = env.step(state, action)
             reward = 1 if env.is_done(state) else -1
-            reward = 0 if env.is_done(state) else 1
+            #reward = 0 if env.is_done(state) else 1
             done = 1 if env.is_done(state) else 0
-            replay.push(env.to_tensor([state]), action, env.to_tensor([next_state]), reward, done, state, next_state, icnt+1)
+            if args.convert == 'onehot':
+                replay.push(env.to_tensor([state]), action, env.to_tensor([next_state]), reward, done, state, next_state, icnt+1)
+            else:
+                replay.push(state, action, next_state, reward, done)
 
             if icnt % args.update_int == 0:
                 optim.zero_grad()
-                bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.batchsize, device)
-                bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
-                bs_nbrs_tens = env.to_tensor(bs_nbrs)
-                opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).min(dim=1, keepdim=True)
-                loss = F.mse_loss(policy.forward(bs), args.discount * (1 - bd) * opt_nbr_vals + br)
-                loss.backward()
-                optim.step()
+                if args.convert == 'onehot':
+                    bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.minibatch, device)
+                else:
+                    bs_tups, ba, bns_tups, br, bd = replay.sample(args.minibatch, device)
+
+                if args.convert == 'onehot':
+                    bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
+                    bs_nbrs_tens = env.to_tensor(bs_nbrs)
+                    opt_nbr_vals, _ = target.forward(bs_nbrs_tens).detach().reshape(-1, nactions).min(dim=1, keepdim=True)
+                    loss = F.mse_loss(policy.forward(bs), args.discount * (1 - bd) * opt_nbr_vals + br)
+                    loss.backward()
+                    optim.step()
+                else:
+                    bs_re, bs_im = to_tensor(bs_tups)
+                    val_re, val_im = policy.forward_complex(bs_re, bs_im)
+                    bs_nbrs = [n for tup in bs_tups for n in env.nbrs(tup)]
+                    bs_nbrs_re, bs_nbrs_im = to_tensor(bs_nbrs)
+                    nr, ni = target.forward_complex(bs_nbrs_re, bs_nbrs_im)
+                    opt_nbr_vals_re, opt_idx = nr.reshape(-1, nactions).max(dim=1, keepdim=True)
+                    opt_nbr_vals_im = ni.reshape(-1, nactions).gather(1, opt_idx)
+                    loss = cmse(val_re, val_im,
+                                    (1 - bd) * args.discount * opt_nbr_vals_re.detach() + br,
+                                    (1 - bd) * args.discount * opt_nbr_vals_im.detach())
+                    loss.backward()
+                    optim.step()
 
             icnt += 1
 
@@ -157,7 +213,7 @@ def main(args):
         if e % args.logint == 0:
             #correct = benchmark(policy, env, trials=args.trials, max_steps=args.max_steps, scramble_len=args.scramble_len)
             _astart = time.time()
-            correct, solves_lens = astar_bench(policy, env, trials=args.trials, max_exp=args.max_exp, scramble_len=args.scramble_len)
+            correct, solves_lens = astar_bench(policy, env, trials=args.trials, max_exp=args.max_exp, scramble_len=args.scramble_len, argmin=False)
             _atime = (time.time() - _astart) / 60.
             avg = 0
             if correct > 0:
@@ -183,11 +239,12 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--capacity', type=int, default=100000)
     parser.add_argument('--batchsize', type=int, default=128)
+    parser.add_argument('--minibatch', type=int, default=32)
     parser.add_argument('--discount', type=float, default=1.0)
 
     # intervals, test params
     parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--logint', type=int, default=200)
+    parser.add_argument('--logint', type=int, default=1000)
     parser.add_argument('--target_update', type=int, default=20)
     parser.add_argument('--update_int', type=int, default=50)
     parser.add_argument('--trials', type=int, default=100)
@@ -197,6 +254,10 @@ if __name__ == '__main__':
     parser.add_argument('--scramble_len', type=int, default=20)
 
     # model params
+    parser.add_argument('--convert', type=str, default='onehot')
+    parser.add_argument('--model', type=str, default='resmlp')
+    parser.add_argument('--cube_irreps', type=str, default='[((4, 2, 2), ((4,), (1, 1), (1, 1))), ((2, 3, 3), ((2,), (1, 1, 1), (1, 1, 1)))]')
+    parser.add_argument('--rank', type=int, default=10)
     parser.add_argument('--std', type=float, default=0.01)
     parser.add_argument('--resfc1', type=int, default='1024')
     parser.add_argument('--resfc2', type=int, default='2048')
