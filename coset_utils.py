@@ -1,5 +1,6 @@
 import itertools
 import perm2
+from itertools import combinations
 
 def perm_from_young_tuple(cyc_tup):
     n = sum(map(len, cyc_tup))
@@ -97,7 +98,14 @@ def coset_reps(G, H):
 
     return reps
 
+def cos_reps_alpha2(lst, s1, s2):
+    reps = []
+    for p in combinations(lst, s1)
+        s = [i for i in lst if i not in p]
+        perm = Perm2.from_cycle_decomp([p, s])
+        reps.append(perm)
 
+    return reps
 if __name__ == '__main__':
     G = perm2.sn(4)
     subgroup = young_subgroup_perm((2, 2))

@@ -90,6 +90,16 @@ class Perm2:
         return perm
 
     @staticmethod
+    def from_cycle_decomp(decomp_lst):
+        n = sum(len(x) for x in decomp_lst)
+        lst = [i for i in range(1, n+1)]
+        for cyc in decomp_lst:
+            for idx, val in enumerate(cyc):
+                nxt_val = cyc[(idx + 1) % len(cyc)]
+                lst[val - 1] = nxt_val
+        return Perm2.from_tup(tuple(lst))
+
+    @staticmethod
     def swap(n, a, b):
         tup = [i for i in range(1, n + 1)]
         tup[a - 1] = b
