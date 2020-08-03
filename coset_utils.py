@@ -102,7 +102,7 @@ def cos_reps_alpha2(lst, s1, s2):
     reps = []
     for p in combinations(lst, s1):
         s = [i for i in lst if i not in p]
-        perm = Perm2.from_cycle_decomp([p, s])
+        perm = perm2.Perm2.from_cycle_decomp([p, s])
         reps.append(perm)
 
     return reps
