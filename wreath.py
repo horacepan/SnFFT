@@ -9,6 +9,8 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from utils import check_memory, chunk
 import perm2
+from young_tableau import FerrersDiagram
+from yor import yor
 from coset_utils import coset_reps, young_subgroup_perm, young_subgroup, tup_set
 import torch
 
@@ -162,7 +164,7 @@ def load_partition(partition, prefix='/local/hopan/irreps/'):
         return yd
     else:
         n = sum(partition)
-        _sn = sn(n)
+        _sn = perm2.sn(n)
         ferr = FerrersDiagram(partition)
         rep_dict = {}
         for p in _sn:
