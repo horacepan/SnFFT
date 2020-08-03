@@ -150,16 +150,25 @@ def load_partition(partition, prefix='/local/hopan/irreps/'):
     if n == 0:
         return None
 
-    try:
+    if os.path.exists(prefix):
         prefix = '/local/hopan/irreps'
         fname = os.path.join(prefix,  's_{}/{}.pkl'.format(n, '_'.join(map(str, partition))))
         yd = load_yor(fname, partition)
         return yd
-    except:
+    elif os.path.exists('/scratch/hopan/irreps'):
         prefix = '/scratch/hopan/irreps'
         fname = os.path.join(prefix,  's_{}/{}.pkl'.format(n, '_'.join(map(str, partition))))
         yd = load_yor(fname, partition)
         return yd
+    else:
+        n = sum(partition)
+        _sn = sn(n)
+        ferr = FerrersDiagram(partition)
+        rep_dict = {}
+        for p in _sn:
+            rep_dict[p.tup_rep] = yor(ferr, p)
+
+        return rep_dict
 
 def canonical_order(tup_rep):
     new_tup_rep = []
