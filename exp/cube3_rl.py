@@ -251,7 +251,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_exp', type=int, default=100)
     parser.add_argument('--rw_length', type=int, default=10)
     parser.add_argument('--max_steps', type=int, default=10)
-    parser.add_argument('--scramble_len', type=int, default=20)
+    parser.add_argument('--scramble_len', type=int, default=100)
 
     # model params
     parser.add_argument('--convert', type=str, default='onehot')

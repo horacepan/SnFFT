@@ -65,6 +65,7 @@ def gen_th_pkl(np_pkl, th_pkl):
 
     if not os.path.exists(np_pkl):
         print(np_pkl, 'doesnt exist! Exiting!')
+        pdb.set_trace()
         exit()
     else:
         dirname = os.path.dirname(th_pkl)
@@ -133,7 +134,7 @@ def test():
     alphas = [(2, 3, 3)]
     alphas = [(4, 2, 2)]
     parts = [((2,), (1, 1, 1), (1, 1, 1))]
-    parts = [((2,1,1), (2), (1, 1))]
+    parts = [((4,), (2,), (2,))]
     pset = set()
     pkls = []
     mem_usg = [0]

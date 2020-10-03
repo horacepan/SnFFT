@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from perm_df import PermDF, WreathDF
-from rlmodels import MLP, ResidualBlock, MLPResBlock
+from rlmodels import MLP, ResidualBlock, MLPResModel
 from wreath_fourier import WreathPolicy
 from fourier_policy import FourierPolicyCG
 from utility import nbrs, perm_onehot, ReplayBuffer, update_params, str_val_results, test_model, test_all_states, log_grad_norms, check_memory, wreath_onehot
@@ -28,6 +28,7 @@ import pyr_irreps
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
+    return 1
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def full_benchmark(policy, perm_df, to_tensor, log):
@@ -36,16 +37,17 @@ def full_benchmark(policy, perm_df, to_tensor, log):
     return {'score': score, 'dists': dists, 'stats': stats}
 
 def main(args):
-    log = get_logger(args.logfile, stdout=not args.nostdout, tofile=args.savelog)
-    sumdir = os.path.join(f'./logs/{args.sumdir}/{args.notes}/seed_{args.seed}')
+    #sumdir = os.path.join(f'./logs/{args.sumdir}/{args.notes}/seed_{args.seed}')
+    sumdir = os.path.join(f'/scratch/hopan/{args.sumdir}/{args.notes}/seed_{args.seed}')
     if not os.path.exists(sumdir) and args.savelog:
         os.makedirs(sumdir)
 
     if args.savelog:
         swr = SummaryWriter(sumdir)
-
-    log.info(f'Starting ... Saving logs in: {args.logfile} | summary writer: {sumdir}')
+    log = get_logger(os.path.join(sumdir, 'output.log'), stdout=not args.nostdout, tofile=args.savelog)
+    log.info(f'Saving in {sumdir}')
     log.info('Args: {}'.format(args))
+
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -93,10 +95,10 @@ def main(args):
         policy = ResidualBlock(to_tensor([ident]).numel(), args.nhid, nout=1, to_tensor=to_tensor, std=args.std)
         target = ResidualBlock(to_tensor([ident]).numel(), args.nhid, nout=1, to_tensor=to_tensor, std=args.std)
     elif args.model == 'mlp_res':
-
-        log.info('Using MLPRes')
-        policy = MLPResBlock(to_tensor([ident]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
-        target = MLPResBlock(to_tensor([ident]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
+        pass
+        # log.info('Using MLPRes')
+        # policy = MLPResModel(to_tensor([ident]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
+        # target = MLPResModel(to_tensor([ident]).numel(), args.nhid, 1, to_tensor=to_tensor, std=args.std)
     elif args.model == 'dqn':
         log.info('Using MLP DQN')
         nactions = 6
@@ -151,8 +153,6 @@ def main(args):
             done = 1 if (perm_df.is_done(state)) else 0
             reward = 1 if done else -1
             #replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state)
-            if done:
-                replay.push(to_tensor([next_state]), 0, to_tensor([state]), -1, 0, next_state, state, idx + 1)
             replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state, idx+1)
             d1 = perm_df.distance(state)
             d2 = perm_df.distance(next_state)
@@ -195,8 +195,6 @@ def main(args):
                     loss = F.mse_loss(qsa, args.discount * (1 - bd) * qsan + br)
 
                 loss.backward()
-                if args.lognorms and bps % args.normiters == 0:
-                    log_grad_norms(swr, policy, e)
                 optim.step()
                 bps += 1
                 if args.savelog:
@@ -239,8 +237,11 @@ def main(args):
                 save_updates.append(updates)
 
 
-            log.info(f'Epoch {e:5d} | exp rate: {exp_rate:.2f} | val: {str_dict} | ' + \
+            log.info(f'Epoch {e:5d} | val corr: {val_corr:.3f} | val: {str_dict} | ' + \
                      f'Dist corr: {benchmark:.4f} | Updates: {updates}, bps: {bps} | seen: {len(seen_states)} | icnt: {icnt}')
+            torch.save(policy.state_dict(), os.path.join(sumdir, f'model_last.pt'))
+        if e % 10000 == 0 and e > 0:
+            torch.save(policy.state_dict(), os.path.join(sumdir, f'model_{e}.pt'))
         if e % args.benchlog == 0 and e > 0:
             bench_results = full_benchmark(policy, perm_df, to_tensor, log)
 
@@ -268,7 +269,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     # log params
     parser.add_argument('--nostdout', action='store_true', default=False)
-    parser.add_argument('--sumdir', type=str, default='test')
+    parser.add_argument('--sumdir', type=str, default='s8research')
     parser.add_argument('--savelog', action='store_true', default=False)
     parser.add_argument('--logfile', type=str, default=f'./logs/rl/{time.time()}.log')
     parser.add_argument('--skipvalidate', action='store_true', default=False)

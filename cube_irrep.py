@@ -16,7 +16,7 @@ from cube_utils import cube2_orientations
 if os.path.exists('/local/hopan/cube'):
     IRREP_LOC_FMT = '/local/hopan/cube/pickles/{}/{}.pkl'
     IRREP_SP_LOC_FMT = '/local/hopan/cube/pickles_sparse/{}/{}.pkl'
-if os.path.exists('/scratch/hopan/cube'):
+elif os.path.exists('/scratch/hopan/cube'):
     IRREP_LOC_FMT = '/scratch/hopan/cube/pickles/{}/{}.pkl'
     IRREP_SP_LOC_FMT = '/scratch/hopan/cube/pickles_sparse/{}/{}.pkl'
 else:
@@ -43,7 +43,7 @@ class Cube2Irrep(object):
         st = time.time()
         self.fill_cyclic_irreps()
         mem = check_memory(verbose=False)
-        print(f'Done caching cyclic irreps: {time.time() - st:.2f}s | Mem used: {mem:.2f}mb')
+        # print(f'Done caching cyclic irreps: {time.time() - st:.2f}s | Mem used: {mem:.2f}mb')
 
         # also cache the cyclic irreps
         if numpy:
@@ -121,6 +121,11 @@ class Cube2Irrep(object):
         re = self.yor_dict[ptup]
         rem = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_re[otup], re.size()))
         imm = re.mul(torch.sparse.FloatTensor(re.indices(), self.cyclic_irreps_im[otup], re.size()))
+        return rem, imm
+
+    def tup_to_irrep_sp_noimag(self, otup, ptup):
+        rem = self.yor_dict[ptup]
+        imm = rem * 0
         return rem, imm
 
     def str_to_irrep_sp(self, cube_str):

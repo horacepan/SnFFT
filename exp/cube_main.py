@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from perm_df import WreathDF
-from rlmodels import MLP, MLPResModel
+from rlmodels import MLP, MLPResModel, MLPBn
 from complex_policy import ComplexLinear
 from wreath_fourier import WreathPolicy, CubePolicy, CubePolicyLowRank, CubePolicyLowRankEig
 from fourier_policy import FourierPolicyCG
@@ -120,6 +120,10 @@ def main(args):
         log.info('Using MLP DVN')
         policy = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
         target = MLP(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+    elif args.model == 'dvnbn':
+        log.info('Using MLP DVN Batch norm')
+        policy = MLPBn(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
+        target = MLPBn(to_tensor([ident]).numel(), args.nhid, 1, layers=args.layers, to_tensor=to_tensor, std=args.std)
     elif args.model == 'res':
         log.info('Using Residual Network')
         policy = MLPResModel(to_tensor([ident]).numel(), args.resfc1, args.resfc2, 1, args.nres, std=args.std, to_tensor=to_tensor)
@@ -129,7 +133,13 @@ def main(args):
     target.to(device)
     start_epochs = 0
     loaded, start_epochs = try_load_weights(sumdir, policy, target)
-    log.info(f'Loaded from old: {loaded}')
+    log.info(f'Loaded from old: {loaded} | consumed: {check_memory(verbose=False):.2f}mb')
+    if loaded:
+        try:
+            seen_states = pickle.load(open(os.path.join(sumdir, 'seen_states.pkl', 'rb')))
+            log.info(f'Loaded seen states: seen {len(seen_states)} after {start_epochs} epochs')
+        except:
+            log.info('No seen states to load')
 
     if len(args.loadsaved) > 0:
         sd = torch.load(args.loadsaved, map_location=device)
@@ -175,6 +185,7 @@ def main(args):
     pol_moves = 0
     pushes = {}
     npushes = 0
+    prev_benchmark = 0
 
     stats_dict = {
         'save_epochs': [],
@@ -206,6 +217,8 @@ def main(args):
 
             icnt += 1
             if icnt % args.update == 0 and icnt > 0:
+                policy.train()
+                target.train()
                 optim.zero_grad()
                 if args.convert == 'onehot':
                     bs, ba, bns, br, bd, bs_tups, bns_tups, bidx = replay.sample(args.minibatch, device)
@@ -243,7 +256,8 @@ def main(args):
                             policy.wr.grad *= masks['wr']
                         if hasattr(policy, 'wi'):
                             policy.wi.grad *= masks['wi']
-                elif args.convert == 'onehot' and (args.model == 'dvn' or args.model == 'res'):
+                #elif args.convert == 'onehot' and (args.model == 'dvn' or args.model == 'res'):
+                elif args.convert == 'onehot':
                     if args.dorandom and (random.random() < args.minexp):
                         opt_nbr_vals = target.forward(bns).detach()
                     else:
@@ -267,6 +281,8 @@ def main(args):
             updates += 1
 
         if e % args.logiters == 0:
+            policy.eval()
+            target.eval()
             exp_rate = 1.0
             distance_check = range(1, 13)
             cnt = 200
@@ -278,6 +294,7 @@ def main(args):
             if args.savelog:
                 swr.add_scalar('prop_correct/overall', benchmark, e)
                 swr.add_scalar('solve_prop', val_corr, e)
+                swr.add_scalar('seen_states', len(seen_states), e)
                 for ii in distance_check:
                     rand_states = perm_df.random_states(ii, 100)
                     rand_tensors = to_tensor(rand_states)
@@ -290,39 +307,51 @@ def main(args):
                 stats_dict['save_prop_corr'].append(benchmark)
                 stats_dict['save_solve_corr'].append(val_corr)
                 stats_dict['save_seen'].append(len(seen_states))
+                # reload older model if performance is bad
+                if e > 10000 and benchmark < prev_benchmark * 0.8:
+                    log.info('Reloading previous model')
+                    prev_model = os.path.join(sumdir, 'model_last.pt')
+                    if os.path.exists(prev_model):
+                        sd = torch.load(prev_model, map_location=device)
+                        policy.load_state_dict(sd)
+                        target.load_state_dict(sd)
 
             log.info(f'Epoch {e:5d} | Dist corr: {benchmark:.3f} | solves: {val_corr:.3f} | val: {str_dict}' + \
                      f'Updates: {updates}, bps: {bps} | seen: {len(seen_states)}')
 
             torch.save(policy.state_dict(), os.path.join(sumdir, f'model_last.pt'))
+            prev_benchmark = benchmark
+            prev_val_corr = val_corr
 
         if e % args.saveiters == 0 and e > 0:
             torch.save(policy.state_dict(), os.path.join(sumdir, f'model_{e}.pt'))
+            pickle.dump(seen_states, open(os.path.join(sumdir, 'seen_states.pkl'), 'wb'))
 
     log.info('Max benchmark prop corr move attained: {:.4f}'.format(max_benchmark))
     log.info(f'Done training | log saved in: {logfile}')
     score, dists, stats = test_model(policy, 1000, 10000, 20, perm_df, to_tensor)
-    bench_results.update(stats_dict)
-    log.info('Final solve corr: {}'.format(bench_results['score']))
+    stats_dict['final_score'] = score
+    log.info('Final solve corr: {}'.format(stats_dict['final_score']))
 
     if args.savelog:
-        json.dump(bench_results, open(os.path.join(sumdir, 'stats.json'), 'w'))
+        json.dump(stats_dict, open(os.path.join(sumdir, 'stats.json'), 'w'))
         torch.save(policy.state_dict(), os.path.join(sumdir, 'model_final.pt'))
+        pickle.dump(seen_states, open(os.path.join(sumdir, 'seen_states.pkl'), 'wb'))
     print(f'Done with: {args.cube_irreps}')
     return bench_results
 
 def get_args():
-    _prefix = 'local' if os.path.exists('/local/hopan/irreps') else 'scratch'
+    _prefix = 'scratch' if os.path.exists('/scratch/hopan/cube/irreps') else 'local'
     parser = argparse.ArgumentParser()
     # log params
     parser.add_argument('--nostdout', action='store_true', default=False)
-    parser.add_argument('--savedir', type=str, default='/scratch/hopan/cube/irreps')
+    parser.add_argument('--savedir', type=str, default=f'/{_prefix}/hopan/cube/irreps')
     parser.add_argument('--sumdir', type=str, default='test')
     parser.add_argument('--savelog', action='store_true', default=False)
     parser.add_argument('--logfile', type=str, default=f'./logs/rl/{time.time()}.log')
     parser.add_argument('--skipvalidate', action='store_true', default=False)
     parser.add_argument('--benchlog', type=int, default=50000)
-    parser.add_argument('--saveiters', type=int, default=50000)
+    parser.add_argument('--saveiters', type=int, default=10000)
     parser.add_argument('--lognorms', action='store_true', default=False)
     parser.add_argument('--normiters', type=int, default=2000)
     parser.add_argument('--logiters', type=int, default=1000)

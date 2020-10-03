@@ -30,6 +30,47 @@ class MLP(nn.Module):
         for p in self.parameters():
             p.data.normal_(std=std)
 
+class Linear(nn.Module):
+    def __init__(self, nin, std=0.1, to_tensor=None):
+        super(Linear, self).__init__()
+        self.nin = nin
+        self.net = nn.Linear(nin, 1)
+        self.to_tensor = to_tensor
+
+    def forward(self, x):
+        return self.net(x)
+
+    def reset_parameters(self, std=0.1):
+        for p in self.parameters():
+            p.data.normal_(std=std)
+
+class MLPBn(nn.Module):
+    def __init__(self, nin, nhid, nout, layers=2, to_tensor=None, std=0.1):
+        super(MLPBn, self).__init__()
+        self.nin = nin
+        self.nhid = nhid
+        self.nout = nout
+        self.fc_in = nn.Linear(nin, nhid)
+        for i in range(1, layers):
+            setattr(self, f'fc_h{i}', nn.Linear(nhid, nhid))
+        self.fc_out = nn.Linear(nhid, nout)
+        self.layers = [self.fc_in] + [getattr(self, f'fc_h{i}') for i in range(1, layers)] + [self.fc_out]
+        self.bns = nn.ModuleList([nn.BatchNorm1d(l.out_features) for l in self.layers[:-1]])
+        self.nonlinearity = F.relu
+        self.to_tensor = to_tensor
+        self.reset_parameters(std)
+
+    def forward(self, x):
+        for layer, bn in zip(self.layers[:-1], self.bns):
+            x = layer(x)
+            x = bn(self.nonlinearity(x))
+        return self.fc_out(x)
+
+    def reset_parameters(self, std=0.1):
+        for p in self.parameters():
+            p.data.normal_(std=std)
+
+
 class ResidualBlock(nn.Module):
     def __init__(self, nin, std=0.1):
         super(ResidualBlock, self).__init__()

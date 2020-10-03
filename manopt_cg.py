@@ -82,10 +82,14 @@ def compute_cg(topk):
     print('Done')
 
 if __name__ == '__main__':
-    topk = [
-        (3, 2, 2, 1),
-        (4, 2, 2),
-        (4, 2, 1, 1),
-        (3, 3, 1, 1),
-    ]
-    compute_cg(topk)
+    for n in range(8, 9):
+        topk = [
+            (n-1, 1),
+            (n-2, 1, 1),
+            (n-2, 2),
+            # (3, 2, 2, 1),
+            # (4, 2, 2),
+            # (4, 2, 1, 1),
+            # (3, 3, 1, 1),
+        ]
+        compute_cg(topk)

@@ -1,3 +1,4 @@
+import pdb
 import itertools
 import perm2
 from itertools import combinations
@@ -100,13 +101,38 @@ def coset_reps(G, H):
 
 def cos_reps_alpha2(lst, s1, s2):
     reps = []
+    pstart = perm2.Perm2.from_cycle_decomp([tuple(range(1, s1+1)), tuple(range(s1+1, s1+s2+1))])
+    pstart_inv = pstart.inv()
+
     for p in combinations(lst, s1):
         s = [i for i in lst if i not in p]
-        perm = perm2.Perm2.from_cycle_decomp([p, s])
+        #perm = perm2.Perm2.from_cycle_decomp([p, s]) * pstart_inv
+        perm = pstart * perm2.Perm2.from_cycle_decomp([p, s]) * pstart_inv
         reps.append(perm)
 
     return reps
+
+def check_reps(n, s1, s2):
+    _sn = perm2.sn(n)
+    salpha = young_subgroup_perm((s1, s2))
+    reps = cos_reps_alpha2(tuple(range(1, n+1)), s1, s2)
+
+    _tup_set = set(p.tup_rep for p in _sn)
+    stuff = set()
+    for cos in reps:
+        for palpha in salpha:
+            prod = cos * palpha
+            prod_tup = prod.tup_rep
+            stuff.add(prod_tup)
+            if prod_tup in _tup_set:
+                _tup_set.remove(prod_tup)
+
+    print('Size remaining: {}'.format(len(_tup_set)))
+    pdb.set_trace()
+
 if __name__ == '__main__':
+    check_reps(4, 2, 2)
+
     G = perm2.sn(4)
     subgroup = young_subgroup_perm((2, 2))
     print(subgroup)

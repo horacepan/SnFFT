@@ -191,6 +191,27 @@ class CubePolicy(nn.Module):
         yr, yi = self.forward_complex(xr, xi)
         return yr
 
+class CubePolicyNoimag(CubePolicy):
+    def __init__(self, irreps, std=0.1, irrep_loaders=None):
+        super(CubePolicyNoimag, self).__init__(irreps, std, irrep_loaders)
+
+    def to_tensor(self, gs):
+        res = []
+        ims = []
+        for g in gs:
+            g_res = []
+            g_ims = []
+            for loader in self.irrep_loaders:
+                #re, im = loader.tup_to_irrep_sp(g[0], g[1])
+                re, im = loader.tup_to_irrep_sp_noimag(g[0], g[1])
+                g_res.append(re)
+                g_ims.append(im)
+
+            res.append(torch.cat(g_res, dim=1))
+            ims.append(torch.cat(g_ims, dim=1))
+
+        return torch.cat(res, dim=0).to(device), torch.cat(ims, dim=0).to(device)
+
 class CubePolicyLowRank(CubePolicy):
     def __init__(self, irreps, rank, std=0.1, irrep_loaders=None):
         super(CubePolicyLowRank, self).__init__(irreps, std=std, irrep_loaders=irrep_loaders)

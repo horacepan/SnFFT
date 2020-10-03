@@ -148,6 +148,29 @@ class PermDF:
                 ncorrect += int(self.opt_nbr(g, policy, to_tensor))
             return ncorrect / len(states)
 
+    def prop_corr_sample(self, policy, to_tensor, cnt, scramble_len=1000):
+        states = [self.random_state(scramble_len + (1 if random.random() < 0 else 0))
+                  for _ in range(cnt)]
+        dist_corr = {}
+        dist_cnts = {}
+        ncorrect = 0
+
+        for i in (range(cnt)):
+            state = states[i]
+            dist = self.dist_dict[state]
+            correct = int(self.opt_nbr(state, policy, to_tensor))
+            ncorrect += correct
+            dist_corr[dist] = dist_corr.get(dist, 0) + correct
+            dist_cnts[dist] = dist_cnts.get(dist, 0) + 1
+
+        for i in range(self.max_dist + 1):
+            if i not in dist_cnts or i not in dist_corr:
+                continue
+            dist_corr[i] = dist_corr[i] / dist_cnts[i]
+        prop_corr = ncorrect / len(states)
+        return prop_corr, dist_corr
+
+
     def prop_corr_by_dist(self, policy, to_tensor, distance_check=None, cnt=0):
         dist_corr = {}
         dist_cnts = {}
