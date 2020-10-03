@@ -5,7 +5,7 @@ import time
 import random
 from itertools import permutations
 import argparse
-
+import pickle
 import numpy as np
 import pandas as pd
 import json
@@ -219,6 +219,7 @@ def main(args):
             str_dict = str_val_results(val_results)
             if args.savelog:
                 swr.add_scalar('prop_correct/overall', benchmark, e)
+                swr.add_scalar('seen_states', len(seen_states), e)
                 for ii in range(1, 9):
                     # sample some number of states that far away, evaluate them, report mean + std
                     rand_states = perm_df.random_states(ii, 100)
@@ -261,6 +262,7 @@ def main(args):
     if not args.skipvalidate and args.savelog:
         json.dump(bench_results, open(os.path.join(sumdir, 'stats.json'), 'w'))
         json.dump(args.__dict__, open(os.path.join(sumdir, 'args.json'), 'w'))
+        pickle.dump(seen_states, open(os.path.join(sumdir, 'seen_states.pkl'), 'wb'))
     print(f'Done with: {irreps}')
     return bench_results
 
