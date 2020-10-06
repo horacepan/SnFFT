@@ -28,13 +28,27 @@ import pyr_irreps
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_exp_rate(epoch, explore_epochs, min_exp):
-    return 1
+    #return 1
     return max(min_exp, 1 - (epoch / explore_epochs))
 
 def full_benchmark(policy, perm_df, to_tensor, log):
     score, dists, stats = test_all_states(policy, 20, perm_df, to_tensor)
     log.info(f'Full Prop solves: {score:.4f} | stats: {str_val_results(stats)} | dists: {dists}')
     return {'score': score, 'dists': dists, 'stats': stats}
+
+def try_load_weights(sumdir, policy, target):
+    files = os.listdir(sumdir)
+    models = [f for f in files if 'model_' in f and 'last' not in f]
+    if len(models) == 0:
+        return False, 0
+
+    max_ep = max([int(f[6:f.index('.')]) for f in models])
+    fname = os.path.join(sumdir, f'model_{max_ep}.pt')
+    sd = torch.load(fname, map_location=device)
+
+    policy.load_state_dict(sd)
+    target.load_state_dict(sd)
+    return True, max_ep
 
 def main(args):
     #sumdir = os.path.join(f'./logs/{args.sumdir}/{args.notes}/seed_{args.seed}')
@@ -113,6 +127,13 @@ def main(args):
         log.info(str_val_results(corr_dict))
         res, distr, distr_stats = test_model(policy, 1000, 1000, 20, perm_df, to_tensor)
 
+    start_epochs = 0
+    loaded, start_epochs = try_load_weights(sumdir, policy, target)
+    if loaded:
+        log.info(f'Loaded old model starting at {start_epochs}!')
+    else:
+        log.info('Did not load saved model')
+
     optim = torch.optim.Adam(policy.parameters(), lr=args.lr)
     replay = ReplayBuffer(to_tensor([ident]).numel(), args.capacity)
     max_benchmark = 0
@@ -134,7 +155,7 @@ def main(args):
     save_updates = []
     check_memory()
 
-    for e in range(args.epochs + 1):
+    for e in range(start_epochs, start_epochs + args.epochs + 1):
         states = perm_df.random_walk(args.eplen)
         #for state in states:
         for idx, state in enumerate(states):

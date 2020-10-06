@@ -136,11 +136,14 @@ def main(args):
     loaded, start_epochs = try_load_weights(sumdir, policy, target)
     log.info(f'Loaded from old: {loaded} | consumed: {check_memory(verbose=False):.2f}mb')
     if loaded:
+        log.info('Trying to load: {}'.format(
+            os.path.join(sumdir, 'seen_states.pkl', 'rb')
+        ))
         try:
-            seen_states = pickle.load(open(os.path.join(sumdir, 'seen_states.pkl', 'rb')))
+            seen_states = pickle.load(open(os.path.join(sumdir, 'seen_states.pkl'), 'rb'))
             log.info(f'Loaded seen states: seen {len(seen_states)} after {start_epochs} epochs')
-        except:
-            log.info('No seen states to load')
+        except Exception as e:
+            log.info(f'No seen states to load: {e}')
 
     if len(args.loadsaved) > 0:
         sd = torch.load(args.loadsaved, map_location=device)
@@ -174,6 +177,20 @@ def main(args):
         log.info('Creating mini replay')
         replay = ReplayBufferMini(args.capacity)
 
+    '''
+    if loaded:
+        if len(seen_states) > 0:
+            for st in seen_states:
+                if args.convert == 'onehot':
+                    replay.push(to_tensor([state]), move, to_tensor([next_state]), reward, done, state, next_state, idx+1)
+                else:
+                    replay.push(state, move, next_state, reward, done)
+        else:
+            for _in range(1000):
+                states = perm_df.random_walk(args.eplen)
+                pass
+    '''
+
     max_benchmark = 0
     max_rand_benchmark = 0
     icnt = 0
@@ -197,7 +214,7 @@ def main(args):
     }
     check_memory()
 
-    for e in range(start_epochs, start_epochs  + args.epochs + 1):
+    for e in range(start_epochs, args.epochs + 1):
         states = perm_df.random_walk(args.eplen)
         #for state in states:
         for idx, state in enumerate(states):
@@ -324,7 +341,7 @@ def main(args):
             prev_benchmark = benchmark
             prev_val_corr = val_corr
 
-        if e % args.saveiters == 0 and e > 0:
+        if e % args.saveiters == 0 and e > start_epochs:
             torch.save(policy.state_dict(), os.path.join(sumdir, f'model_{e}.pt'))
             pickle.dump(seen_states, open(os.path.join(sumdir, 'seen_states.pkl'), 'wb'))
 
