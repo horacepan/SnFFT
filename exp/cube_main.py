@@ -141,7 +141,10 @@ def main(args):
         ))
         try:
             seen_states = pickle.load(open(os.path.join(sumdir, 'seen_states.pkl'), 'rb'))
-            log.info(f'Loaded seen states: seen {len(seen_states)} after {start_epochs} epochs')
+            np.random.seed(args.seed * 10)
+            random.seed(args.seed * 10)
+            torch.manual_seed(args.seed * 10)
+            log.info(f'Loaded seen states: seen {len(seen_states)} after {start_epochs} epochs | Setting seeds {args.seed * 10}')
         except Exception as e:
             log.info(f'No seen states to load: {e}')
 
@@ -327,7 +330,7 @@ def main(args):
                 stats_dict['save_seen'].append(len(seen_states))
                 # reload older model if performance is bad
                 if e > 10000 and benchmark < prev_benchmark * 0.8:
-                    log.info('Reloading previous model')
+                    log.info(f'Reloading previous model | curr benchmark: {benchmark} | prev benchmark: {prev_benchmark}')
                     prev_model = os.path.join(sumdir, 'model_last.pt')
                     if os.path.exists(prev_model):
                         sd = torch.load(prev_model, map_location=device)
